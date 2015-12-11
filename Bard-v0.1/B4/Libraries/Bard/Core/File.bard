@@ -1,0 +1,247 @@
+#==============================================================================
+# File
+#==============================================================================
+class File
+  PROPERTIES
+    filepath : String
+
+  METHODS
+    method init( filepath )
+
+    method absolute_filepath->String
+      # TODO
+      return filepath
+
+    method filename->String
+      return filename_of( filepath )
+
+    method filename_of( path:String )->String
+      local last_slash = path.find_last( '/' )
+      local last_backslash = path.find_last( '\\' )
+      local last_separator = last_slash
+      if (last_slash == -1 or (last_backslash != -1 and last_backslash > last_slash)) last_separator = last_backslash
+
+      if (last_separator == -1) return path
+      return path.substring( last_separator + 1 )
+
+    method appender->FileWriter
+      return FileWriter( filepath, true )
+
+    method reader->FileReader
+      return FileReader( filepath )
+
+    method writer->FileWriter
+      return FileWriter( filepath, false )
+
+    method size->Integer
+      local reader = NativeFileReader( filepath )
+      if (reader?) 
+        local result = reader.available
+        reader.close
+        return result
+      else
+        return -1
+      endIf
+
+    method to->Byte[]
+      local reader = NativeFileReader( filepath )
+      if (reader is null)
+        throw FileNotFoundError( filepath )
+      endIf
+      return reader->Byte[]
+endClass
+
+#==============================================================================
+# FileReader
+#==============================================================================
+class FileReader
+  PROPERTIES
+    native_reader : NativeFileReader
+    position      : Integer
+    count         : Integer
+    buffer        : Byte[]
+
+  METHODS
+    method init( filepath:String )
+      native_reader = NativeFileReader( filepath )
+      if (native_reader is null) throw FileNotFoundError( filepath )
+      count = native_reader.available
+
+      local buffer_size = count
+      if (buffer_size > 1024) buffer_size = 1024
+
+      buffer = Byte[]( buffer_size )
+
+    method close
+      native_reader.close
+
+    method has_another->Logical
+      return (position < count)
+
+    method peek->Character
+      if (buffer.count == 0) 
+        native_reader.read( buffer, buffer.capacity )
+        buffer.reverse
+      endIf
+      return buffer.last->Character
+
+    method read->Character
+      local result = peek
+      buffer.remove_last
+      ++position
+      return result
+endClass
+
+
+#==============================================================================
+# NativeFileReader
+#==============================================================================
+class NativeFileReader [native]
+  METHODS
+    method create                    [native]
+    method create( filepath:String ) [native]
+
+    method available->Integer        [native]
+    method close                     [native]
+    method position->Integer         [native]
+
+    method read( buffer:Byte[] )->Integer
+      return read( buffer, -1 )
+
+    method read( buffer:Byte[], count:Integer )->Integer [native]
+
+    method to->Byte[]
+      local buffer = Byte[]( available )
+      read( buffer, -1 )
+      return buffer
+
+    method to->String
+      return String( this->Byte[] )
+endClass
+
+
+#==============================================================================
+# FileWriter
+#==============================================================================
+class FileWriter : Printer
+  PROPERTIES
+    native_writer : NativeFileWriter
+    buffer = StringBuilder()
+    byte_buffer = Byte[]( 1024 )
+
+  METHODS
+    method init( filepath:String )
+      init( filepath, false )
+
+    method init( filepath:String, append:Logical )
+      native_writer = NativeFileWriter( filepath, append )
+      if (native_writer is null) throw IOError( filepath )
+
+    method close
+      flush
+      native_writer.close
+
+    method flush
+      if (byte_buffer.count?)
+        native_writer.write( byte_buffer, 0, byte_buffer.count )
+        byte_buffer.clear
+      endIf
+
+    method flush_if_necessary->FileWriter
+      # Move all buffered characters to byte buffer
+      forEach (ch in buffer) byte_buffer.add( ch->Byte )
+      buffer.clear
+      if (byte_buffer.count >= 1024) flush
+      return this
+
+      #method position->Integer
+      #return native_writer.position
+
+    method print( value:String )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method print( value:Real )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method print( value:Real, decimal_places:Integer )->FileWriter
+      buffer.print( value, decimal_places )
+      return flush_if_necessary
+
+    method print( value:Integer )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method print( value:Character )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method print( value:Object )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method print( value:Byte )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method print( value:Logical )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method println( value:Object )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method println( value:String )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method println( value:Real )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method println( value:Real, decimal_places:Integer )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method println( value:Integer )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method println( value:Character )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method println( value:Byte )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method println( value:Logical )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+
+    method println->FileWriter
+      buffer.println
+      return flush_if_necessary
+
+    method write( value:Character )->FileWriter
+      buffer.print( value )
+      return flush_if_necessary
+endClass
+
+
+#==============================================================================
+# NativeFileWriter
+#==============================================================================
+class NativeFileWriter [native]
+  METHODS
+    method create                                    [native]
+    method create( filepath:String, append:Logical ) [native]
+
+    method close                     [native]
+    method position->Integer         [native]
+
+    method write( buffer:Byte[], offset:Integer, count:Integer ) [native]
+endClass
+

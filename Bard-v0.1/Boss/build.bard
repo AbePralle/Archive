@@ -1,0 +1,15 @@
+class Build : GoGo
+  PROPERTIES
+
+  METHODS
+    method build( String cmd )
+      which (cmd)
+        case "clean"
+          execute( "rm -f *.class" )
+
+        others
+          execute( "javac *.java" )
+          execute( "java  Test" )
+      endWhich
+endClass
+

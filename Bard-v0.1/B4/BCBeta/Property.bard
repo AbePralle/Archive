@@ -1,0 +1,31 @@
+class Property
+  PROPERTIES
+    type_context  : Type
+    t             : Token
+    name          : String
+    x_name        : String
+    type          : Type
+    initial_value : Cmd
+    index         : Integer
+
+    # For Compounds
+    slot_index    : Integer
+
+    prior_declaration : Property
+
+  METHODS
+    method init( t, type_context, name )
+
+    method init( t, type_context, name, type )
+
+    method print
+      print( "    " )
+      println( this->String )
+
+    method to->String
+      return name + " : " + type
+
+    method x_name->String
+      if (@x_name is null) @x_name = Analyzer.convert_string_to_valid_identifier( name )
+      return @x_name
+endClass

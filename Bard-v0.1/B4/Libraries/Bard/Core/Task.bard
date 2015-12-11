@@ -1,0 +1,55 @@
+aspect Task
+  METHODS
+    method init_defaults
+      TaskManager.add( this )
+
+    method update
+
+    method exit
+      TaskManager.remove( this )
+endAspect
+
+
+class TaskManager [requisite singleton]
+  PROPERTIES
+    tasks            : Task[]
+    
+  METHODS
+    method init_defaults
+      if (tasks is null) tasks = Task[]
+
+    method add( task:Task )
+      init_defaults  # ensure tasks[] list is created
+      tasks.add( task )
+
+    method remove( task:Task )
+      init_defaults  # ensure tasks[] list is created
+      local i = 0
+      while (i < tasks.count)
+        if (tasks[i] is task)
+          tasks[i] = null
+          return
+        endIf
+        ++i
+      endWhile
+
+    method update->Logical
+      init_defaults  # ensure tasks[] list is created
+
+      Time.update
+
+      local i = 0
+      while (i < tasks.count)
+        local task = tasks[i]
+        if (task?)
+          task.update
+          ++i
+        else
+          tasks.remove_at(i)
+        endIf
+      endWhile
+
+      #println "Task count: " + tasks.count
+      return tasks.count?
+endClass
+

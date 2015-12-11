@@ -1,0 +1,440 @@
+[include "BardError.bard"]
+
+class Token
+  ENUMERATE
+    # General non-statement
+    eol
+
+    illegal_keyword # used to flag an illegal keyword (e.g. Real64) as needing a descriptive error message
+
+    # Non-statement keywords
+    keyword_aspect
+    keyword_catch
+    keyword_class
+    keyword_case
+    keyword_compound
+    keyword_function
+    keyword_else
+    keyword_elseIf
+    keyword_endAspect
+    keyword_endClass
+    keyword_endCompound
+    keyword_endContingent
+    keyword_endDelegate
+    keyword_endForEach
+    keyword_endFunction
+    keyword_endIf
+    keyword_endLambda
+    keyword_endLoop
+    keyword_endPrimitive
+    keyword_endWhich
+    keyword_endWhichIs
+    keyword_endTry
+    keyword_endWhile
+    keyword_ENUMERATE
+    keyword_in
+    keyword_METHODS
+    keyword_method
+    keyword_of
+    keyword_others
+    keyword_primitive
+    keyword_PROPERTIES
+    keyword_satisfied
+    keyword_SETTINGS
+    keyword_unsatisfied
+
+    # Non-statement start symbols
+    symbol_close_brace
+    symbol_close_bracket
+    symbol_close_comment
+    symbol_close_paren
+    symbol_close_special
+
+    symbol_comma
+
+    last_non_statement
+
+    # general
+    comment
+    identifier
+    type_placeholder
+
+    # control
+    keyword_delegate
+    keyword_escapeContingent
+    keyword_escapeForEach
+    keyword_escapeIf
+    keyword_escapeLoop
+    keyword_escapeTry
+    keyword_escapeWhile
+    keyword_contingent
+    keyword_forEach
+    keyword_if
+    keyword_lambda
+    keyword_loop
+    keyword_necessary
+    keyword_nextIteration
+    keyword_prior
+    keyword_return
+    keyword_sufficient
+    keyword_throw
+    keyword_trace
+    keyword_tron
+    keyword_troff
+    keyword_which
+    keyword_whichIs
+    keyword_try
+    keyword_while
+
+    # expressions
+    literal_Real
+    literal_Real_pi
+    literal_Integer
+    literal_Character
+    literal_Logical_true
+    literal_Logical_false
+    literal_String
+
+    keyword_and
+    keyword_as
+    keyword_instanceOf
+    keyword_is
+    keyword_isNot
+    keyword_local
+    keyword_not
+    keyword_notInstanceOf
+    keyword_or
+    keyword_pi
+    keyword_this
+    keyword_noAction
+    keyword_null
+    keyword_xor
+
+    symbol_access_assign
+    symbol_add_assign
+    symbol_ampersand
+    symbol_arrow
+    symbol_at
+    symbol_backslash
+    symbol_bitwise_and_assign
+    symbol_bitwise_not
+    symbol_bitwise_or
+    symbol_bitwise_or_assign
+    symbol_bitwise_xor
+    symbol_bitwise_xor_assign
+    symbol_colon
+    symbol_compare
+    symbol_decrement
+    symbol_delegate_accessor
+    symbol_divide
+    symbol_divide_assign
+    symbol_dollar
+    symbol_empty_braces
+    symbol_empty_brackets
+    symbol_eq
+    symbol_equals
+    symbol_ge
+    symbol_gt
+    symbol_increment
+    symbol_le
+    symbol_lt
+    symbol_minus
+    symbol_mod_assign
+    symbol_multiply_assign
+    symbol_ne
+    symbol_open_brace
+    symbol_open_bracket
+    symbol_open_paren
+    symbol_open_special
+    symbol_percent
+    symbol_period
+    symbol_plus
+    symbol_power
+    symbol_power_assign
+    symbol_question_mark
+    symbol_semicolon
+    symbol_shl
+    symbol_shr
+    symbol_shrx
+    symbol_subtract_assign
+    symbol_times
+    symbol_upTo
+
+  CLASS_PROPERTIES
+    definable_operator_types =
+    {
+      Token.symbol_plus,               # +
+      Token.symbol_minus,              # -
+      Token.symbol_times,              # *
+      Token.symbol_divide,             # /
+      Token.symbol_percent,            # %
+      Token.symbol_power,              # ^
+      Token.symbol_ampersand,          # &
+      Token.symbol_bitwise_or,         # |
+      Token.symbol_bitwise_xor,        # ~
+      Token.symbol_bitwise_not,        # !
+      Token.symbol_add_assign,         # +=
+      Token.symbol_subtract_assign,    # -=
+      Token.symbol_multiply_assign,    # *=
+      Token.symbol_divide_assign,      # /=
+      Token.symbol_mod_assign,         # %=
+      Token.symbol_power_assign,       # ^=
+      Token.symbol_bitwise_and_assign, # &=
+      Token.symbol_bitwise_or_assign,  # |=
+      Token.symbol_bitwise_xor_assign, # ~=
+      #Token.symbol_access_assign,      # .=
+      Token.symbol_increment,          # ++
+      Token.symbol_decrement           # --
+    } : Integer[]
+
+  CLASS_METHODS
+    method name( Integer type ).String
+      which (type)
+        case eol: return "[EOL]"
+        case symbol_close_brace: return "}"
+        case symbol_close_bracket: return "]"
+        case symbol_close_comment: return "}#"
+        case symbol_close_paren: return ")"
+        case symbol_close_special: return ">>"
+        case symbol_access_assign: return ".="
+        case symbol_add_assign: return "+="
+        case symbol_ampersand: return "&"
+        case symbol_arrow: return "->"
+        case symbol_at: return "@"
+        case symbol_backslash: return "\\"
+        case symbol_bitwise_and_assign: return "&="
+        case symbol_bitwise_not: return "!"
+        case symbol_bitwise_or: return "|"
+        case symbol_bitwise_or_assign: return "|="
+        case symbol_bitwise_xor: return "~"
+        case symbol_bitwise_xor_assign: return "~="
+        case symbol_colon: return ":"
+        case symbol_comma: return ","
+        case symbol_compare: return "<>"
+        case symbol_delegate_accessor: return "::"
+        case symbol_decrement: return "--"
+        case symbol_divide: return "/"
+        case symbol_divide_assign: return "/="
+        case symbol_dollar: return "$"
+        case symbol_empty_braces: return "{}"
+        case symbol_empty_brackets: return "[]"
+        case symbol_eq: return "=="
+        case symbol_equals: return "="
+        case symbol_ge: return ">="
+        case symbol_gt: return ">"
+        case symbol_increment: return "++"
+        case symbol_le: return "<="
+        case symbol_lt: return "<"
+        case symbol_minus: return "-"
+        case symbol_mod_assign: return "%="
+        case symbol_multiply_assign: return "*="
+        case symbol_ne: return "!="
+        case symbol_open_brace: return "{"
+        case symbol_open_bracket: return "["
+        case symbol_open_paren: return "("
+        case symbol_open_special: return "<<"
+        case symbol_percent: return "%"
+        case symbol_period: return "."
+        case symbol_plus: return "+"
+        case symbol_power: return "^"
+        case symbol_power_assign: return "^="
+        case symbol_question_mark: return "?"
+        case symbol_semicolon: return ";"
+        case symbol_shl: return ":<<:"
+        case symbol_shr: return ":>>:"
+        case symbol_shrx: return ":>>>:"
+        case symbol_subtract_assign: return "-="
+        case symbol_times: return "*"
+        case symbol_upTo: return ".."
+        others:   return "$" (Keywords.name_lookup[type])
+      endWhich
+
+  PROPERTIES
+    filepath : String
+    type     : Integer
+    line     : Integer
+    column   : Integer
+
+  METHODS
+    method init( filepath, line, column, type )
+
+    method init( Token existing )
+      with_position_info( existing )
+      type     = existing.type
+
+    method with_position_info( Token existing ).Token
+      filepath = existing.filepath
+      line     = existing.line
+      column   = existing.column
+      return this
+
+    method error( String message ).BardError
+      return BardError( filepath, line, column, message )
+
+    method to_String.String
+      return name(type)
+
+    method to_source_string.String
+      return to_String
+
+    method to_real.Real
+      throw UnsupportedMethodError("to_real")
+
+    method to_integer.Integer
+      throw UnsupportedMethodError("to_integer")
+
+    method to_character.Char
+      throw UnsupportedMethodError("to_character")
+
+endClass
+
+class IdentifierToken : Token
+  PROPERTIES
+    value : String
+
+  METHODS
+    method init( filepath, line, column, value )
+      type = Token.identifier
+
+    method init( Token existing, value )
+      prior.init( existing )
+      type = Token.identifier
+
+    method create_duplicate.Token
+      return IdentifierToken(this,value)
+
+    method to_String.String
+      return value
+endClass
+
+class TypePlaceholderToken : IdentifierToken
+  METHODS
+    method init( filepath, line, column, value )
+      type = Token.type_placeholder
+
+    method init( Token existing, value )
+      prior.init( existing, value )
+      type = Token.type_placeholder
+
+    method create_duplicate.Token
+      return TypePlaceholderToken(this,value)
+endClass
+
+class StringToken : Token
+  PROPERTIES
+    value : String
+
+  METHODS
+    method init( filepath, line, column, value )
+      type = Token.literal_String
+
+    method init( Token existing, value )
+      prior.init( existing )
+      type = Token.literal_String
+
+    method create_duplicate.Token
+      return StringToken(this,value)
+
+    method to_source_string.String
+      return //"$"// (value)
+
+    method to_String.String
+      return value
+endClass
+
+class RealToken : Token
+  PROPERTIES
+    value : Real
+
+  METHODS
+    method init( filepath, line, column, value )
+      type = Token.literal_Real
+
+    method init( Token existing, value )
+      prior.init( existing )
+      type = Token.literal_Real
+
+    method create_duplicate.Token
+      return RealToken(this,value)
+
+    method to_String.String
+      return ""+value
+
+    method to_real.Real
+      return value
+endClass
+
+class IntegerToken : Token
+  PROPERTIES
+    value : Integer
+
+  METHODS
+    method init( filepath, line, column, value )
+      type = Token.literal_Integer
+
+    method init( Token existing, value )
+      prior.init( existing )
+      type = Token.literal_Integer
+
+    method create_duplicate.Token
+      return IntegerToken(this,value)
+
+    method to_String.String
+      return ""+value
+
+    method to_integer.Integer
+      return value
+endClass
+
+class CharacterToken : Token
+  PROPERTIES
+    value : Char
+
+  METHODS
+    method init( filepath, line, column, value )
+      type = Token.literal_Character
+
+    method init( Token existing, value )
+      prior.init( existing )
+      type = Token.literal_Character
+
+    method create_duplicate.Token
+      return CharacterToken(this,value)
+
+    method to_String.String
+      return ""+value
+
+    method to_source_string.String
+      return //'$'// (value)
+
+    method to_character.Char
+      return value
+endClass
+
+#{
+class TypeDefToken : Token
+  PROPERTIES
+    type : Type
+
+  METHODS
+    method init( filepath, line, column, value )
+      type = Token.literal_Character
+
+    method to_String.String
+      return ""+value
+
+    method to_character.Char
+      return value
+endClass
+}#
+
+class TokenList : ArrayList<<Token>>
+  METHODS
+    method init
+      prior.init
+
+    method init( Token t )
+      init
+      add( t )
+endClass
+

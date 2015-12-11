@@ -1,0 +1,108 @@
+class Table<<$KeyType:Object,$ValueType:Object>>
+  PROPERTIES
+    bin_mask : Integer
+    bins     : TableBin<<$KeyType,$ValueType>>[]
+    keys     : $KeyType[]
+
+  METHODS
+    method init
+      init( 16 )
+
+    method init( bin_count:Integer )
+      local bins_power_of_2 = 1
+      while (bins_power_of_2 < bin_count) bins_power_of_2 = bins_power_of_2 :<<: 1
+      bin_count = bins_power_of_2
+      bin_mask = bin_count - 1
+
+      bins = TableBin<<$KeyType,$ValueType>>[]( bin_count, null )
+      keys = $KeyType[]
+
+    method at( index:Integer )->$ValueType
+      return get( keys[index] )
+
+    method clear
+      forEach (i in bins.indices) bins[i] = null
+      keys.clear
+
+    method contains( key:$KeyType )->Logical
+      return find(key)?
+
+    method count->Integer
+      return keys.count
+
+    method find( key:$KeyType )->TableEntry<<$KeyType,$ValueType>>
+      local hash = key.hash_code
+      local bin = bins[ hash & bin_mask ]
+      if (bin?) return bin.find( key, hash )
+      else      return null
+
+    method get( key:$KeyType )->$ValueType
+      local entry = find( key )
+      if (entry?)
+        return entry.value
+      else
+        local default_value : $ValueType
+        return default_value
+      endIf
+
+    method set( key:$KeyType, value:$ValueType )
+      local hash = key.hash_code
+      local index = hash & bin_mask
+      local bin = bins[ index ]
+      if (bin?)
+        local entry = bin.find( key, hash )
+        if (entry?) entry.value = value; return
+      else
+        bin = TableBin<<$KeyType,$ValueType>>()
+        bins[index] = bin
+      endIf
+
+      keys.add( key )
+      bin.entries.add( TableEntry<<$KeyType,$ValueType>>(key,value,hash) )
+
+    method to->String
+      return print_to( StringBuilder() )->String
+
+    method print_to( buffer:StringBuilder )->StringBuilder
+      buffer.print( '[' )
+      local i = 0
+      while (i < keys.count)
+        local key = keys[i]
+        buffer.print( key )
+        buffer.print( ':' )
+        buffer.print( this[key] )
+        ++i
+      endWhile
+      buffer.print( ']' )
+      return buffer
+
+endClass
+
+class TableBin<<$KeyType:Object,$ValueType:Object>>
+  PROPERTIES
+    entries : TableEntry<<$KeyType,$ValueType>>[]
+
+  METHODS
+    method init
+      entries = TableEntry<<$KeyType,$ValueType>>[]
+
+    method find( key:$KeyType, hash:Integer )->TableEntry<<$KeyType,$ValueType>>
+      forEach (entry in entries)
+        if (entry.hash == hash and entry.key == key) return entry
+      endForEach
+      return null
+endClass
+
+class TableEntry<<$KeyType:Object,$ValueType:Object>>
+  PROPERTIES
+    key   : $KeyType
+    value : $ValueType
+    hash  : Integer
+
+  METHODS
+    method init( _key:$KeyType, _value:$ValueType, _hash:Integer )
+      key = _key
+      value = _value
+      hash = _hash
+endClass
+

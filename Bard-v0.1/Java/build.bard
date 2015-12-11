@@ -1,0 +1,50 @@
+class BuildBard : GoGo
+  PROPERTIES
+    program_name = "BC" : String
+
+  METHODS
+    method build( String cmd )
+      local var filename_java = program_name + "Program.java"
+      local var filename_class = program_name + "Program.class"
+      local var filename_bard = program_name + ".bard"
+
+      which (cmd)
+        case "clean"
+          execute( "rm -f *.class" )
+          execute( "rm -f compiler/*.class" )
+          execute( "rm -f alphavm/*.class" )
+          execute( "rm -f vm/*.class" )
+          execute( "rm -f *.etc" )
+
+        case "run"
+          execute( "java -d32 $" (program_name) )
+
+        others
+          local var full_compile = false
+          if (FileSet("compiler","*.java").newer_than(filename_java))
+            execute( "javac compiler/*.java" )
+            full_compile = true
+          endIf
+          if (full_compile or File("Test.java").newer_than(filename_class))
+            execute( "javac Test.java" )
+          endIf
+          if (full_compile or File(filename_bard).newer_than(filename_class))
+            execute( "java -d32 Test " + program_name )
+          endIf
+          if (full_compile or FileSet("alphavm","*.java").newer_than(filename_class))
+            execute( "javac alphavm/*.java" )
+          endIf
+          if (full_compile or File(filename_bard).newer_than(filename_class) or File(filename_java).newer_than(filename_class))
+            execute( "javac " + filename_java )
+          endIf
+          execute( "java -d32 " + program_name + "Program" )
+
+          if (full_compile or FileSet("vm","*.java").newer_than("TestProgram.class"))
+            execute( "javac vm/*.java" )
+          endIf
+          execute( "javac TestProgram.java" )
+          execute( "java -d32 TestProgram" )
+
+      endWhich
+endClass
+

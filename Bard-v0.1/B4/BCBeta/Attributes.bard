@@ -1,0 +1,105 @@
+class Attributes
+  ENUMERATE
+    flag_type                   = 0b00000000011
+    flag_class                  = 0b00000000000
+    flag_aspect                 = 0b00000000001
+    flag_primitive              = 0b00000000010
+    flag_compound               = 0b00000000011
+
+    flag_native                 = 0b00000000100
+    flag_automatic              = 0b00000001000
+      # automatically generated
+
+    flag_singleton              = 0b00000010000
+
+    flag_requisite              = 0b00000100000
+    flag_special                = 0b00001000000
+      # method call signature matches other methods defined at same level
+
+    flag_functional             = 0b00010000000
+    flag_propagated             = 0b00100000000
+
+  PROPERTIES
+    flags : Integer
+    tags  = String[]
+
+  METHODS
+    method clone->Attributes
+      local result = Attributes()
+      result.flags = flags
+      result.tags = tags.clone
+      return result
+
+    method add( flag:Integer )->Attributes
+      flags |= flag
+      return this
+
+    method add( tag:String )->Attributes
+      which (tag)
+        case "aspect":      flags |= flag_aspect
+        case "automatic":   flags |= flag_automatic
+        case "class":       flags |= flag_class
+        case "compound":    flags |= flag_compound
+        case "functional":  flags |= flag_functional
+        case "native":      flags |= flag_native
+        case "primitive":   flags |= flag_primitive
+        case "propagated":  flags |= flag_propagated
+        case "requisite":   flags |= flag_requisite
+        case "singleton":   flags |= flag_singleton
+        case "special":     flags |= flag_special
+        others
+          tags.add( tag )
+      endWhich
+      return this
+
+    method add( other:Attributes )->Attributes
+      add( other.flags )
+      forEach (tag in other.tags) add( tag )
+      return this
+
+    method remove( flag:Integer )->Attributes
+      flags &= !flag
+      return this
+
+    method has_tag( tag:String )->Logical
+      return tags.find(tag) != -1
+
+    method is_primitive->Logical
+      return (flags & flag_type) == flag_primitive
+
+    method is_compound->Logical
+      return (flags & flag_type) == flag_compound
+
+    method is_class->Logical
+      return (flags & flag_type) == flag_class
+
+    method is_aspect->Logical
+      return (flags & flag_type) == flag_aspect
+
+    method is_reference->Logical
+      local type = (flags & flag_type)
+      return (type == flag_class or type == flag_aspect)
+
+    method is_native->Logical
+      return (flags & flag_native)?
+
+    method is_functional->Logical
+      return (flags & flag_functional)?
+
+    method is_automatic->Logical
+      return (flags & flag_automatic)?
+
+    method is_propagated->Logical
+      return (flags & flag_propagated)?
+
+    method is_requisite->Logical
+      return (flags & flag_requisite)?
+
+    method is_singleton->Logical
+      return (flags & flag_singleton)?
+
+    method is_special->Logical
+      return (flags & flag_special)?
+
+endClass
+

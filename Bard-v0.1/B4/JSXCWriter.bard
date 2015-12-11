@@ -1,0 +1,1871 @@
+class JSXCWriter : Visitor
+  PROPERTIES
+    show_source = false : Logical
+
+    this_type    : Type
+    this_method  : Method
+
+    writer       : TextWriter
+
+    id_table()   : HashTable<<String,String>>
+
+    indent       : Integer
+    needs_indent : Logical
+    previous_cmd_is_return : Logical
+
+
+  METHODS
+    method compile( String filepath )
+      writer = File(filepath).create_writer
+
+      # Write out method definitions as global functions.
+      writeln( "//-----------------------------------------------------------------------------" )
+      writeln( "// Method Definitions" )
+      writeln( "//-----------------------------------------------------------------------------" )
+      forEach (m in Analyzer.method_list)
+        this_type = m.type_context
+        if (this_type.is_compound and m.attributes.is_automatic) nextIteration # create() method
+
+        this_method = m
+        if (m.attributes.is_native) writer.print( "// NATIVE " )
+        writer.print( "function Bard" )
+        writer.print( m.type_context.x_type.x_name )
+        writer.print( "__" )
+        writer.print( m.x_signature )
+
+        local var parameter_count = m.parameters.count
+        writer.print( "(" )
+
+        if (parameter_count? or this_type.is_functional)
+          writer.print( " " )
+          local var first = true
+
+          if (this_type.is_functional)
+            writer.print( "THIS" )
+            first = false
+          endIf
+
+          forEach (param in m.parameters)
+            if (first) first = false
+            else       writer.print( ", " )
+            writer.print( param.x_name )
+          endForEach
+          writer.print( " " )
+        endIf
+        writer.print( ")" )
+
+        #if (m.return_type?)
+        #  writer.print( " // ->" )
+        #  writer.print( m.return_type.x_type.x_name )
+        #endIf
+
+        writeln
+
+        if (not m.attributes.is_native)
+          writeln( "{" )
+
+          if (not m.type_context.is_aspect or m.signature == "init_settings()")
+            indent = 2
+            needs_indent = true
+            visit( m )
+            if (not previous_cmd_is_return and m.return_type?)
+              if (m.is_initializer) writeln( "return this;" )
+              else                  writeln( "Bard_throw_missing_return();" );
+            endIf
+          endIf
+
+          indent -= 2
+          writeln( "}" )
+        endIf
+        writeln
+      endForEach
+
+
+      # Write out type definitions
+      indent = 0
+      writeln( "//-----------------------------------------------------------------------------" )
+      writeln( "// Type Definitions" )
+      writeln( "//-----------------------------------------------------------------------------" )
+      forEach (type in Types.type_list)
+        if (type.is_compound or type.is_primitive) nextIteration
+        write( "function Bard" )
+        write( type.x_name )
+        writeln( "()" )
+        writeln( "{" )
+        indent += 2
+
+        if (type.property_list.count?)
+          forEach (p in type.property_list) write_property_def( "this.p_", p )
+          writeln
+        endIf
+
+        indent -= 2
+        writeln( "}" )
+        writeln
+
+        if (type.method_list.count?)
+          forEach (m in type.method_list)
+            write( "Bard" )
+            write( type.x_name )
+            write( ".prototype.m_" )
+            write( m.x_signature )
+            write( " = Bard" )
+            write( m.type_context.x_type.x_name )
+            write( "__" )
+            write( m.x_signature )
+            writeln( ";" )
+          endForEach
+        endIf
+        writeln
+      endForEach
+
+      # Singleton setup
+      indent = 0
+      writeln( "//-----------------------------------------------------------------------------" )
+      writeln( "// Singletons" )
+      writeln( "//-----------------------------------------------------------------------------" )
+      writeln( "var BardSingletons = {};" )
+      writeln
+
+      writeln( "// Create singleton objects" )
+      forEach (type in Types.type_list)
+        write( "BardSingletons.singleton_" )
+        write( type.x_name )
+        write( " = " )
+        if (type.is_primitive or type.is_compound)
+          write_default_value_for_type( type )
+        else
+          write( " new Bard" )
+          write( type.x_name )
+          write( "()" )
+        endIf
+        writeln(";")
+      endForEach
+      writeln
+
+      writeln( "// Init settings" )
+      forEach (type in Types.type_list)
+        write( "Bard" )
+        write( type.x_name )
+        writeln( "__init_settings();" )
+      endForEach
+      writeln
+
+      writeln( "// Init defaults on full singletons" )
+      forEach (type in Types.type_list)
+        if (type.attributes.is_singleton and type isNot Types.main_type)
+          write( "BardSingletons.singleton_" )
+          write( type.x_name )
+          writeln( ".m_init_defaults();" )
+        endIf
+      endForEach
+      writeln
+
+      writeln( "// Init main class" )
+      write( "BardSingletons.singleton_" )
+      write( Types.main_type.x_name )
+      write( ".m_init_defaults()" )
+      local var m = Types.main_type.find_method("init()")
+      if (m?) write( ".m_init()" )
+      writeln( ";" )
+      writeln
+
+      #{
+      if (m.return_type?)
+        if (m.is_initializer)
+          write_code( m.t, Op.return_this )
+        else
+          write_code( m.t, Op.throw_missing_return )
+        endIf
+      endIf
+      }#
+
+      #{
+      writer.println( //function BardVM()// )
+      writer.println( //{// )
+
+      # Write singleton vars
+      writer.println( //  this.create_singletons = function()// )
+      writer.println( //  {// )
+      writer.println(  "    // Singleton objects" )
+      forEach (type in Types.type_list)
+        writer.print( //    this.singleton_// );
+        writer.print( x_name(type.name) )
+        writer.print( // = new BardClass// );
+        writer.print( x_name(type.name) )
+        writer.println( "();" );
+      endForEach
+      writer.println( //  };// );
+
+      writer.println( //}// )
+      writer.println
+
+      writer.println( //document.writeln( "Hello World!" );// )
+      }#
+
+      #{
+      write( code.count )
+      forEach (n in code) write( n )
+
+      write( id_list.count )
+      forEach (id in id_list) write(id)
+
+      write( Types.type_list.count )
+      forEach (type in Types.type_list)
+        write( id_table[type.name] )
+        write( type.attributes.flags )
+        write( type.attributes.tags.count )
+        forEach (tag in type.attributes.tags) write( id_table[tag] )
+
+        write( type.base_types.count )
+        forEach (base_type in type.base_types) write( base_type.index )
+
+        write( type.settings_list.count )
+        forEach (p in type.settings_list)
+          write( id_table[p.name] )
+          write( p.type.index )
+        endForEach
+
+        write( type.property_list.count )
+        forEach (p in type.property_list)
+          write( id_table[p.name] )
+          write( p.type.index )
+        endForEach
+
+      endForEach
+
+      write( Types.main_type.index )
+
+      write( Analyzer.method_list.count )
+      forEach (m in Analyzer.method_list) write( m )
+
+      write( Types.type_list.count )
+      forEach (type in Types.type_list) write_method_tables( type )
+
+      write( real_list.count )
+      forEach (r in real_list) write( r )
+
+      # Convert filepaths to filenames
+      forEach (index of filenames) filenames[index] = File(filenames[index]).filename
+
+      write( filenames.count )
+      forEach (filename in filenames) write( filename )
+
+      write( compact_line_info.count )
+      forEach (n in compact_line_info) writer.write(n)
+
+      write( string_list.count )
+      forEach (st in string_list) write(st)
+      }#
+
+      writer.close
+
+    method write_default_value_for_type( Type type )
+      which (type.classification)
+        case Type.reference_type: write( "null" )
+        case Type.real_type:      write( "0" )
+        case Type.integer_type:   write( "0" )
+        case Type.character_type: write( "0" )
+        case Type.byte_type:      write( "0" )
+        case Type.logical_type:   write( "false" )
+        case Type.compound_type
+          write( "{" )
+          local var first = true
+          forEach (sub_property in type.property_list)
+            if (first) first = false
+            else       write( "," )
+            write( "'p_" )
+            write( sub_property.x_name )
+            write( "':" )
+            write_default_value_for_type( sub_property.type )
+          endForEach
+          write( "}" )
+        others
+          throw Error("TODO")
+      endWhich
+
+    method write_property_def( String base_name, Property property )
+      write( base_name )
+      write( property.x_name )
+      write( " = " )
+      write_default_value_for_type( property.type )
+      writeln( ";" )
+      #{
+      local var classification = property.type.classification
+      if (classification == Type.compound_type)
+        base_name += property.x_name + "_"
+        forEach (sub_property in property.type.property_list)
+          write_property_def( base_name, sub_property )
+        endForEach
+      else
+        write( base_name )
+        write( property.x_name )
+        write( " = " )
+        write_default_value_for_type( property.type )
+        writeln( ";" )
+      endIf
+      }#
+
+    method generate_temporary_local_name.String
+      return "temp_" + Analyzer.unique_id
+
+    method x_name( String st ).String
+      # Returns "st" as a valid identifier - the "cross compile name" or "x name".
+      local var result = id_table[ st ]
+      if (result?) return result
+
+      if (st.ends_with("()")) st = st.excluding_rightmost(2)
+      result = Analyzer.convert_string_to_valid_identifier( st )
+      id_table[st] = result
+      return result
+
+    method write( String st )
+      if (needs_indent)
+        needs_indent = false
+        forEach (1..indent) writer.print(' ')
+      endIf
+      writer.print(st)
+
+    method write_literal( String st )
+      if (st is null)
+        writer.write( "null" )
+      else
+        writer.print( '"' )
+        forEach (ch in st)
+          if (ch >= 32 and ch <= 126)
+            which (ch)
+              case '\\': writer.print( "\\\\" )
+              case '"':  writer.print( "\\\"" )
+              others:    writer.print( ch )
+            endWhich
+          else
+            if (ch < 256)
+              which (ch)
+                case '\0': writer.print("\\0")
+                case    8: writer.print("\\b")
+                case   12: writer.print("\\f")
+                case '\n': writer.print("\\n")
+                case '\r': writer.print("\\r")
+                case '\t': writer.print("\\t")
+                case   11: writer.print("\\v")
+                others
+                  writer.print( "\\x" )
+                  writer.print( "$(02)" (Integer(ch).to_String(16) ) )
+              endWhich
+            else
+              writer.print( "\\u" )
+              writer.print( "$(04)" (Integer(ch).to_String(16) ) )
+            endIf
+          endIf
+        endForEach
+        writer.print( '"' )
+      endIf
+
+    method writeln( String st )
+      write( st )
+      writeln
+
+    method writeln
+      writer.println
+      needs_indent = true
+
+      #{
+    method collect_real( Real r ).Integer
+      if (real_table.contains(r)) return real_table[r]
+
+      local var index = real_table.count
+      real_table[r] = index
+      real_list.add( r )
+      return index
+
+    method collect_string( String st ).Integer
+      if (string_table.contains(st)) return string_table[st]
+
+      local var index = string_table.count
+      string_table[st] = index
+      string_list.add( st )
+      return index
+
+    method write( Real r )
+      local Int64 data = ( r as Int64 )
+      write( data.right_shifted(32) as Integer )
+      write( data as Integer )
+
+    method write( String st )
+      write( st.count )
+      forEach (ch in st) write( ch )
+
+    method write_method_tables( Type type )
+      write( type.method_list.count )
+      forEach (m in type.method_list)
+        write( m.global_index )
+      endForEach
+
+      local var aspect_count = 0
+      forEach (base_type in type.base_types)
+        if (base_type.is_aspect) ++aspect_count
+      endForEach
+
+      write( aspect_count )
+      forEach (base_type in type.base_types)
+        if (base_type.is_aspect)
+          write( base_type.index )
+          write( base_type.method_list.count )
+          forEach (m in base_type.method_list)
+            write( type.must_find_method(m.call_signature,m.return_type).global_index )
+          endForEach
+        endIf
+      endForEach
+
+    method write( Method m )
+      write( m.type_context.index )
+      write( id_table[m.name] )
+      write( m.parameters.count )
+      if (m.return_type?) write( m.return_type.index )
+      else                write( -1 )
+      write( m.locals.count )
+
+      forEach (v in m.locals)
+        write( v.type.index )
+      endForEach
+      write( m.ip )
+      write( m.ip_limit )
+      write( m.line_info_index )
+
+      write( m.attributes.flags )
+      write( m.attributes.tags.count )
+      forEach (tag in m.attributes.tags) write( id_table[tag] )
+
+      write( m.exception_handlers.count )
+      forEach (cur_handler in m.exception_handlers)
+        write( cur_handler.ip_start )
+        write( cur_handler.ip_limit )
+        write( cur_handler.catches.count )
+        forEach (cur_catch in cur_handler.catches)
+          write( cur_catch.local_info.type.index )
+          write( cur_catch.handler_ip )
+          write( cur_catch.local_info.slot_index )
+        endForEach
+      endForEach
+
+    method next_control_id.String
+      return Analyzer.unique_id
+      }#
+
+    method visit( CmdStatementList cmd )
+      Analyzer.context.push_local_scope
+      previous_cmd_is_return = false
+      forEach (statement in cmd) 
+        previous_cmd_is_return = false
+        statement.dispatch( this )
+        if (statement notInstanceOf CmdControlStructure) write( ";" )
+        if (show_source)
+          write( " /*" )
+          write( statement.type_name )
+          write( ": " )
+          write( statement.to_String )
+          write( "*/" )
+        endIf
+        writeln
+      endForEach
+      Analyzer.context.pop_local_scope
+
+    method visit( CmdLocalDeclaration cmd ).Cmd
+      write( "var " )
+      write( cmd.local_info.x_name )
+      return cmd
+
+      #{
+    method visit( CmdTron cmd ).Cmd
+      write_code( cmd.t, Op.trace_on )
+      return cmd
+
+    method visit( CmdTroff cmd ).Cmd
+      write_code( cmd.t, Op.trace_off )
+      return cmd
+      }#
+
+    method visit( CmdReturnNil cmd ).Cmd
+      previous_cmd_is_return = true
+      if (this_method.is_initializer)
+        write( "return this" )
+
+      elseIf (this_type.is_compound)
+        write( "TODO:compound return" )
+        #write_code( cmd.t, opcode_with_embedded_n( Op.compound_return_nil_fp_adjust_n, this_type.slot_count) )
+
+      else
+        write( "return" )
+      endIf
+      return cmd
+
+    method visit( CmdReturnThis cmd ).Cmd
+      previous_cmd_is_return = true
+      writeln( "return this;" );
+      return cmd
+
+    method visit( CmdReturnValue cmd ).Cmd
+      write( "return " )
+      cmd.operand.dispatch( this )
+      previous_cmd_is_return = true
+      return cmd
+
+    method visit( CmdSpecializeReference cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdConvertIntegerToReal cmd ).Cmd
+      cmd.operand.dispatch( this )
+      return cmd
+
+    method visit( CmdConvertRealToInteger cmd ).Cmd
+      write( "(" )
+      cmd.operand.dispatch( this )
+      write( "|0)" )
+      return cmd
+
+    method visit( CmdConvertCharacterToInteger cmd ).Cmd
+      cmd.operand.dispatch( this )
+      return cmd
+
+    method visit( CmdConvertByteToInteger cmd ).Cmd
+      cmd.operand.dispatch( this )
+      # No actual operator is required
+      return cmd
+
+    method visit( CmdConvertIntegerToCharacter cmd ).Cmd
+      cmd.operand.dispatch( this )
+      return cmd
+
+    method visit( CmdConvertIntegerToByte cmd ).Cmd
+      write( "(" )
+      cmd.operand.dispatch( this )
+      write( "&255)" )
+      return cmd
+
+    method visit( CmdConvertLogicalToInteger cmd ).Cmd
+      write( "(" )
+      cmd.operand.dispatch( this )
+      write( "&1)" )
+      return cmd
+
+    method visit( CmdIf cmd ).Cmd
+      write( "if (" )
+      cmd.condition.dispatch( this )
+      writeln( ")" )
+      writeln( "{" )
+      indent += 2
+      cmd.body.dispatch( this )
+      indent -= 2
+      writeln( "}" )
+
+      forEach (index of cmd.elseIf_conditions)
+        local var condition = cmd.elseIf_conditions[index]
+        write( "else if (" )
+        condition.dispatch( this )
+        writeln( ")" )
+        writeln( "{" )
+        indent += 2
+        cmd.elseIf_bodies[index].dispatch( this )
+        indent -= 2
+        writeln( "}" )
+      endForEach
+
+      if (cmd.else_body?)
+        writeln( "else" )
+        writeln( "{" )
+        indent += 2
+        cmd.else_body.dispatch( this )
+        indent -= 2
+        writeln( "}" )
+      endIf
+
+      previous_cmd_is_return = false
+
+      return cmd
+
+      #{
+    method visit( CmdContingent cmd ).Cmd
+      cmd.control_id = next_control_id
+
+      cmd.body.dispatch( this )
+
+      if(cmd.satisfied_body?)
+        define_label( "satisfied_" + cmd.control_id )
+        cmd.satisfied_body.dispatch( this )
+      endIf
+
+      write_jump( cmd.t, Op.jump_to_offset_n, "end_" + cmd.control_id )
+
+      if(cmd.unsatisfied_body?)
+        define_label( "unsatisfied_" + cmd.control_id )
+        cmd.unsatisfied_body.dispatch( this )
+      endIf
+
+      if(not cmd.satisfied_body?)   define_label( "satisfied_" + cmd.control_id )
+      if(not cmd.unsatisfied_body?) define_label( "unsatisfied_" + cmd.control_id )
+      define_label("end_" + cmd.control_id)
+
+      return cmd
+
+    method visit( CmdNecessary cmd ).Cmd
+
+    method visit( CmdSufficient cmd ).Cmd
+
+    method visit( CmdEscapeContingent cmd ).Cmd
+      }#
+
+    method visit( CmdAnonymousBlock cmd ).Cmd
+      writeln( "{" )
+      indent += 2
+      cmd.body.dispatch( this )
+      indent -= 2
+      writeln( "}" )
+      return cmd
+
+    method visit( CmdWhile cmd ).Cmd
+      if (cmd.control_id_used_in_nested_code or (cmd.original_for_each? and cmd.original_for_each.control_id_used_in_nested_code))
+        write( "label_" )
+        if (cmd.control_id_used_in_nested_code) write( cmd.control_id )
+        else                                    write( cmd.original_for_each.control_id )
+        writeln( ":" )
+      endIf
+      write( "while (" )
+      cmd.condition.dispatch( this )
+      writeln( ")" )
+      writeln( "{" )
+      indent += 2
+      cmd.body.dispatch( this )
+      indent -= 2
+      writeln( "}" )
+      previous_cmd_is_return = false
+      return cmd
+
+      #{
+    method visit( CmdEscapeWhile cmd ).Cmd
+      }#
+
+    method visit( CmdLoop cmd ).Cmd
+      writeln( "for (;;)" )
+      writeln( "{" )
+      indent += 2
+      cmd.body.dispatch( this )
+      indent -= 2
+      writeln( "}" )
+
+      previous_cmd_is_return = false
+
+      return cmd
+
+      #{
+    method visit( CmdTry cmd ).Cmd
+      cmd.control_id = next_control_id
+
+      local var ip_start = code.count
+      cmd.body.dispatch( this )
+      local var ip_limit = code.count
+      write_jump( cmd.t, Op.jump_to_offset_n, "end_" + cmd.control_id )
+
+      local var m = Analyzer.context.this_method
+      m.exception_handlers.add( ExceptionHandler(ip_start,ip_limit) )
+
+      local var catch_index = 0
+      forEach (cur_catch in cmd.catches)
+        Analyzer.context.push_local_scope
+        Analyzer.add_local( cur_catch.local_info )
+        local var label_name = "catch_$_$_$" (cmd.control_id,m.exception_handlers.count-1,catch_index)
+        define_label( label_name )
+        m.exception_handlers.last.catches.add( ExceptionHandlerCatch(cur_catch.local_info,label_name) )
+        cur_catch.body.dispatch( this )
+        write_jump( cmd.t, Op.jump_to_offset_n, "end_" + cmd.control_id )
+        Analyzer.context.pop_local_scope
+        ++catch_index
+      endForEach
+
+      define_label( "end_" + cmd.control_id )
+
+      return cmd
+
+    method visit( CmdThrow cmd ).Cmd
+      cmd.operand.dispatch( this )
+      write_code( cmd.t, Op.throw_exception )
+      return cmd
+
+    method visit( CmdEscapeLoop cmd ).Cmd
+      }#
+
+    method visit( CmdEscapeForEach cmd ).Cmd
+      write( "break label_" )
+      write( cmd.target_id )
+      return cmd
+
+      #{
+    method visit( CmdEscapeIf cmd ).Cmd
+
+    method visit( CmdEscapeTry cmd ).Cmd
+
+    method visit( CmdNextIteration cmd ).Cmd
+      }#
+
+    method visit( CmdLiteralReal cmd ).Cmd
+      forEach (decimal_digits in 1..9)
+        local var magnitude = 10.0 ^ decimal_digits
+        if (cmd.value == Integer(cmd.value*magnitude) / magnitude)
+          write( format_string(cmd.value, 0, decimal_digits) )
+          return cmd
+        endIf
+      endForEach
+
+      write( "TODO:int64_bits_to_real(0x" )
+      write( (cmd.value as Int64).to_String(16) )
+      write( ")" )
+
+      return cmd
+
+    method visit( CmdLiteralString cmd ).Cmd
+      write_literal( cmd.value )
+      return cmd
+
+    method visit( CmdLiteralNull cmd ).Cmd
+      write( "null" )
+      return cmd
+
+    method visit( CmdLiteralInteger cmd ).Cmd
+      write( ""+cmd.value )
+      return cmd
+
+    method visit( CmdLiteralByte cmd ).Cmd
+      write( ""+cmd.value )
+      return cmd
+
+    method visit( CmdLiteralArray cmd ).Cmd
+      write( "[" )
+
+      local var first = true
+      forEach (element in cmd.elements)
+        if (first) first = false
+        else       write(",")
+        element.dispatch( this )
+      endForEach
+
+      write( "]" )
+
+      return cmd
+
+    method visit( CmdLiteralCharacter cmd ).Cmd
+      write( ""+Integer(cmd.value) )
+      return cmd
+
+    method visit( CmdLiteralLogical cmd ).Cmd
+      if (cmd.value) write( "true" )
+      else           write( "false" )
+      return cmd
+
+    method visit( CmdReadLocal cmd ).Cmd
+      write( cmd.local_info.x_name )
+      return cmd
+
+    method visit( CmdWriteLocal cmd ).Cmd
+      if (cmd.local_info.type.is_compound)
+        write( "TODO: CmdWriteLocal with compound" )
+      else
+        write( cmd.local_info.x_name )
+        write( " = " )
+        cmd.new_value.dispatch( this )
+      endIf
+      return cmd
+
+    method visit( CmdWriteLocalDefault cmd ).Cmd
+      write( cmd.local_info.x_name )
+      write( " = " )
+      local var v = cmd.local_info
+      local var type = v.type
+      local var opcode = -1
+      which (type.classification)
+        case Type.reference_type: write( "null" )
+        case Type.real_type:      write( "0" )
+        case Type.integer_type:   write( "0" )
+        case Type.character_type: write( "0" )
+        case Type.byte_type:      write( "0" )
+        case Type.logical_type:   write( "false" )
+        case Type.compound_type
+          throw Error("TODO")
+          #write_code( cmd.t, opcode_with_embedded_a_b(Op.clear_local_compound_slot_a_size_b,-v.slot_index,type.slot_count) )
+        others
+        throw cmd.t.error( "CmdWriteLocalDefault not implemented for type $." (type) )
+      endWhich
+
+      return cmd
+
+    method visit( CmdInstanceOf cmd ).Cmd
+      cmd.operand.dispatch( this )
+      write( ".instance_of( BardTypes.type_" )
+      write( cmd.target_type.x_type.x_name )
+      return cmd
+
+    method generate_local_op_assign( CmdOpAssignLocal cmd, String opcode, Integer mask )
+      write( cmd.local_info.x_name )
+      write( " " )
+      write( opcode )
+      if (mask?)
+        write( " (" )
+        cmd.new_value.dispatch( this )
+        write( " ) & " )
+        write( ""+mask )
+      else
+        write( " " )
+        cmd.new_value.dispatch( this )
+      endIf
+
+    method write_local_op_assign( CmdOpAssignLocal cmd, String opcode ).Cmd
+      which (cmd.local_info.type.classification)
+        case Type.real_type
+          generate_local_op_assign( cmd, opcode, 0 )
+
+        case Type.integer_type
+          generate_local_op_assign( cmd, opcode, 0 )
+
+        case Type.character_type
+          generate_local_op_assign( cmd, opcode, 65535 )
+
+        case Type.byte_type
+          generate_local_op_assign( cmd, opcode, 255 )
+
+        others
+          throw cmd.t.error( "Variable type $ does not support '$' operation." (cmd.local_info.type,cmd.name) )
+      endWhich
+
+      return cmd
+
+    method visit( CmdAssign cmd ).Cmd
+      cmd.operand.dispatch( this )
+      write( " = " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdAddAssignLocal cmd ).Cmd
+      return write_local_op_assign( cmd, "+=" )
+
+    method visit( CmdSubtractAssignLocal cmd ).Cmd
+      return write_local_op_assign( cmd, "-=" )
+
+    method visit( CmdMultiplyAssignLocal cmd ).Cmd
+      return write_local_op_assign( cmd, "*=" )
+
+    method visit( CmdDivideAssignLocal cmd ).Cmd
+      return write_local_op_assign( cmd, "/=" )
+
+    method visit( CmdModAssignLocal cmd ).Cmd
+      write( cmd.local_info.x_name )
+      write( " = " )
+      if (cmd.local_info.type.is_Real) write( "Bard_mod_real( " )
+      else                             write( "Bard_mod_integer( " )
+      write( cmd.local_info.x_name )
+      write( ", " )
+      cmd.new_value.dispatch( this )
+      write( " )" )
+      return cmd
+
+    method visit( CmdPowerAssignLocal cmd ).Cmd
+      write( cmd.local_info.x_name )
+      write( " = Math.pow( " )
+      write( cmd.local_info.x_name )
+      write( ", " )
+      cmd.new_value.dispatch( this )
+      write( " )" )
+      return cmd
+
+    method visit( CmdBitwiseAndAssignLocal cmd ).Cmd
+      write( cmd.local_info.x_name )
+      write( " &= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseOrAssignLocal cmd ).Cmd
+      write( cmd.local_info.x_name )
+      write( " |= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseXorAssignLocal cmd ).Cmd
+      write( cmd.local_info.x_name )
+      write( " ^= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdAccessAssignLocal cmd ).Cmd
+      write( cmd.local_info.x_name )
+      write( " = " )
+      write( cmd.local_info.x_name )
+      write( "." )
+      cmd.access.dispatch( this )
+      return cmd
+
+    method visit( CmdAccessAssignSetting cmd ).Cmd
+      write("ZOMBIE(")
+      cmd.access.dispatch( this )
+      write(")")
+      #{
+      write( ".s_" )
+      write( cmd.setting.x_name )
+      write_code_with_arg_n( cmd.t, Op.resolve_write_s_, cmd.setting.index )
+      write_code( cmd.t, cmd.setting.type_context.index )
+      }#
+
+      return cmd
+
+    method visit( CmdIncrementLocal cmd ).Cmd
+      which (cmd.local_info.type.classification)
+        case Type.character_type
+          write( cmd.local_info.x_name )
+          write( " = (" )
+          write( cmd.local_info.x_name )
+          write( " + 1 ) & 655335" )
+
+        case Type.byte_type
+          write( cmd.local_info.x_name )
+          write( " = (" )
+          write( cmd.local_info.x_name )
+          write( " + 1 ) & 255" )
+
+        others
+          write( "++" )
+          write( cmd.local_info.x_name )
+      endWhich
+      return cmd
+
+    method visit( CmdIncrementSetting cmd ).Cmd
+      if (cmd.context?)
+        cmd.context.dispatch( this )
+        writeln(";")
+      endIf
+
+      write( "++BardTypes.type_" )
+      write( cmd.setting.type_context.x_name )
+      write( ".settings.s_" )
+      write( cmd.setting.type.x_type.x_name )
+
+      which (cmd.setting.type.classification)
+        case Type.character_type
+          write( "BardTypes.type_" )
+          write( cmd.setting.type_context.x_name )
+          write( ".settings.s_" )
+          write( cmd.setting.type.x_type.x_name )
+          write( " &= 65535" )
+
+        case Type.byte_type
+          write( "BardTypes.type_" )
+          write( cmd.setting.type_context.x_name )
+          write( ".settings.s_" )
+          write( cmd.setting.type.x_type.x_name )
+          write( " &= 255" )
+
+      endWhich
+
+      return cmd
+
+    method visit( CmdDecrementSetting cmd ).Cmd
+      if (cmd.context?)
+        cmd.context.dispatch( this )
+        writeln(";")
+      endIf
+
+      write( "--BardTypes.type_" )
+      write( cmd.setting.type_context.x_name )
+      write( ".settings.s_" )
+      write( cmd.setting.type.x_type.x_name )
+
+      which (cmd.setting.type.classification)
+        case Type.character_type
+          write( "BardTypes.type_" )
+          write( cmd.setting.type_context.x_name )
+          write( ".settings.s_" )
+          write( cmd.setting.type.x_type.x_name )
+          write( " &= 65535" )
+
+        case Type.byte_type
+          write( "BardTypes.type_" )
+          write( cmd.setting.type_context.x_name )
+          write( ".settings.s_" )
+          write( cmd.setting.type.x_type.x_name )
+          write( " &= 255" )
+
+      endWhich
+
+      return cmd
+
+    method visit( CmdIncrementProperty cmd ).Cmd
+      if (cmd.context?)
+        which (cmd.property.type.classification)
+          case Type.character_type
+            local var temp_name = generate_temporary_local_name
+            write( "var " )
+            write( temp_name )
+            write( " = " )
+            cmd.context.dispatch( this )
+            writeln( ";" )
+
+            write( temp_name )
+            write( ".p_" )
+            write( cmd.property.x_name )
+            write( " = (" )
+            write( temp_name )
+            write( ".p_" )
+            write( cmd.property.x_name )
+            write( " + 1) & 65535" )
+
+          case Type.byte_type
+            local var temp_name = generate_temporary_local_name
+            write( "var " )
+            write( temp_name )
+            write( " = " )
+            cmd.context.dispatch( this )
+            writeln( ";" )
+
+            write( temp_name )
+            write( ".p_" )
+            write( cmd.property.x_name )
+            write( " = (" )
+            write( temp_name )
+            write( ".p_" )
+            write( cmd.property.x_name )
+            write( " + 1) & 255" )
+
+          others
+            write( "++" )
+            if (cmd.context?) cmd.context.dispatch( this )
+            else              write_this
+            write( ".p_" )
+            cmd.property.x_name
+        endWhich
+      else
+        write( "++this.p_" )
+        write( cmd.property.x_name )
+      endIf
+      return cmd
+
+    method visit( CmdDecrementLocal cmd ).Cmd
+      which (cmd.local_info.type.classification)
+        case Type.character_type
+          write( cmd.local_info.x_name )
+          write( " = (" )
+          write( cmd.local_info.x_name )
+          write( " - 1 ) & 655335" )
+
+        case Type.byte_type
+          write( cmd.local_info.x_name )
+          write( " = (" )
+          write( cmd.local_info.x_name )
+          write( " - 1 ) & 255" )
+
+        others
+          write( "--" )
+          write( cmd.local_info.x_name )
+      endWhich
+      return cmd
+
+
+    method visit( CmdDecrementProperty cmd ).Cmd
+      if (cmd.context?)
+        which (cmd.property.type.classification)
+          case Type.character_type
+            local var temp_name = generate_temporary_local_name
+            write( "var " )
+            write( temp_name )
+            write( " = " )
+            cmd.context.dispatch( this )
+            writeln( ";" )
+
+            write( temp_name )
+            write( ".p_" )
+            write( cmd.property.x_name )
+            write( " = (" )
+            write( temp_name )
+            write( ".p_" )
+            write( cmd.property.x_name )
+            write( " - 1) & 65535" )
+
+          case Type.byte_type
+            local var temp_name = generate_temporary_local_name
+            write( "var " )
+            write( temp_name )
+            write( " = " )
+            cmd.context.dispatch( this )
+            writeln( ";" )
+
+            write( temp_name )
+            write( ".p_" )
+            write( cmd.property.x_name )
+            write( " = (" )
+            write( temp_name )
+            write( ".p_" )
+            write( cmd.property.x_name )
+            write( " - 1) & 255" )
+
+          others
+            write( "--" )
+            if (cmd.context?) cmd.context.dispatch( this )
+            else              write_this
+            write( ".p_" )
+            cmd.property.x_name
+        endWhich
+      else
+        write( "--this.p_" )
+        write( cmd.property.x_name )
+      endIf
+      return cmd
+
+    method visit( CmdNewObject cmd ).Cmd
+      write( "Bard" )
+      write( cmd.init_method.type_context.x_type.x_name )
+      write( "__" )
+      write( cmd.init_method.x_signature )
+      write( ".call( new Bard" )
+      write( cmd.of_type.x_type.x_name )
+      write( "().m_init_defaults()" )
+      if (cmd.args?)
+        forEach (arg in cmd.args)
+          write( ", " )
+          arg.dispatch( this )
+        endForEach
+      endIf
+      write( " )" )
+      return cmd
+
+    method this_reference.String
+      if (this_type.is_compound)
+        return "THIS"
+      elseIf (this_type.is_primitive or this_type.attributes.is_functional)
+        return "THIS"
+      else
+        return "this"
+      endIf
+
+    method write_this
+      if (this_type.is_compound)
+        write( "THIS" )
+      elseIf (this_type.is_primitive or this_type.attributes.is_functional)
+        write( "THIS" )
+      else
+        write( "this" )
+      endIf
+
+    method write_context( Cmd context )
+      if (context?)
+        context.dispatch( this )
+      else
+        write_this
+      endIf
+
+    method visit( CmdThis cmd ).Cmd
+      write_this
+      return cmd
+
+    method visit( CmdReadSingleton cmd ).Cmd
+      if (cmd.of_type.is_aspect)
+        throw cmd.t.error( "Illegal reference - aspects do not have singleton objects." )
+      else
+        write( "BardSingletons.singleton_" )
+        write( cmd.of_type.x_type.x_name )
+      endIf
+      return cmd
+
+    method visit( CmdReadSetting cmd ).Cmd
+      if (cmd.context? and cmd.context notInstanceOf CmdThis)
+        cmd.context.dispatch( this )
+        writeln
+      endIf
+
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+
+      return cmd
+
+
+    method visit( CmdReadProperty cmd ).Cmd
+      write_context( cmd.context )
+
+      write(".p_")
+      write( cmd.property.x_name )
+
+      return cmd
+
+
+    method visit( CmdWriteSetting cmd ).Cmd
+      if (cmd.context? and cmd.context notInstanceOf CmdThis)
+        cmd.context.dispatch( this )
+        writeln
+      endIf
+
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( " = " )
+      cmd.new_value.dispatch( this )
+
+      return cmd
+
+    method visit( CmdWriteProperty cmd ).Cmd
+      local Type context_type
+      if (cmd.context?) context_type = cmd.context.type
+      else              context_type = this_type
+
+      if (context_type.is_compound)
+        throw cmd.t.error( "Compound properties cannot be individually reassigned.  A new compound must be created using the new properties." )
+      endIf
+
+      if (cmd.context? and cmd.context notInstanceOf CmdThis)
+        cmd.context.dispatch( this )
+      else
+        write_this
+      endIf
+      write( ".p_" )
+
+      write( cmd.property.x_name )
+      write( " = " )
+      cmd.new_value.dispatch( this )
+
+      return cmd
+
+    method write_function_call( Method m, Cmd context, CmdArgs args )
+      local var buffer = StringBuilder()
+      buffer.print( m.type_context.x_type.x_name )
+      buffer.print( "__" )
+      buffer.print( m.x_signature )
+      local var call_signature = buffer.to_String
+
+      which (call_signature)
+        case "Math__floor__Real"
+          write( "Math.floor( " )
+          args.first.dispatch( this )
+          write( " )" )
+
+        case "Math__sqrt__Real"
+          write( "Math.sqrt( " )
+          args.first.dispatch( this )
+          write( " )" )
+
+        case "String__count"
+          write_context( context )
+          write( ".length" )
+
+        case "String__get__Integer"
+          write_context( context )
+          write( ".charCodeAt( " )
+          args.first.dispatch( this )
+          write( " )" )
+
+        others
+          write( "Bard" )
+          write( call_signature )
+          write( "( " )
+
+          if (context?)
+            local var context_type = context.type
+            context.dispatch( this )
+          else
+            write_this
+          endIf
+
+          if (args?)
+            forEach (arg in args)
+              write( ", " )
+              arg.dispatch( this )
+            endForEach
+          endIf
+          write(" )")
+      endWhich
+
+      #local var m_index = cmd.method_info.global_index
+      #write_code( cmd.t, opcode_with_embedded_n(Op.static_call_to_method_index_n,m_index) )
+
+
+    method visit( CmdStaticCall cmd ).Cmd
+      local var type_context = cmd.method_info.type_context.x_type
+      local var m = cmd.method_info
+      if (type_context.is_compound and m.attributes.is_automatic)
+        # Create compound
+        write( "{" )
+        if (cmd.args?)
+          local var first = true
+          local var i = 0
+          forEach (arg in cmd.args)
+            if (first) first = false
+            else       write( "," )
+            write( "'p_" )
+            write( type_context.property_list[i].x_name )
+            write( "':" )
+            arg.dispatch( this )
+            ++i
+          endForEach
+        endIf
+        write( "}" )
+      elseIf (type_context.is_primitive or type_context.is_functional)
+        write_function_call( m, cmd.context, cmd.args )
+      else
+        write( "Bard" )
+        write( m.type_context.x_type.x_name )
+        write( "__" )
+        write( m.x_signature )
+        write( ".call( " )
+        if (cmd.context?) cmd.context.dispatch( this )
+        else              write_this
+        if (cmd.args? and cmd.args.count?)
+          forEach (arg in cmd.args)
+            write( "," )
+            arg.dispatch( this )
+          endForEach
+        endIf
+        write(" )")
+
+        #local var m_index = cmd.method_info.global_index
+        #write_code( cmd.t, opcode_with_embedded_n(Op.static_call_to_method_index_n,m_index) )
+      endIf
+
+      return cmd
+
+    method visit( CmdDynamicCall cmd ).Cmd
+      local var type_context = cmd.method_info.type_context
+
+      if (type_context.is_primitive or type_context.is_functional)
+        write_function_call( cmd.method_info, cmd.context, cmd.args )
+
+      else
+        if (cmd.method_info.type_context.is_reference)
+          if (cmd.context?) cmd.context.dispatch(this)
+          else              write_this
+
+          write( ".m_" )
+          write( cmd.method_info.x_signature )
+          write( "(" )
+          if (cmd.args? and cmd.args.count?)
+            write(" ")
+            local var first = true
+            forEach (arg in cmd.args)
+              if (first) first = false
+              else       write( ", " )
+              arg.dispatch( this )
+            endForEach
+            write(" ")
+          endIf
+          write(")")
+        else
+          throw Error("TODO")
+        endIf
+      endIf
+
+      #{
+      if (cmd.context?)
+        cmd.context.dispatch( this )
+      else
+        if (this_type.is_compound)
+          write_code( cmd.t, opcode_with_embedded_n(Op.push_this_compound_n_slots,this_type.slot_count) )
+        elseIf (this_type.is_primitive)
+          if (this_type.is_Real) write_code( cmd.t, Op.push_this_real )
+          else                   write_code( cmd.t, Op.push_this_integer )
+        else
+          write_code( cmd.t, Op.push_this )
+        endIf
+      endIf
+
+
+      local Type context_type
+      contingent
+        necessary (cmd.context?)
+        context_type = cmd.context.type
+        necessary (context_type.is_aspect)
+      satisfied
+        write_code( cmd.t, opcode_with_embedded_n(Op.aspect_call_with_n_parameters,cmd.method_info.parameters.count) )
+        write_code( cmd.t, context_type.index )
+      unsatisfied
+        write_code( cmd.t, opcode_with_embedded_n(Op.dynamic_call_with_n_parameters,cmd.method_info.parameters.count) )
+      endContingent
+      write_code( cmd.t, cmd.method_info.local_index )
+      }#
+
+      return cmd
+
+    method visit( CmdAdd cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " + " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdSubtract cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " - " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdMultiply cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " * " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdDivide cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " / " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdMod cmd ).Cmd
+      if (cmd.lhs.type.is_Real) write( "Bard_mod_real( " )
+      else                      write( "Bard_mod_integer( " )
+      cmd.lhs.dispatch( this )
+      write( ", " )
+      cmd.rhs.dispatch( this )
+      write( " )" )
+      return cmd
+
+    method visit( CmdPower cmd ).Cmd
+      write( "Math.pow( " )
+      cmd.lhs.dispatch( this )
+      write( ", " )
+      cmd.rhs.dispatch( this )
+      write( " )" )
+      return cmd
+
+    method visit( CmdBitwiseAnd cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " & " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdBitwiseOr cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " | " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdBitwiseXor cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " ^ " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdNegate cmd ).Cmd
+      write( "-" )
+      cmd.operand.dispatch( this )
+      return cmd
+
+    method visit( CmdLogicalize cmd ).Cmd
+      write( "!!" )
+      cmd.operand.dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseNot cmd ).Cmd
+      write( "~" )
+      cmd.operand.dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseSHL cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " << " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdBitwiseSHR cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " >>> " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdBitwiseSHRX cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " >> " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdLogicalAnd cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " && " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdLogicalOr cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " || " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdLogicalNot cmd ).Cmd
+      write( "!" )
+      cmd.operand.dispatch( this )
+      return cmd
+
+    method visit( CmdLogicalXor cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " ^ " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdCompareIs cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " == " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdCompareEQ cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " == " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdCompareNE cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " != " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdCompareIsNot cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " != " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdCompareLT cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " < " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdCompareLE cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " <= " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdCompareGT cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " > " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdCompareGE cmd ).Cmd
+      write( "(" )
+      cmd.lhs.dispatch( this )
+      write( " >= " )
+      cmd.rhs.dispatch( this )
+      write( ")" )
+      return cmd
+
+    method visit( CmdAddAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this )
+      else              write_this
+      write( ".p_" )
+      write( cmd.property.x_name )
+      write( " += " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdSubtractAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this )
+      else              write_this
+      write( ".p_" )
+      write( cmd.property.x_name )
+      write( " -= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdMultiplyAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this )
+      else              write_this
+      write( ".p_" )
+      write( cmd.property.x_name )
+      write( " *= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdDivideAssignProperty cmd ).Cmd
+      if (cmd.property.type.is_integer_family)
+        local String local_name
+        if (cmd.context?) 
+          write( local_name )
+          write( " = " )
+          cmd.context.dispatch( this )
+          writeln( ";" )
+        else
+          local_name = this_reference
+        endIf
+
+        write( local_name )
+        write( ".p_" )
+        write( cmd.property.x_name )
+        write( " = (" )
+        write( cmd.property.x_name )
+        write( " / " )
+        cmd.new_value.dispatch( this )
+        write( ") | 0 " )
+        return cmd
+      else
+        if (cmd.context?) cmd.context.dispatch( this )
+        else              write_this
+        write( ".p_" )
+        write( cmd.property.x_name )
+        write( " /= " )
+        cmd.new_value.dispatch( this )
+        return cmd
+      endIf
+
+    method visit( CmdModAssignProperty cmd ).Cmd
+      local String local_name
+      if (cmd.context?) 
+        write( local_name )
+        write( " = " )
+        cmd.context.dispatch( this )
+        writeln( ";" )
+      else
+        local_name = this_reference
+      endIf
+
+      write( local_name )
+      write( ".p_" )
+      write( cmd.property.x_name )
+      write( " = " )
+      if (cmd.property.type.is_Real) write( "Bard_mod_real( " )
+      else                           write( "Bard_mod_integer( " )
+      write( cmd.property.x_name )
+      write( ", " )
+      cmd.new_value.dispatch( this )
+      write( " )" )
+      return cmd
+
+    method visit( CmdPowerAssignProperty cmd ).Cmd
+      local String local_name
+      if (cmd.context?) 
+        write( local_name )
+        write( " = " )
+        cmd.context.dispatch( this )
+        writeln( ";" )
+      else
+        local_name = this_reference
+      endIf
+
+      write( local_name )
+      write( ".p_" )
+      write( cmd.property.x_name )
+      write( " = Math.pow( " )
+      write( cmd.property.x_name )
+      write( ", " )
+      cmd.new_value.dispatch( this )
+      write( " )" )
+      if (cmd.property.type.is_integer_family) write( " | 0" )
+      return cmd
+
+    method visit( CmdBitwiseAndAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this )
+      else              write_this
+      write( ".p_" )
+      write( cmd.property.x_name )
+      write( " &= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseOrAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this )
+      else              write_this
+      write( ".p_" )
+      write( cmd.property.x_name )
+      write( " |= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseXorAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this )
+      else              write_this
+      write( ".p_" )
+      write( cmd.property.x_name )
+      write( " ^= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdAddAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this ); writeln(";")
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( " += " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdSubtractAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this ); writeln(";")
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( " -= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+
+    method visit( CmdMultiplyAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this ); writeln(";")
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( " *= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+
+    method visit( CmdDivideAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this ); writeln(";")
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( " /= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+
+    method visit( CmdModAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this ); writeln(";")
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( " = " )
+      if (cmd.setting.type.is_Real) write( "Bard_mod_real( " )
+      else                          write( "Bard_mod_integer( " )
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( ", " )
+      cmd.new_value.dispatch( this )
+      write( " )" )
+      return cmd
+
+    method visit( CmdPowerAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this ); writeln(";")
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( " = Math.pow( " )
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( ", " )
+      cmd.new_value.dispatch( this )
+      write( " )" )
+      return cmd
+
+
+    method visit( CmdBitwiseAndAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this ); writeln(";")
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( " &= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+
+    method visit( CmdBitwiseOrAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this ); writeln(";")
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( " |= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+
+    method visit( CmdBitwiseXorAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context.dispatch( this ); writeln(";")
+      write( "Bard" )
+      write( cmd.setting.type_context.x_name )
+      write( "Settings.s_" )
+      write( cmd.setting.x_name )
+      write( " ^= " )
+      cmd.new_value.dispatch( this )
+      return cmd
+
+    method visit( CmdCreateArray cmd ).Cmd
+      which (cmd.element_type.x_type.classification)
+        case Type.reference_type: write( "new Array( " )
+        case Type.real_type:      write( "new Float64Array( " )
+        case Type.integer_type:   write( "new Int32Array( " )
+        case Type.character_type: write( "new Uint16Array( " )
+        case Type.byte_type:      write( "new Unit8Array( " )
+        case Type.logical_type:   write( "new Uint8Array( " )
+        case Type.compound_type:  throw Error("TODO")
+      endWhich
+      cmd.size_expression.dispatch( this )
+      write( " )" )
+      return cmd
+
+    method visit( CmdArrayCount cmd ).Cmd
+      cmd.operand.dispatch( this )
+      write( ".length" )
+      return cmd
+
+    method visit( CmdReadArrayElement cmd ).Cmd
+      if (cmd.element_type.is_Logical) write( "!!" )
+      cmd.operand.dispatch( this )
+      write( "[" )
+      cmd.index_expression.dispatch( this )
+      write( "]" )
+      return cmd
+
+    method visit( CmdWriteArrayElement cmd ).Cmd
+      cmd.operand.dispatch( this )
+      write( "[" )
+      cmd.index_expression.dispatch( this )
+      write( "] = " )
+      cmd.new_value.dispatch( this )
+      return cmd
+endClass
+

@@ -1,0 +1,56 @@
+class EventManager [requisite singleton]
+  SETTINGS
+    key_buffer   = StringBuilder()
+    value_buffer = StringBuilder()
+
+    queued_event_count = 0
+    #event_queue = DataQueue()
+
+  METHODS
+    method key_buffer->StringBuilder
+      return @key_buffer
+
+    method value_buffer->StringBuilder
+      return @value_buffer
+
+    method queue_argument_count( arg_count:Integer )
+      #event_queue.add( key_buffer->String.consolidated )
+      #event_queue.add( arg_count )
+      #++queued_event_count
+
+    method queue_string_argument
+      #event_queue.add( key_buffer->String.consolidated )
+      #event_queue.add( value_buffer->String.consolidated )
+
+    method queue_real_argument( value:Real )
+      #event_queue.add( key_buffer->String.consolidated )
+      #event_queue.add( value )
+
+    method queue_integer_argument( value:Integer )
+      #event_queue.add( key_buffer->String.consolidated )
+      #event_queue.add( value )
+
+    method dispatch
+      #{
+      while (queued_event_count > 0)
+        println "Dispatching event"
+        println( "Type " + event_queue.remove->String )
+        local args = event_queue.remove->Integer 
+        println( "#Args: " + args )
+        while (args > 0)
+          println( "  key:" + event_queue.remove->String )
+          println( "  value:" + event_queue.remove->String )
+          --args
+        endWhile
+        --queued_event_count
+      endWhile
+      }#
+endClass
+
+class EventHandler
+  METHODS
+    method init( event_type:String )
+
+    method execute
+endClass
+

@@ -1,0 +1,395 @@
+singleton class Templates : HashTable<<String,Template>>
+  METHODS
+    method init_singleton
+      init
+
+    method instantiate( Token ref_t, Type def )
+      local var name = def.name
+      local var dims = 0
+
+      local var temp = this[ name ]
+      if (temp?)
+        if (temp.placeholder_names.count?)
+          # TODO: figure out logic here
+          throw ref_t.error( name + " is a template; specializing types expected.  Example: TypeName<<String,Integer>>." )
+        endIf
+      else
+        if (name.ends_with(']'))
+          while (name.ends_with(']')) name = name.excluding_rightmost(2); ++dims
+          temp = this[ "[]" ]
+
+        elseIf (name.ends_with('>'))
+          local var base_name = name.before_first('<')
+          temp = this[ base_name ]
+          if (temp? and temp.placeholder_names.count == 0)
+            throw ref_t.error( base_name + " is not a template; no specializing types in <<angle brackets>> should be specified." )
+          endIf
+        endIf
+      endIf
+
+      if (temp is null)
+        local var t = def.t
+        if (ref_t?) t = def.t
+        throw t.error( "Reference to undefined type '$'." (name) )
+      endIf
+
+      if (dims?)
+        temp.instantiate_list( def, name, dims )
+      elseIf (temp.placeholder_names.count?)
+        if (temp.is_generic)
+          temp.instantiate_generic_template( ref_t, def )
+        else
+          temp.instantiate_template( ref_t, def )
+        endIf
+      else
+        temp.instantiate( def )
+      endIf
+endClass
+
+class Template
+  PROPERTIES
+    t                    : Token
+    name                 : String
+    tokens()             : Token[]
+    placeholder_names()  : String[]
+    generic_type_names() : String[]
+    is_generic           : Logical
+
+    attributes()         : Attributes
+
+    generic_map          : Type
+      # A type with properties and empty-body methods that was parsed with the placeholder
+      # name in-place, making it easy to substitute specializer names and generic type names
+      # in order to easily map properties and methods to the corresponding parts in the 
+      # generic base type.
+
+  METHODS
+    method init( t, name, Integer flags )
+      attributes.add( flags )
+
+    method create_generic_map
+      if (generic_map?) return
+
+      # Generate the generic map type.
+      local HashTable<<String,TokenList>> map()
+      local StringBuilder buffer()
+
+      if (name.begins_with('['))
+        local var placeholder_name = placeholder_names.first
+        map[ placeholder_name ] = TokenList( IdentifierToken(t,placeholder_name) )
+        buffer.print( placeholder_name )
+        buffer.print( "[]" )
+      else
+        buffer.print( name )
+        buffer.print( "<<" )
+        forEach (i of generic_type_names)
+          if (i > 0) buffer.print(',')
+          local var placeholder_name = placeholder_names[i]
+          map[ placeholder_name ] = TokenList( IdentifierToken(t,placeholder_name) )
+          buffer.print( placeholder_name )
+        endForEach
+        buffer.print( ">>" )
+      endIf
+
+      generic_map = Types.reference( t, buffer.to_String )
+      instantiate_template( generic_map, map )
+      generic_map.is_defined = true
+
+      # Clear bodies of generic methods
+      forEach (m in generic_map.method_list)
+        if (m.type_context is generic_map)
+          m.body.clear
+        endIf
+      endForEach
+
+    method instantiate( Type def )
+      def.attributes.add( attributes )
+      Parser().parse_type_def( def, tokens )
+
+    method instantiate_template( Token ref_t, Type def )
+      local HashTable<<String,TokenList>> map()
+
+      local Parser parser( def.t.filepath, def.name.after_first("<<") )
+
+      local var index = 0
+      local var first = true
+      while (first or parser.consume(Token.symbol_comma))
+        first = false
+
+        if (index > placeholder_names.count)
+          throw ref_t.error( "Too many substitution types specified; expected $." (placeholder_names.count) )
+        endIf
+        local TokenList replacement_tokens()
+        while (not (parser.next_is(Token.symbol_comma) or parser.next_is(Token.symbol_close_special)))
+          if (not parser.reader.has_another) throw ref_t.error( "Missing closing '>>'." )
+          local var cur_t = parser.read
+          #if (cur_t.type != Token.symbol_backslash) 
+          replacement_tokens.add( cur_t )
+        endWhile
+        map[ placeholder_names[index] ] = replacement_tokens
+
+        ++index
+      endWhile
+      parser.must_consume( Token.symbol_close_special )
+
+      if (index < placeholder_names.count)
+        throw ref_t.error( "Not enough substitution types specified; expected $." (placeholder_names.count) )
+      endIf
+
+      instantiate_template( def, map )
+
+    method instantiate_generic_template( Token ref_t, Type def )
+      local HashTable<<String,String>>    specialized_lookup()  # for mapping placeholder names to the "as-if" specialized types (for generics)
+      local HashTable<<String,String>>    generic_lookup()      # for mapping placeholder names to the actual generic types
+
+      # Determine the type name of the generic base class in order to determine whether this will
+      # be a generic mapping or a template instantiation.
+      local Parser parser( def.t.filepath, def.name.after_first("<<") )
+
+      local StringBuilder generic_base_name_buffer()
+      generic_base_name_buffer.print( def.name.before_first('<') )
+      generic_base_name_buffer.print( "<<" )
+
+      local var index = 0
+      local var first = true
+      while (first or parser.consume(Token.symbol_comma))
+        first = false
+
+        if (index > placeholder_names.count)
+          throw ref_t.error( "Too many substitution types specified; expected $." (placeholder_names.count) )
+        endIf
+
+        if (index > 0) generic_base_name_buffer.print(',')
+
+        if (generic_type_names[index]?)
+          # This parameter is a type which may map to a generic base type.
+          local var specialized_type = parser.parse_type
+          specialized_lookup[ placeholder_names[index] ] = specialized_type.name
+          if (not specialized_type.is_functional and specialized_type.name != generic_type_names[index])
+            local var generic_base = Types.reference( def.t, generic_type_names[index] )
+            generic_base_name_buffer.print( generic_base.name )
+            generic_lookup[ placeholder_names[index] ] = generic_base.name
+          else
+            generic_base_name_buffer.print( specialized_type.name )
+            generic_lookup[ placeholder_names[index] ] = specialized_type.name
+          endIf
+        else
+          # This type parameter is replaced by a token list.
+          local var nesting_level = 1
+          local StringBuilder parameter_buffer()
+          while (not (parser.next_is(Token.symbol_comma))) 
+            if (not parser.reader.has_another) throw ref_t.error( "Missing closing '>>'." )
+
+            if (parser.next_is( Token.symbol_open_special )) ++nesting_level
+
+            if (parser.next_is( Token.symbol_close_special ))
+              if (nesting_level == 1) escapeWhile
+              else                    --nesting_level
+            endIf
+
+            local var cur_t = parser.read
+            #if (cur_t.type != Token.symbol_backslash) 
+            generic_base_name_buffer.print( cur_t )
+            parameter_buffer.print( cur_t )
+          endWhile
+
+          local var parameter_type_name = parameter_buffer.to_String
+          generic_lookup[ placeholder_names[index] ] = parameter_type_name
+          specialized_lookup[ placeholder_names[index] ] = parameter_type_name
+        endIf
+
+        ++index
+      endWhile
+      parser.must_consume( Token.symbol_close_special )
+      generic_base_name_buffer.print( ">>" )
+
+      local var generic_base_name = generic_base_name_buffer.to_String
+
+      if (def.name == generic_base_name)
+        # Create this type as a template instance
+        instantiate_template( ref_t, def )
+      else
+        # Create this type as a shell that maps to the generic base
+        create_generic_map
+        create_generic_type( def, specialized_lookup, generic_lookup )
+        def.generic_base = Types.reference( ref_t, generic_base_name )
+      endIf
+
+    method instantiate_list( Type def, String element_name, Integer dims )
+      create_generic_map
+
+      local Type generic_base = null
+      if (dims == 1)
+        local var element_type_def = Types.reference( def.t, element_name )
+        if (not element_type_def.is_functional)
+          if (element_name != generic_type_names.first)
+            generic_base = Types.reference( def.t, generic_type_names.first + "[]" )
+          endIf
+        endIf
+      else
+        generic_base = Types.reference( def.t, "Object[]" )
+      endIf
+
+      if (generic_base?)
+        def.generic_base = generic_base
+        local HashTable<<String,String>> specialized_lookup()
+        local HashTable<<String,String>> generic_lookup()
+        local var specialized_name = element_name
+        forEach (2..dims) specialized_name += "[]"
+        specialized_lookup[placeholder_names.first] = specialized_name
+        generic_lookup[placeholder_names.first] = "Object"
+        #println( "($ -> $)" (def,def.generic_base) )
+        create_generic_type( def, specialized_lookup, generic_lookup )
+      else
+        local HashTable<<String,TokenList>> map()
+        local TokenList replacement_tokens()
+        replacement_tokens.add( IdentifierToken(t,element_name) )
+        map[ placeholder_names.first ] = replacement_tokens
+        instantiate_template( def, map )
+      endIf
+
+    method instantiate_template( Type def, HashTable<<String,TokenList>> substitution_map )
+      local Token[] instance_tokens( tokens.count )
+      forEach (t1 in tokens)
+        if (t1.type == Token.type_placeholder)
+          local var replacement_tokens = substitution_map[ t1.to_String ]
+          if (replacement_tokens?)
+            forEach (t2 in replacement_tokens) instance_tokens.add(t2.with_position_info(t1))
+          else
+            throw t1.error( "Use of undeclared placeholder name '$'." (t1) )
+          endIf
+        else
+          instance_tokens.add( t1 )
+        endIf
+      endForEach
+      def.attributes.add( attributes )
+
+      # Add base types
+      Parser().parse_type_def( def, instance_tokens )
+      #def.print
+
+    method create_generic_type( Type def, HashTable<<String,String>> specialized_lookup, 
+        HashTable<<String,String>> generic_lookup )
+      local StringBuilder specialized_buffer()
+      local StringBuilder generic_target_buffer()
+      local StringBuilder id_buffer()
+
+      # Base types
+      forEach (base_type in generic_map.base_types)
+        def.base_types.add( base_type )
+      endForEach
+
+      # Attributes
+      def.attributes = duplicate(generic_map.attributes)
+
+      # Properties
+      forEach (generic_property in generic_map.property_list)
+        specialized_buffer.clear
+        generic_target_buffer.clear
+        generic_target_buffer.clear
+        local var collecting_id = false
+        forEach (ch in generic_property.type.name)
+          if (collecting_id)
+            contingent
+              sufficient (ch >= 'a' and ch <= 'z')
+              sufficient (ch >= 'A' and ch <= 'Z')
+              sufficient (ch == '_')
+              necessary (ch>='0' and ch<='9' and id_buffer.count?)
+            satisfied
+              # Still collecting ID
+              id_buffer.print( ch )
+            unsatisfied
+              # ID is finished
+              collecting_id = false
+
+              local var id = id_buffer.to_String
+              id_buffer.clear
+              specialized_buffer.print( specialized_lookup[id] )
+              generic_target_buffer.print( generic_lookup[id] )
+
+              specialized_buffer.print( ch )
+              generic_target_buffer.print( ch )
+            endContingent
+
+          else
+            if (ch == '$')
+              id_buffer.print( '$' )
+              collecting_id = true
+            else
+              specialized_buffer.print( ch )
+              generic_target_buffer.print( ch )
+            endIf
+          endIf
+        endForEach
+
+        if (collecting_id)
+          local var id = id_buffer.to_String
+          id_buffer.clear
+          specialized_buffer.print( specialized_lookup[id] )
+          generic_target_buffer.print( generic_lookup[id] )
+        endIf
+        
+        local var specialized_type = Types.reference( def.t, specialized_buffer.to_String )
+        local var specialized_property = Property( generic_property.t, def, generic_property.name, specialized_type )
+        def.add_property( specialized_property )
+#specialized_property.print
+        #.generic_base = generic_target_buffer.to_String
+        #println( "$ -> $" (generic_property.type.name,specialized_type.name) )
+      endForEach
+#println( "generic properties in $: $" (def,def.property_list) )
+
+      # Methods
+      forEach (generic_m in generic_map.method_list)
+        local var generic_sig = generic_m.to_String
+        specialized_buffer.clear
+        generic_target_buffer.clear
+        specialized_buffer.print( "method " )
+        local var collecting_id = false
+        forEach (ch in generic_sig)
+          if (collecting_id)
+            contingent
+              sufficient (ch >= 'a' and ch <= 'z')
+              sufficient (ch >= 'A' and ch <= 'Z')
+              sufficient (ch == '_')
+              necessary (ch>='0' and ch<='9' and id_buffer.count?)
+            satisfied
+              # Still collecting ID
+              id_buffer.print( ch )
+            unsatisfied
+              # ID is finished
+              collecting_id = false
+
+              local var id = id_buffer.to_String
+              id_buffer.clear
+              specialized_buffer.print( specialized_lookup[id] )
+              generic_target_buffer.print( generic_lookup[id] )
+
+              specialized_buffer.print( ch )
+              generic_target_buffer.print( ch )
+            endContingent
+
+          else
+            if (ch == '$')
+              id_buffer.print( '$' )
+              collecting_id = true
+            else
+              specialized_buffer.print( ch )
+              generic_target_buffer.print( ch )
+            endIf
+          endIf
+        endForEach
+
+        if (collecting_id)
+          local var id = id_buffer.to_String
+          id_buffer.clear
+          specialized_buffer.print( specialized_lookup[id] )
+          generic_target_buffer.print( generic_lookup[id] )
+        endIf
+        
+        local var m = Parser( def.t.filepath, specialized_buffer.to_String ).parse_method( def, true )
+        m.attributes.add( generic_m.attributes )
+        m.generic_base = generic_target_buffer.to_String
+        #println( "$.$ -> $.$" (def,m,m.type_context,m.generic_base) )
+      endForEach
+endClass
+

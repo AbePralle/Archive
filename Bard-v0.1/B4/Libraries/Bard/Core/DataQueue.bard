@@ -1,0 +1,165 @@
+class DataQueue
+  PROPERTIES
+    readable      : DataStack
+    writable      : DataStack
+    read_position : Integer
+
+    # These should be SETTINGS values when that language feature is available.
+    type_object    = 0
+    type_real      = 1
+    type_integer   = 2
+    type_character = 3
+    type_byte      = 4
+    type_logical   = 5
+
+  METHODS
+    method init
+      readable = DataStack()
+      writable = DataStack()
+
+    method add( value:Object )->DataQueue
+      writable.push( value )
+      return this
+
+    method add( value:Real )->DataQueue
+      writable.push( value )
+      return this
+
+    method add( value:Integer )->DataQueue
+      writable.push( value )
+      return this
+
+    method add( value:Character )->DataQueue
+      writable.push( value )
+      return this
+
+    method add( value:Byte )->DataQueue
+      writable.push( value )
+      return this
+
+    method add( value:Logical )->DataQueue
+      writable.push( value )
+      return this
+
+    method has_another->Logical
+      return (count > 0)
+
+    method clear->DataQueue
+      readable.clear
+      writable.clear
+      read_position = 0
+      return this
+
+    method consume( value:String )->Logical
+      if (peek_type == type_object)
+      endIf
+      return false
+
+    method count->Integer
+      return (readable.frame_count - read_position) + writable.frame_count
+
+    method prepare_readable->DataStack
+      if (readable.frame_count - read_position == 0)
+        readable.clear
+        local temp = readable
+        readable = writable
+        writable = temp
+        read_position = 0
+      endIf
+      return readable
+
+    method peek->Object
+      prepare_readable
+      return readable[read_position]->Object
+
+    method peek->String
+      prepare_readable
+      return readable[read_position]->String
+
+    method peek->Real
+      prepare_readable
+      return readable[read_position]->Real
+
+    method peek->Integer
+      prepare_readable
+      return readable[read_position]->Integer
+
+    method peek->Character
+      prepare_readable
+      return readable[read_position]->Character
+
+    method peek->Byte
+      prepare_readable
+      return readable[read_position]->Byte
+
+    method peek->Logical
+      prepare_readable
+      return readable[read_position]->Logical
+
+    method peek_type->Integer
+      local result = prepare_readable.peek_type
+      return result
+
+    method remove->Object
+      local result = peek->Object
+      ++read_position
+      return result
+
+    method remove->String
+      local result = peek->String
+      ++read_position
+      return result
+
+    method remove->Real
+      local result = peek->Real
+      ++read_position
+      return result
+
+    method remove->Integer
+      local result = peek->Integer
+      ++read_position
+      return result
+
+    method remove->Character
+      local result = peek->Character
+      ++read_position
+      return result
+
+    method remove->Byte
+      local result = peek->Byte
+      ++read_position
+      return result
+
+    method remove->Logical
+      local result = peek->Logical
+      ++read_position
+      return result
+
+    method to->String
+      return print_to( StringBuilder() )->String
+
+    method print_to( printer:Printer )->Printer
+      printer.print( '[' )
+
+      local first = true
+      local i = read_position
+      while (i < readable.frame_count)
+        if (first) first = false
+        else       printer.print(',')
+        readable.print_to( printer, i )
+        ++i
+      endWhile
+
+      i = 0
+      while (i < writable.frame_count)
+        if (first) first = false
+        else       printer.print(',')
+        writable.print_to( printer, i )
+        ++i
+      endWhile
+
+      printer.print("]")
+      return printer
+
+endClass
+

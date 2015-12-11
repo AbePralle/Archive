@@ -1,0 +1,102 @@
+#==============================================================================
+# Primitives.bard
+#
+# New primitives cannot be defined but built-in primitives can have methods
+# added to them.
+#==============================================================================
+primitive Real
+  METHODS
+    method hash_code->Integer
+      local data = Integer64( this )
+      return (data.high ~ data.low)
+
+    #{
+    method sign->Real
+      if (this > 0.0) return  1.0
+      if (this < 0.0) return -1.0
+      return 0.0
+
+    #method to->Integer64
+      #return Integer64(this)
+
+    method to->String
+      return StringBuilder(10).print(this)->String
+      }#
+endPrimitive
+
+primitive Integer
+  METHODS
+    method hash_code->Integer
+      return this
+
+    #{
+    method sign->Integer
+      if (this > 0) return  1
+      if (this < 0) return -1
+      return 0
+
+    method to->String
+      return StringBuilder(10).print(this)->String
+      }#
+
+    method to_hex_string( digits:Integer )->String
+      Global.global_string_buffer.clear
+      local value = this
+      while (digits > 0)
+        local next_digit = value & 15
+        value = value :>>: 4
+        if (next_digit < 10) Global.global_string_buffer.print( next_digit )
+        else                 Global.global_string_buffer.print( ((next_digit-10) + 'A')->Character )
+        --digits
+      endWhile
+      Global.global_string_buffer.reverse
+      return Global.global_string_buffer->String
+endPrimitive
+
+primitive Character
+  METHODS
+    method is_alphanumeric->Logical
+      return (this >= 'a' and this <= 'z') or (this >= 'A' and this <= 'Z') or (this >= '0' and this <= '9')
+
+    method is_letter->Logical
+      return (this >= 'a' and this <= 'z') or (this >= 'A' and this <= 'Z')
+    #{
+    method sign->Integer
+      if (this > 0) return  1
+      if (this < 0) return -1
+      return 0
+
+    method to->String
+      return StringBuilder(1).print(this)->String
+    }#
+
+    method to_value->Integer
+      if (this >= '0' and this <= '9') return (this - '0')
+      if (this >= 'a' and this <= 'z') return (this - 'a') + 10
+      if (this >= 'A' and this <= 'Z') return (this - 'A') + 10
+      return -1
+
+endPrimitive
+
+primitive Byte
+  METHODS
+    #{
+    method sign->Integer
+      if (this > 0) return  1
+      if (this < 0) return -1
+      return 0
+
+    method to->String
+      return StringBuilder(3).print(this)->String
+      }#
+endPrimitive
+
+primitive Logical
+  METHODS
+    #{
+    method to->String
+      if (this) return "true"
+      else      return "false"
+      }#
+endPrimitive
+

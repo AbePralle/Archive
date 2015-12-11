@@ -1,0 +1,15 @@
+class ImplicitReturnTypeVisitor : Visitor
+  PROPERTIES
+    found_return : Logical
+
+  METHODS
+    method visit( CmdReturnThis cmd ).Cmd
+      found_return = true
+      cmd.determine_implicit_return_type
+      return null
+
+    method visit( CmdReturnValue cmd ).Cmd
+      found_return = true
+      cmd.determine_implicit_return_type
+      return null
+endClass

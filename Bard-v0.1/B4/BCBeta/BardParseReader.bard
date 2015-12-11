@@ -1,0 +1,79 @@
+class BardParseReader
+  PROPERTIES
+    data     : Byte[]
+    position : Integer
+    count    : Integer
+    line     : Integer
+    column   : Integer
+
+  METHODS
+    method init( filepath:String )
+      init( File(filepath)->Byte[] )
+
+    method init( original_data:Byte[] )
+      local tab_count = 0
+      forEach (b in original_data)
+        if (b == '\t') ++tab_count
+      endForEach
+
+      data = Byte[]( original_data.count + tab_count )
+      forEach (b in original_data)
+        if (b == '\t')
+          data.add( 32 )
+          data.add( 32 )
+        elseIf (b == '\n' or (b >= 32 and b <= 126))
+          data.add( b )
+        endIf
+      endForEach
+
+      count = data.count
+      line = 1
+      column = 1
+
+    method consume( ch:Character )->Logical
+      if (peek != ch) return false
+      read
+      return true
+
+    method consume( text:String )->Logical
+      local limit = text.count
+      local i = 0
+      while (i < limit)
+        if (peek(i) != text[i]) return false
+        ++i
+      endWhile
+
+      # Found a match; discard the characters
+      i = 0
+      while (i < limit)
+        read
+        ++i
+      endWhile
+
+      return true
+
+    method has_another->Logical
+      return (position < count)
+
+    method peek->Character
+      if (position == count) return 0->Character
+      return data[position]
+
+    method peek( num_ahead:Integer )->Character
+      # Zero-based
+      local peek_pos = position + num_ahead
+      if (peek_pos >= count) return 0->Character
+      return data[peek_pos]
+
+    method read->Character
+      local result = data[ position ]->Character
+      ++position
+      if (result == 10)
+        ++line
+        column = 1
+      else
+        ++column
+      endIf
+      return result
+endClass
+

@@ -1,0 +1,112 @@
+class Main : Object
+  PROPERTIES
+
+  METHODS
+    method init
+      println "Hello World"
+      println Number<<Real,Integer>>(5).value
+      println Number<<Real,Integer>>(5).test
+      println Number<<Integer,Integer>>(5).value
+      println Number<<Integer,Real>>(5).test
+      #println Number<<Real>>(5).test
+      #println Number<<Integer>>(5).test
+endClass
+
+
+class Number<<$DataType,$T2>>
+  PROPERTIES
+    value : $DataType
+
+  METHODS
+    method init( _value:$DataType )
+      value = _value
+
+    method test.$T2
+      return value.$T2
+
+    method Integer
+      return value.Integer
+
+    method Real
+      return value.Real
+endClass
+
+
+class Collection
+  METHODS
+    method get.Object
+      return "test"
+
+    method get.String
+      return "text"
+
+    method get.Real
+      return 2.1
+
+    method get.Integer
+      return 1
+endClass
+
+
+class Object
+  METHODS
+    method Integer
+      return 0
+
+    method String
+      return "Object"
+endClass
+
+class IntegerObject
+  PROPERTIES
+    n : Integer
+
+  METHODS
+    method init( _n:Integer )
+      n = _n
+
+    method Integer
+      return n
+
+    method String
+      return "IntegerObject"
+
+    method special
+      println "Dynamically called"
+endClass
+
+class TestBase
+  PROPERTIES
+  METHODS
+    method marco
+      println "polo"
+endClass
+
+class Test
+  PROPERTIES
+    n = 3
+
+  METHODS
+    method init
+      println "Test init"
+
+    method number.Integer
+      return 0
+
+    method Integer
+      return n
+
+    method String
+      return "text"
+endClass
+
+class Math
+  METHODS
+    method floor( n:Real ).Real [native]
+      return -1
+endClass
+
+class System
+  METHODS
+endClass
+

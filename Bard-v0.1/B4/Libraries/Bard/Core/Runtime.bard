@@ -1,0 +1,15 @@
+class Runtime [singleton]
+  PROPERTIES
+    #message_queue = DataQueue()
+
+  METHODS
+    method describe( ip:Integer )->SourcePositionInfo #[native]
+      return SourcePositionInfo( "TODO", "TODO", "Runtime.bard", 7 )
+
+    method ip( stack_frame_offset:Integer )->Integer [native]
+      # Pass 0 to get this IP of this method, 1 to get the IP of the method that
+      # called this method, etc.
+      #
+      # Returns -1 if the given stack frame offset is out of bounds.
+endClass
+

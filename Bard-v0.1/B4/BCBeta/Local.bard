@@ -1,0 +1,24 @@
+class Local
+  PROPERTIES
+    t             : Token
+    name          : String
+    x_name        : String
+    type          : Type
+    is_direct     : Logical
+    initial_value : Cmd
+    index         : Integer
+    slot_index    : Integer
+
+  METHODS
+    method init( t, name )
+
+    method init( t, name, type )
+
+    method implicit_type->Type
+      return null
+
+    method x_name->String
+      if (@x_name is null) @x_name = Analyzer.convert_string_to_valid_identifier( "local_" + name )
+      return @x_name
+endClass
+

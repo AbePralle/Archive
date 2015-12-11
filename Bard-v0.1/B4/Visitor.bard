@@ -1,0 +1,562 @@
+class Visitor
+  METHODS
+    method visit( Method m )
+      Analyzer.push_context
+      Analyzer.context.this_type = m.type_context
+      Analyzer.context.this_method = m
+      visit( m.body )
+      Analyzer.pop_context
+
+    method visit( Cmd cmd ).Cmd
+      throw BardError( "Call to undefined method $::visit($) in $" (type_name,cmd.type_name,cmd) )
+
+    method visit( CmdStatementList statements )
+      Analyzer.context.push_local_scope
+      forEach (index of statements)
+        statements[index] .= dispatch( this )
+      endForEach
+      Analyzer.context.pop_local_scope
+
+    method visit( CmdTron cmd ).Cmd
+      return cmd
+
+    method visit( CmdTroff cmd ).Cmd
+      return cmd
+
+    method visit( CmdArgs args )
+      forEach (index of args)
+        args[index] .= dispatch( this )
+      endForEach
+
+    method visit( CmdReturnNil cmd ).Cmd
+      return cmd
+
+    method visit( CmdReturnThis cmd ).Cmd
+      return cmd
+
+    method visit( CmdReturnValue cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+      #method visit( CmdIntegerAsCharacter cmd ).Cmd
+      #cmd.operand .= dispatch( this )
+      #return cmd
+
+      #method visit( CmdCharacterAsInteger cmd ).Cmd
+      #cmd.operand .= dispatch( this )
+      #return cmd
+
+    method visit( CmdGeneralizeReference cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdSpecializeReference cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdConvertIntegerToReal cmd ).Cmd
+      return cmd
+
+    method visit( CmdConvertRealToInteger cmd ).Cmd
+      return cmd
+
+    method visit( CmdConvertCharacterToInteger cmd ).Cmd
+      return cmd
+
+    method visit( CmdConvertByteToInteger cmd ).Cmd
+      return cmd
+
+    method visit( CmdConvertIntegerToCharacter cmd ).Cmd
+      return cmd
+
+    method visit( CmdConvertIntegerToByte cmd ).Cmd
+      return cmd
+
+    method visit( CmdConvertLogicalToInteger cmd ).Cmd
+      return cmd
+
+    method visit( CmdThrowMissingReturn cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdLiteralString cmd ).Cmd
+      return cmd
+
+    method visit( CmdLiteralNull cmd ).Cmd
+      return cmd
+
+    method visit( CmdLiteralReal cmd ).Cmd
+      return cmd
+
+    method visit( CmdLiteralInteger cmd ).Cmd
+      return cmd
+
+    method visit( CmdLiteralCharacter cmd ).Cmd
+      return cmd
+
+    method visit( CmdLiteralByte cmd ).Cmd
+      return cmd
+
+    method visit( CmdLiteralLogical cmd ).Cmd
+      return cmd
+
+    method visit( CmdLiteralArray cmd ).Cmd
+      cmd.elements.dispatch( this )
+      return cmd
+
+    method visit( CmdLogicalNot cmd ).Cmd
+      if (cmd.operand?)     cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdReadLocal cmd ).Cmd
+      return cmd
+
+    method visit( CmdWriteLocal cmd ).Cmd
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdWriteLocalDefault cmd ).Cmd
+      return cmd
+
+    method visit( CmdReadSetting cmd ).Cmd
+      if (cmd.context?)   cmd.context .= dispatch( this )
+      return cmd
+
+    method visit( CmdReadProperty cmd ).Cmd
+      if (cmd.context?)   cmd.context .= dispatch( this )
+      return cmd
+
+    method visit( CmdWriteSetting cmd ).Cmd
+      if (cmd.context?)   cmd.context .= dispatch( this )
+      if (cmd.new_value?) cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdWriteProperty cmd ).Cmd
+      if (cmd.context?)   cmd.context .= dispatch( this )
+      if (cmd.new_value?) cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdThis cmd ).Cmd
+      return cmd
+
+    method visit( CmdReadSingleton cmd ).Cmd
+      return cmd
+
+    method visit( CmdIncrementLocal cmd ).Cmd
+      return cmd
+
+    method visit( CmdIncrementSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      return cmd
+
+    method visit( CmdDecrementSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      return cmd
+
+    method visit( CmdIncrementProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      return cmd
+
+    method visit( CmdDecrementLocal cmd ).Cmd
+      return cmd
+
+    method visit( CmdDecrementProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      return cmd
+
+    method visit( CmdAssign cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdAddAssignLocal cmd ).Cmd
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdSubtractAssignLocal cmd ).Cmd
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdMultiplyAssignLocal cmd ).Cmd
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdDivideAssignLocal cmd ).Cmd
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdModAssignLocal cmd ).Cmd
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdPowerAssignLocal cmd ).Cmd
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseAndAssignLocal cmd ).Cmd
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseOrAssignLocal cmd ).Cmd
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseXorAssignLocal cmd ).Cmd
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdAccessAssignLocal cmd ).Cmd
+      cmd.access .= dispatch( this )
+      return cmd
+
+    method visit( CmdAddAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdSubtractAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdMultiplyAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdDivideAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdModAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdPowerAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseAndAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseOrAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseXorAssignProperty cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdAccessAssignSetting cmd ).Cmd
+      cmd.access .= dispatch( this )
+      return cmd
+
+    method visit( CmdAddAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdSubtractAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdMultiplyAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdDivideAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdModAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdPowerAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseAndAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseOrAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseXorAssignSetting cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+
+    method visit( CmdLocalDeclaration cmd ).Cmd
+      return cmd
+
+    method visit( CmdNewObject cmd ).Cmd
+      if (cmd.args?) cmd.args.dispatch( this )
+      return cmd
+
+    method visit( CmdStaticCall cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      if (cmd.args?)    cmd.args.dispatch( this )
+      return cmd
+
+    method visit( CmdDynamicCall cmd ).Cmd
+      if (cmd.context?) cmd.context .= dispatch( this )
+      if (cmd.args?)    cmd.args.dispatch( this )
+      return cmd
+
+    method visit( CmdIf cmd ).Cmd
+      cmd.condition .= dispatch( this )
+      cmd.body.dispatch( this )
+
+      forEach (index of cmd.elseIf_conditions)
+        cmd.elseIf_conditions[index] .= dispatch( this )
+        cmd.elseIf_bodies[index].dispatch( this )
+      endForEach
+
+      if (cmd.else_body?) cmd.else_body.dispatch( this )
+      return cmd
+
+    method visit( CmdWhich cmd ).Cmd
+      return cmd
+
+    method visit( CmdContingent cmd ).Cmd
+      cmd.body.dispatch( this )
+      return cmd
+
+    method visit( CmdEscapeContingent cmd ).Cmd
+      return cmd
+
+    method visit( CmdSufficient cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit ( CmdNecessary cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdAnonymousBlock cmd ).Cmd
+      cmd.body.dispatch( this )
+      return cmd
+
+    method visit( CmdDelegate cmd ).Cmd
+      return cmd
+
+    method visit( CmdWhile cmd ).Cmd
+      cmd.condition .= dispatch( this )
+      cmd.body.dispatch( this )
+      return cmd
+
+    method visit( CmdEscapeWhile cmd ).Cmd
+      return cmd
+
+    method visit( CmdLoop cmd ).Cmd
+      cmd.body.dispatch( this )
+      return cmd
+
+    method visit( CmdTry cmd ).Cmd
+      cmd.body.dispatch( this )
+      forEach (cur_catch in cmd.catches)
+        cur_catch.body.dispatch( this )
+      endForEach
+      return cmd
+
+    method visit( CmdThrow cmd ).Cmd
+      cmd.operand.dispatch( this )
+      return cmd
+
+    method visit( CmdEscapeLoop cmd ).Cmd
+      return cmd
+
+    method visit( CmdEscapeForEach cmd ).Cmd
+      return cmd
+
+    method visit( CmdEscapeIf cmd ).Cmd
+      return cmd
+
+    method visit( CmdEscapeTry cmd ).Cmd
+      return cmd
+
+    method visit( CmdNextIteration cmd ).Cmd
+      return cmd
+
+    method visit( CmdInstanceOf cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdAdd cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdConcatenateStrings cmd ).Cmd
+      cmd.builder .= dispatch( this )
+      return cmd
+
+    method visit( CmdSubtract cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdMultiply cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdDivide cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdMod cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdPower cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseAnd cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseOr cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseXor cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdNegate cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdLogicalize cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseNot cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseSHL cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseSHR cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdBitwiseSHRX cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdLogicalAnd cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdLogicalOr cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdLogicalXor cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdCompareEQ cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdCompareIs cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdCompareNE cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdCompareIsNot cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdCompareLT cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdCompareLE cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdCompareGT cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdCompareGE cmd ).Cmd
+      cmd.lhs .= dispatch( this )
+      cmd.rhs .= dispatch( this )
+      return cmd
+
+    method visit( CmdCreateArray cmd ).Cmd
+      cmd.size_expression .= dispatch( this )
+      return cmd
+
+    method visit( CmdArrayCount cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      return cmd
+
+    method visit( CmdReadArrayElement cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      cmd.index_expression .= dispatch( this )
+      return cmd
+
+    method visit( CmdWriteArrayElement cmd ).Cmd
+      cmd.operand .= dispatch( this )
+      cmd.index_expression .= dispatch( this )
+      cmd.new_value .= dispatch( this )
+      return cmd
+endClass
+
+class ImplicitReturnTypeVisitor : Visitor
+  PROPERTIES
+    found_return : Logical
+
+  METHODS
+    method visit( CmdReturnValue cmd ).Cmd
+      found_return = true
+      cmd.determine_implicit_return_type
+      return null
+endClass

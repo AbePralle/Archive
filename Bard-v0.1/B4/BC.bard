@@ -1,0 +1,23 @@
+[include "Parser.bard"]
+[include "Analyzer.bard"]
+
+class BC
+  PROPERTIES
+  METHODS
+    method init
+      try
+        local Parser parser()
+        parser.include( "Test.bard" )
+        parser.parse_pending_files
+        Analyzer.resolve_types
+
+        Analyzer.compile_bc( "Test" )
+        Analyzer.compile_js( "JSXC/Test.js" )
+
+      catch (Error err)
+        println
+        println( err )
+        System.exit(1)
+      endTry
+endClass
+

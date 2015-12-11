@@ -1,0 +1,18 @@
+five
+2*3 + 4*5
+
+# Objects always have an additional level of indirection to allow them to be painlessly compacted.
+# E.g. an object reference is an object slot #; the slot numbers always stay the same (with a linked
+# list of free slot numbers).
+
+# spot[34]
+
+# visible
+
+# All objects are Java objects, BUT: all variables are lists.  Can be lists?
+
+# Two-tier stack.
+# First level lists objects and integer indices
+
+# Second level contains list/vector elements
+

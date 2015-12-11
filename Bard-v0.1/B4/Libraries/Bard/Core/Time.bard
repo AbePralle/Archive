@@ -1,0 +1,60 @@
+class Time [singleton]
+  PROPERTIES
+    previous_time : Real
+    elapsed       : Real
+
+  METHODS
+    method current->Real   [native]
+
+    method update
+      if (previous_time == 0.0) previous_time = current
+
+      local current_time = current
+      elapsed = current_time - previous_time
+      previous_time = current_time
+endClass
+
+class Stopwatch
+  PROPERTIES
+    start_time = Time.current : Real
+
+  METHODS
+    method elapsed->Real
+      return Time.current - start_time
+
+    method to->String
+      return "" + elapsed
+
+    method restart->Stopwatch
+      start_time = Time.current
+      return this
+endClass
+
+class Timer
+  PROPERTIES
+    stopwatch        : Stopwatch
+    duration_seconds : Real
+
+  METHODS
+    method init( duration_seconds )
+      stopwatch = Stopwatch()
+
+    method restart->Timer
+      stopwatch.restart
+      return this
+
+    method elapsed->Real
+      return stopwatch.elapsed
+
+    method expired->Logical
+      return remaining == 0
+
+    method remaining->Real
+      local result = duration_seconds - elapsed
+      if (result >= 0.0) return result
+      return 0.0
+
+    method to->String
+      return "" + remaining
+endClass
+

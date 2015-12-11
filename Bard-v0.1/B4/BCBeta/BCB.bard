@@ -1,0 +1,60 @@
+<<include "Parser.bard">>
+<<include "Analyzer.bard">>
+#{
+}#
+
+<<include "../Libraries/Bard/Core/Array.bard">>
+#<<include "Libraries/Bard/Core/BigInteger.bard">>
+<<include "../Libraries/Bard/Core/Console.bard">>
+#<<include "Libraries/Bard/Core/EventManager.bard">>
+<<include "../Libraries/Bard/Core/Exception.bard">>
+<<include "../Libraries/Bard/Core/File.bard">>
+<<include "../Libraries/Bard/Core/Global.bard">>
+<<include "../Libraries/Bard/Core/List.bard">>
+<<include "../Libraries/Bard/Core/Math.bard">>
+<<include "../Libraries/Bard/Core/Object.bard">>
+<<include "../Libraries/Bard/Core/Primitives.bard">>
+<<include "../Libraries/Bard/Core/Printer.bard">>
+<<include "../Libraries/Bard/Core/Random.bard">>
+<<include "../Libraries/Bard/Core/Runtime.bard">>
+<<include "../Libraries/Bard/Core/String.bard">>
+<<include "../Libraries/Bard/Core/StringBuilder.bard">>
+<<include "../Libraries/Bard/Core/Table.bard">>
+#<<include "Libraries/Bard/Core/Task.bard">>
+<<include "../Libraries/Bard/Core/Time.bard">>
+<<include "../Libraries/Bard/Core/Utility.bard">>
+
+class BC
+  SETTINGS
+    tracing = false
+
+  PROPERTIES
+    kludge_string = "kludge"
+
+  METHODS
+    method init
+      try
+        local parser = Parser()
+        parser.include( "BCB.bard" )
+        parser.parse_pending_files
+        Analyzer.resolve_types
+        Analyzer.compile_bc( "BCB2.bc" )
+#{
+        Analyzer.compile_js( "JSXC/Test.js" )
+}#
+
+      catch ( err:Error )
+        println
+        #println "=" * 79
+        #println "ERROR"
+        #print   "  "
+        println err
+        #println "=" * 79
+        #System.exit(1)
+      endTry
+
+endClass
+
+class Bag : Integer[]
+endClass
+

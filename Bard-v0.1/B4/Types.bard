@@ -1,0 +1,140 @@
+[include "Attributes.bard"]
+[include "Template.bard"]
+[include "Method.bard"]
+[include "Type.bard"]
+
+singleton class Types
+  PROPERTIES
+    type_list()  : Type[]
+    type_table() : HashTable<<String,Type>>
+
+    type_Real           : Type
+    type_Integer        : Type
+    type_Character      : Type
+    type_Byte           : Type
+    type_Logical        : Type
+
+    type_Object         : Type
+    type_String         : Type
+    type_StringBuilder  : Type
+    type_Array          : Type
+    type_GenericArray   : Type
+    type_Exception      : Type
+    type_Global         : Type
+    #type_DataStack      : Type
+
+    main_type_name      : String
+    main_type           : Type
+
+    internal_t=Token("[Internal]",1,1,Token.eol) : Token
+
+  METHODS
+    method reference( Token t, String name ).Type
+      local var existing = type_table[name]
+      if (existing?) return existing
+
+      local var placeholder = Type( t, name )
+
+      # Set attribute for any new types that are referenced after types are 
+      # prepped for organization in Types.organize
+      local var templ = Templates[ name ]
+      if (templ?) placeholder.attributes.add( templ.attributes )
+
+      return placeholder
+
+    method find( String name ).Type
+      return type_table[name]
+
+    method must_find( String name ).Type
+      return must_find( internal_t, name )
+
+    method must_find( Token t, String name ).Type
+      local var type = find( name )
+      if (type?) return type
+      throw t.error( "Reference to undefined type '$'." (name) )
+
+    method find_type_or_template( Token t, String name ).Type
+      local var result = type_table[ name ]
+      if (result?) return result
+
+      if (Templates.contains(name)) return reference(t,name)
+
+      local var base_name = name.before_first('<').before_first('[')
+      if (type_table.contains(base_name) or Templates.contains(base_name)) return reference(t,name)
+
+      return null
+
+
+    method create_reader.Reader<<Type>>
+      return type_list.create_reader
+
+    method count.Integer
+      return type_list.count
+
+    method get( String name ).Type
+      return must_find( name )
+
+    method add( Type type )
+      type_list.add( type )
+      type_table[ type .name ] = type
+
+    method define( Token t, String name, Integer attribute_flags ).Type
+      local var type = reference( t, name )
+      type.attributes.add( attribute_flags )
+      type.is_defined = true
+      return type
+
+    method organize
+      local var t = internal_t
+
+      type_Real      = reference( t, "Real" )
+      type_Integer   = reference( t, "Integer" )
+      type_Character = reference( t, "Character" )
+      type_Byte      = reference( t, "Byte" )
+      type_Logical   = reference( t, "Logical" )
+
+      type_Object         = reference( t, "Object" )
+      type_String         = reference( t, "String" )
+      type_StringBuilder  = reference( t, "StringBuilder" )
+      type_GenericArray   = reference( t, "GenericArray" )
+      type_Array          = reference( t, "Array<<Object>>" )
+      type_Exception      = reference( t, "Exception" )
+      type_Global         = reference( t, "Global" )
+
+      #type_DataStack      = reference( t, "DataStack" )
+
+      main_type = reference( t, main_type_name )
+
+      # Reference all requisite, non-template types
+      forEach (templ in Templates)
+        if (templ.attributes.is_class and templ.attributes.is_requisite)
+          if (templ.placeholder_names.count == 0)
+            reference( templ.t, templ.name )
+          endIf
+        endIf
+      endForEach
+
+      # Assign template attribute flags to all placeholder types
+      forEach (type in type_list)
+        local var templ = Templates[ type.name ]
+        if (templ?) type.attributes.add( templ.attributes )
+      endForEach
+
+      # Organize every referenced type
+      local var i = 0
+      while (i < type_list.count)
+        type_list[i].organize
+        ++i
+      endWhile
+
+    method resolve
+      organize
+
+      local var i = 0
+      while (i < type_list.count)
+        type_list[i].resolve
+        ++i
+      endWhile
+
+endClass
+

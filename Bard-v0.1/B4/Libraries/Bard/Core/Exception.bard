@@ -1,0 +1,89 @@
+class Error : Exception
+  METHODS
+    method init_defaults
+      stack_trace.pop_frames(1)
+
+endClass
+
+class Exception
+  PROPERTIES
+    message     : String
+    stack_trace : StackTrace
+
+  METHODS
+    method init
+
+    method init( message )
+
+    method init_defaults
+      stack_trace = StackTrace().pop_frames(1)
+
+    method to->String
+      return message
+endClass
+
+class StackTrace
+  PROPERTIES
+    ips = Integer[]
+
+  METHODS
+    method init
+      init( 3 )
+
+    method init( offset:Integer )
+      local ip = Runtime.ip( offset )
+      while (ip != -1)
+        ips.add( ip )
+        ++offset
+        ip = Runtime.ip( offset )
+      endWhile
+
+    method count->Integer
+      return ips.count
+
+    method get( index:Integer )->SourcePositionInfo
+      #return Runtime.describe( ips[index] )
+      return SourcePositionInfo("TODO","TODO","Exception.bard",48)
+
+    method pop_frames( frame_count:Integer )->StackTrace
+      while (frame_count > 0 and ips.count?)
+        ips.remove_first
+        --frame_count
+      endWhile
+      return this
+
+    method to->String
+      local buffer = StringBuilder()
+      forEach (frame_info in this)
+        buffer.println( frame_info->String )
+      endForEach
+      return buffer->String
+      #return "Exception::TODO"
+
+endClass
+
+class SourcePositionInfo( type_name:String, method_signature:String, filename:String, line:Integer )
+  METHODS
+    method to->String
+      return type_name + "::" + method_signature + " at " + filename + " line " + line
+
+endClass
+
+class UnsupportedMethodError : Error
+  METHODS
+    method init( message )
+      message = "Unsupported method " + message + "."
+endClass
+
+class FileNotFoundError : Error
+  METHODS
+    method init( message )
+      message = "File not found: " + message + "."
+endClass
+
+class IOError : Error
+  METHODS
+    method init( message )
+      message = "Error accessing " + message + "."
+endClass
+

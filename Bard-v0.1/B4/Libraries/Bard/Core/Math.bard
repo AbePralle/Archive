@@ -1,0 +1,6 @@
+class Math [singleton]
+  METHODS
+    method floor( value:Real )->Real [native]
+    method sqrt( value:Real )->Real  [native]
+endClass
+

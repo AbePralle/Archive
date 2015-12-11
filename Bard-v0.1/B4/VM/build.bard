@@ -1,0 +1,31 @@
+class Main : GoGo
+  METHODS
+    method build( String cmd )
+      which (cmd)
+        case "build"
+          execute( "make" )
+
+        case "go"
+          pushd( ".." )
+          execute( "gogo go" )
+          popd
+          execute( "make" )
+          execute( "./b4" )
+
+        case "gitadd"
+          execute( "git add *.c" )
+          execute( "git add *.h" )
+
+        case "clean"
+          pushd( ".." )
+          execute( "gogo clean" )
+          popd
+          execute( "rm -f *.o" )
+
+        others
+          println( "Usage:" )
+          println( "  gogo go" )
+          println( "  gogo build" )
+          println( "  gogo clean" )
+      endWhich
+endClass

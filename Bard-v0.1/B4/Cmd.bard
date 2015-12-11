@@ -1,0 +1,4773 @@
+[include "Op.bard"]
+
+class Cmd
+  PROPERTIES
+    t : Token
+
+  METHODS
+    method init( t )
+
+    method create_duplicate.Cmd
+      throw t.error( "create_duplicate() not defined for $." (type_name) )
+
+    method error( String message ).BardError
+      return t.error( message )
+
+    method implicit_type.Type
+      return null
+
+    propagated method dispatch( Visitor v ).Cmd
+      return v.visit( this )
+
+    method determine_implicit_return_type
+      noAction
+
+    method is_complex_reference.Logical
+      # Used to determine whether or not the context of a property op+assign should
+      # be first stored into a separate local variable.
+      return false
+
+    method type.Type
+      return null
+
+    method instance_of( Type ancestor ).Logical
+      return type.instance_of( ancestor )
+
+    method variable_name.String
+      return null
+
+    method print( StringBuilder buffer )
+      throw t.error( "print(StringBuilder) not defined for $." (type_name) )
+
+    method resolve.Cmd
+      throw t.error( "resolve() not defined for $." (type_name) )
+
+    method resolve_with_type_hint( Type as_type ).Cmd
+      return resolve  # ignore the type hint by default
+
+    method resolve_increment.Cmd
+      throw error( "Cannot increment given value.  Target must be a local variable or a property." )
+
+    method resolve_decrement.Cmd
+      throw error( "Cannot decrement given value.  Target must be a local variable or a property." )
+
+    method resolve_assignment( Cmd new_value, Integer operation ).Cmd
+      throw t.error( "Invalid target for assignment." )
+
+    method to_String.String
+      local StringBuilder buffer()
+      print( buffer )
+      return buffer.to_String
+
+    method require_logical.Cmd
+      if (type? and type.is_Logical) return this
+      throw t.error( "Logical true or false value expected." )
+
+    method require_value.Cmd
+      if (type is null)
+        #throw Error( "Value expected in " + type_name )
+        throw t.error( "Value expected." )
+      endIf
+      return this
+
+    method require_integer.Cmd
+      if (type is null or type isNot Types.type_Integer)
+        throw t.error( "Integer value expected." )
+      endIf
+      return this
+
+      #{
+    method require_value( Logical allow_unchecked ).Cmd
+      local var _type = type
+      if (type is null) throw t.error( "Value expected." )
+      #if (type.possibly_null and not allow_unchecked)
+      #throw t.error( "Null-checked value required." )
+      #endIf
+      return this
+      }#
+
+    method cast_to( Token cast_t, Type to_type ).Cmd
+      if (type is to_type) return this
+      local var result = CmdImplicitCastToType( cast_t, this, to_type )
+      return result
+
+    method common_type( Cmd lhs, Cmd rhs ).Type
+      local var lhs_type = lhs.type
+      local var rhs_type = rhs.type
+
+      if (lhs_type is rhs_type and not lhs_type.is_Character)
+        #if (lhs_type is rhs_type)
+        return lhs_type
+      endIf
+
+      if (lhs_type.is_primitive and rhs_type.is_primitive)
+        if (lhs_type.is_Logical or rhs_type.is_Logical)
+          throw t.error( "Invalid mix of Logical and non-Logical types." )
+        endIf
+        if (lhs_type.is_Real or rhs_type.is_Real) return Types.type_Real
+
+        return Types.type_Integer
+      else
+        #{
+        if (lhs_type is rhs_type def)
+          # Mix of checked and unchecked values
+          return lhs_type.unchecked_type
+        endIf
+        }#
+        if (lhs_type.instance_of(rhs_type)) return rhs_type
+        if (rhs_type.instance_of(lhs_type)) return lhs_type
+        return Types.type_Object
+      endIf
+
+endClass
+
+class CmdStatementList : ArrayList<<Cmd>>
+  METHODS
+    method init
+      prior.init
+
+    method init( Integer initial_capacity )
+      prior.init( initial_capacity )
+
+    method init( Cmd statement )
+      init
+      add( statement )
+
+    method init( Cmd statement1, Cmd statement2 )
+      init
+      add( statement1, statement2 )
+
+    method create_duplicate.CmdStatementList
+      local CmdStatementList result( count )
+      forEach (cmd in this) result.add( cmd.create_duplicate )
+      return result
+
+    propagated method dispatch( Visitor v )
+      v.visit( this )
+
+    method print( StringBuilder buffer )
+      Analyzer.context.push_local_scope
+      forEach (statement in this)
+        buffer.print( "      " )
+        statement.print( buffer )
+        buffer.println
+      endForEach
+      Analyzer.context.pop_local_scope
+
+    method resolve
+      Analyzer.context.push_local_scope
+      forEach (i of this)
+        this[i] .= resolve
+      endForEach
+      Analyzer.context.pop_local_scope
+
+endClass
+
+class CmdArgs : CmdStatementList
+  METHODS
+    method create_duplicate.CmdArgs
+      local CmdArgs result( count )
+      forEach (cmd in this) result.add( cmd.create_duplicate )
+      return result
+
+    method resolve
+      forEach (i of this)
+        this[i] .= resolve.require_value
+      endForEach
+
+    method print( StringBuilder buffer )
+      local var first = true
+      forEach (arg in this)
+        if (first) first = false
+        else       buffer.print(',')
+        arg.print( buffer )
+      endForEach
+
+    # TODO:
+    method cast_to( Method m ).CmdArgs
+      #{
+      if (m.parameters.count == 1 and m.parameters.first.type == Types.type_DataStack)
+        local CmdArgs result()
+        local var cmd = CmdAccess( m.t, "DataStack" )
+        cmd = CmdAccess( m.t, cmd, "push_frame", null )
+        forEach(arg in this)
+          cmd = CmdAccess( m.t, cmd, "push", CmdArgs( arg.resolve ) )
+        endForEach
+        result.add(cmd)
+        return result
+      else
+        }#
+        local var i = 0
+        forEach (arg in this)
+          # println (arg)
+          # println(parameters[i])
+          data[i] = arg.cast_to( arg.t, m.parameters[i].type )
+          ++i
+        endForEach
+        #endIf
+
+      return this
+
+    method cast_to( Local[] parameters )
+      # Cast each argument its corresponding method parameter type
+      # println(this)
+      local var i = 0
+      forEach (arg in this)
+        # println (arg)
+        # println(parameters[i])
+        data[i] = arg.cast_to( arg.t, parameters[i].type )
+        ++i
+      endForEach
+
+endClass
+
+class CmdLiteral : Cmd
+  METHODS
+    method implicit_type.Type
+      return type
+
+    method resolve.Cmd
+      return this
+
+endClass
+
+class CmdLiteralReal : CmdLiteral
+  PROPERTIES
+    value : Real
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.CmdLiteralReal
+      return CmdLiteralReal( t, value )
+
+    method type.Type
+      return Types.type_Real
+
+    method to_String.String
+      return ""+value
+
+    method print( StringBuilder buffer )
+      buffer.print( value )
+
+    method cast_to( Token cast_t, Type to_type ).Cmd
+      if (to_type.is_Real) return this
+
+      if (to_type.is_Integer)
+        return CmdLiteralInteger( t, Real(value) )
+
+      elseIf (to_type.is_Character)
+        throw t.error( //Invalid conversion from Real to Character.// )
+
+      elseIf (to_type.is_Logical)
+        throw t.error( //Invalid conversion from Real to Logical.  Use "value?" instead.// )
+
+      elseIf (to_type.is_String)
+        return CmdLiteralString( t, ""+value )
+
+        #{
+      elseIf (to_type is Types.type_Object)
+        return CmdBoxReal( t, value )
+        }#
+
+      else
+        throw t.error( "TODO: CmdLiteralReal::cast_to()." )
+      endIf
+
+endClass
+
+class CmdLiteralInteger : CmdLiteral
+  PROPERTIES
+    value : Integer
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.CmdLiteralInteger
+      return CmdLiteralInteger( t, value )
+
+    method type.Type
+      return Types.type_Integer
+
+    method to_String.String
+      return "" + value
+
+    method print( StringBuilder buffer )
+      buffer.print( value )
+
+    method cast_to( Token cast_t, Type to_type ).Cmd
+      if (to_type.is_Integer) return this
+
+      if (to_type.is_Real)
+        return CmdLiteralReal( t, value )
+
+      elseIf (to_type.is_Character)
+        return CmdLiteralCharacter( t, Char(value) )
+
+      elseIf (to_type.is_Byte)
+        return CmdLiteralByte( t, Byte(value&255) )
+
+      elseIf (to_type.is_Logical)
+        throw t.error( //Invalid conversion from Integer to Logical.  Use "value?" instead.// )
+
+      elseIf (to_type.is_String)
+        return CmdLiteralString( t, ""+value )
+
+      #elseIf (to_type.def is TypeDefs.type_IntegerObject or to_type.is_Object)
+        #return CmdAccess( t, "IntegerObject", CmdArgs(this) ).resolve
+
+      else
+        throw t.error( "Invalid cast from Integer to " + to_type.name + "." )
+      endIf
+
+endClass
+
+class CmdLiteralCharacter : CmdLiteral
+  PROPERTIES
+    value : Char
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.CmdLiteralCharacter
+      return CmdLiteralCharacter( t, value )
+
+    method type.Type
+      return Types.type_Character
+
+    method to_String.String
+      if (value == '\'' or value == '\\') return "\\" + value
+      if (value == '\n') return "\\n"
+      if (value < 32 or (value > 126 and value <= 255)) return "\\x$(02)" (value.to_String(16))
+      if (value >= 256) return "\\u$(04)" (value.to_String(16))
+      return ""+value
+
+    method print( StringBuilder buffer )
+      buffer.print( '\'' )
+      buffer.print( to_String )
+      buffer.print( '\'' )
+
+    method cast_to( Token cast_t, Type to_type ).Cmd
+# print(cast_t)
+# println(to_type)
+      if (to_type.is_Character) return this
+
+      if (to_type.is_Real)
+        throw t.error( //Invalid conversion from Character to Real.// )
+
+      elseIf (to_type.is_Integer)
+        return CmdLiteralInteger( t, value as Integer )
+
+      elseIf (to_type.is_Logical)
+        throw t.error( //Invalid conversion from Character to Logical.  Use "ch?" instead.// )
+
+      elseIf (to_type.is_String)
+        return CmdLiteralString( t, ""+value )
+
+      else
+        throw t.error( "TODO: CmdLiteralCharacter::cast_to()." )
+      endIf
+
+endClass
+
+class CmdLiteralByte : CmdLiteral
+  PROPERTIES
+    value : Integer
+
+  METHODS
+    method init( t, value )
+      value &= 255
+
+    method create_duplicate.CmdLiteralByte
+      return CmdLiteralByte( t, value )
+
+    method type.Type
+      return Types.type_Byte
+
+    method to_String.String
+      return "" + value
+
+    method print( StringBuilder buffer )
+      buffer.print( "Byte(" )
+      buffer.print( value )
+      buffer.print( ")" )
+
+    method cast_to( Token cast_t, Type to_type ).Cmd
+      if (to_type.is_Byte) return this
+
+      if (to_type.is_Real)
+        return CmdLiteralReal( t, value )
+
+      elseIf (to_type.is_Integer)
+        return CmdLiteralInteger( t, Integer(value) )
+
+      elseIf (to_type.is_Character)
+        return CmdLiteralCharacter( t, Char(value) )
+
+      elseIf (to_type.is_Logical)
+        throw t.error( //Invalid conversion from Byte to Logical.  Use "value?" instead.// )
+
+      elseIf (to_type.is_String)
+        return CmdLiteralString( t, ""+value )
+
+      #elseIf (to_type.def is TypeDefs.type_IntegerObject or to_type.is_Object)
+        #return CmdAccess( t, "IntegerObject", CmdArgs(this) ).resolve
+
+      else
+        throw t.error( "Invalid cast from Byte to " + to_type.name + "." )
+      endIf
+
+endClass
+
+class CmdLiteralLogical : CmdLiteral
+  PROPERTIES
+    value : Logical
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.CmdLiteralLogical
+      return CmdLiteralLogical( t, value )
+
+    method type.Type
+      return Types.type_Logical
+
+    method to_String.String
+      if (value) return "true"
+      else       return "false"
+
+    method print( StringBuilder buffer )
+      buffer.print( to_String )
+
+    method cast_to( Token cast_t, Type to_type ).Cmd
+      if (to_type.is_Logical) return this
+
+      if (to_type.is_Real)
+        throw t.error( //Invalid conversion from Logical to Real.// )
+
+      elseIf (to_type.is_Integer)
+        return CmdConvertLogicalToInteger( t, this )
+
+      elseIf (to_type.is_Character)
+        throw t.error( //Invalid conversion from Logical to Character.// )
+
+      elseIf (to_type.is_String)
+        if (value) return CmdLiteralString( t, "true" )
+        else       return CmdLiteralString( t, "false" )
+
+      else
+        throw t.error( "TODO: CmdLiteralLogical::cast_to()." )
+      endIf
+
+endClass
+
+class CmdLiteralString : CmdLiteral
+  PROPERTIES
+    value : String
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.CmdLiteralString
+      return CmdLiteralString( t, value )
+
+    method type.Type
+      return Types.type_String
+
+    method to_String.String
+      return "$" (value)
+
+    method print( StringBuilder buffer )
+      buffer.print( //"$"// (value) )
+
+endClass
+
+class CmdLiteralNull : CmdLiteral
+  PROPERTIES
+    of_type : Type
+
+  METHODS
+    method init( t, of_type=Types.type_Object )
+
+    method create_duplicate.CmdLiteralNull
+      return CmdLiteralNull( t, of_type )
+
+    method type.Type
+      return of_type
+
+    method instance_of( Type ancestor ).Logical
+      return ancestor.is_reference
+
+    method to_String.String
+      return "null"
+
+    method print( StringBuilder buffer )
+      buffer.print( "null" )
+
+    #method require_value( Logical allow_unchecked ).Cmd
+    method require_value.Cmd
+      local var _type = type
+      if (type is null) throw t.error( "Value expected." )
+      #if (not allow_unchecked)
+      #throw t.error( "Non-null value required for method with a null-checked return type." )
+      #endIf
+      return this
+
+    method resolve.Cmd
+      of_type.resolve(t)
+      return this
+
+    method cast_to( Token cast_t, Type to_type ).Cmd
+      if (to_type.is_reference)
+        of_type = to_type
+      else
+        throw cast_t.error( "Cannot cast a null reference to type $." (to_type) )
+      endIf
+      return this
+
+
+endClass
+
+class CmdLiteralList : CmdLiteral
+  PROPERTIES
+    args : CmdArgs
+
+  METHODS
+    method init( t )
+      args = CmdArgs()
+
+    method init( t, args )
+
+    method create_duplicate.CmdLiteralList
+      return CmdLiteralList( t, args.create_duplicate )
+
+    method implicit_type.Type
+      local Type common_type = null
+
+      forEach (arg in args)
+        local var arg_type = arg.implicit_type
+        if (arg_type is null) return null
+
+        if (common_type?)
+          if (common_type isNot arg_type)
+            if (common_type.is_primitive and arg_type.is_primitive)
+              if (common_type.is_Logical or arg_type.is_Logical) return null
+              if (common_type.is_Real or arg_type.is_Real) return Types.reference(t,"Real[]")
+              return Types.reference(t,"Integer[]")
+            else
+              return null
+            endIf
+          endIf
+        else
+          common_type = arg_type
+        endIf
+      endForEach
+
+      if (common_type is null) return null
+
+      return Types.reference( t, common_type.name + "[]" ).resolve(t)
+
+    method is_complex_reference.Logical
+      return true
+
+    method print( StringBuilder buffer )
+      buffer.print('[')
+      local var first = true
+      forEach (arg in args)
+        if (first) first = false
+        else       buffer.print(',')
+        arg.print( buffer )
+      endForEach
+      buffer.print(']')
+
+    method resolve.Cmd
+      local Type common_type = null
+
+      forEach (index of args)
+        local var arg = args[index].resolve.require_value
+        args[index] = arg
+
+        local var arg_type = arg.type
+
+        if (common_type?)
+          if (common_type isNot arg_type)
+            if (common_type.is_primitive and arg_type.is_primitive)
+              if (common_type.is_Logical or arg_type.is_Logical)
+                throw arg.t.error( "TODO: promote list to an Object list with boxed primitives." )
+              endIf
+              if (common_type.is_Real or arg_type.is_Real) common_type = Types.type_Real
+              else                                         common_type = Types.type_Integer
+            else
+              throw arg.t.error( "TODO: promote list to an Object list with boxed primitives." )
+            endIf
+          endIf
+        else
+          common_type = arg_type
+        endIf
+      endForEach
+
+      local var all_literals = true
+      forEach (index of args)
+        local var arg = args[index]
+        args[index] = arg.cast_to( arg.t, common_type )
+        if (arg notInstanceOf CmdLiteral) all_literals = false
+      endForEach
+
+      if (common_type.is_Integer)
+        return CmdNewObject( t, Types.reference(t,"Integer[]"), CmdArgs( CmdLiteralArray(t, "Integer", args, all_literals) ) )
+
+      elseIf (common_type.is_Real)
+        return CmdNewObject( t, Types.reference(t,"Real[]"), CmdArgs( CmdLiteralArray(t, "Real", args, all_literals) ) )
+
+      elseIf (common_type.is_reference)
+        return CmdNewObject( t, Types.reference(t,common_type.name+"[]"), CmdArgs( CmdLiteralArray(t, common_type.name, args, all_literals) ) )
+
+      elseIf (common_type.is_Character)
+        return CmdNewObject( t, Types.reference(t,"Character[]"),
+          CmdArgs( CmdLiteralArray(t, "Character", args, all_literals) ) )
+
+      elseIf (common_type.is_Logical)
+        return CmdNewObject( t, Types.reference(t,"Logical[]"),
+          CmdArgs( CmdLiteralArray(t, "Logical", args, all_literals) ) )
+
+      endIf
+
+      throw t.error( "TODO: CmdLiteralList of type " + common_type )
+endClass
+
+
+class CmdLiteralArray : Cmd
+  PROPERTIES
+    array_type   : Type
+    element_type : Type
+    elements     : CmdArgs
+    all_literals : Logical
+
+  METHODS
+    method init( t, String element_name, elements, all_literals )
+      element_type = Types.reference( t, element_name )
+      array_type = Types.reference( t, "Array<<" + element_name + ">>" )
+
+    method init( t, array_type, element_type, elements, all_literals )
+
+    method create_duplicate.CmdLiteralArray
+      return CmdLiteralArray( t, array_type, element_type, elements, all_literals )
+
+    method implicit_type.Type
+      return array_type
+
+    method is_complex_reference.Logical
+      return true
+
+    method print( StringBuilder buffer )
+      buffer.print( array_type )
+      buffer.print( "[" )
+      local var first = true
+      forEach (element in elements)
+        if (first) first = false
+        else       buffer.print(',')
+        element.print( buffer )
+      endForEach
+      buffer.print( "]" )
+
+    method type.Type
+      return array_type
+
+    method resolve.Cmd
+      array_type.resolve
+      element_type.resolve
+      elements.resolve
+      return this
+endClass
+
+
+class CmdUnary : Cmd
+  PROPERTIES
+    operand     : Cmd
+    opcode = -1 : Integer
+
+  METHODS
+    method init( t, operand )
+
+    method is_complex_reference.Logical
+      return true
+
+    method type.Type
+      return operand.type
+
+    method name.String
+      return "[unnamed unary op]"
+
+    method print( StringBuilder buffer )
+      buffer.print( '(' )
+      buffer.print( name )
+      buffer.print( ' ' )
+      operand.print( buffer )
+      buffer.print( ')' )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local var operand_type = operand.type
+
+      if (operand instanceOf CmdLiteral)
+        if (operand_type.is_Real)
+          local var result = resolve_for_literal_real_operand( (operand as CmdLiteralReal).value )
+          if (result?) return result
+        elseIf (operand_type.is_Integer)
+          local var result = resolve_for_literal_integer_operand( (operand as CmdLiteralInteger).value )
+          if (result?) return result
+        elseIf (operand_type.is_Logical)
+          local var result = resolve_for_literal_logical_operand( (operand as CmdLiteralLogical).value )
+          if (result?) return result
+        else
+          local var result = resolve_for_literal_operand
+          if (result?) return result
+        endIf
+      endIf
+
+      if (operand_type.is_reference)
+        local var result = resolve_for_reference_operand
+        if (result?) return result
+      endIf
+
+      return resolve_for_operand_type( operand_type )
+
+    method resolve_for_literal_real_operand( Real operand_value ).Cmd
+      return null
+
+    method resolve_for_literal_integer_operand( Integer operand_value ).Cmd
+      return null
+
+    method resolve_for_literal_logical_operand( Logical operand_value ).Cmd
+      return null
+
+    method resolve_for_literal_operand.Cmd
+      return null
+
+    method resolve_for_operand_type( Type operand_type ).Cmd
+      return this
+
+    method resolve_for_reference_operand.Cmd
+      return null
+endClass
+
+class CmdLogicalNot : CmdUnary
+  METHODS
+    method create_duplicate.CmdLogicalNot
+      return CmdLogicalNot( t, operand )
+
+    method name.String
+      return "not"
+
+    method implicit_type.Type
+      return Types.type_Logical
+
+    method resolve_for_literal_real_operand( Real operand_value ).Cmd
+      # TODO
+      return null
+
+    method resolve_for_literal_integer_operand( Integer operand_value ).Cmd
+      # TODO
+      return null
+
+    method resolve_for_literal_logical_operand( Logical operand_value ).Cmd
+      return CmdLiteralLogical( t, (not operand_value) )
+
+endClass
+
+class CmdNegate : CmdUnary
+  METHODS
+    method create_duplicate.CmdNegate
+      return CmdNegate( t, operand )
+
+    method name.String
+      return "-"
+
+    method implicit_type.Type
+      return operand.implicit_type
+
+    method resolve_for_literal_real_operand( Real operand_value ).Cmd
+      return CmdLiteralReal( t, -operand_value )
+
+    method resolve_for_literal_integer_operand( Integer operand_value ).Cmd
+      return CmdLiteralInteger( t, -operand_value )
+
+    method resolve_for_literal_logical_operand( Logical operand_value ).Cmd
+      return CmdLiteralLogical( t, (not operand_value) )
+
+    method resolve_for_reference_operand.Cmd
+      return CmdAccess( t, operand, "operator-", null ).resolve.require_value
+
+    method resolve_for_operand_type( Type operand_type ).Cmd
+      if (operand_type.is_Real or operand_type.is_Integer)
+        return this
+      elseIf (operand_type.is_Character or operand_type.is_Byte)
+        local var result = CmdNegate( t, operand.cast_to(t, Types.type_Integer) ).resolve
+        return result
+      endIf
+      return this
+
+endClass
+
+class CmdBitwiseNot : CmdUnary
+  METHODS
+    method create_duplicate.CmdBitwiseNot
+      return CmdBitwiseNot( t, operand )
+
+    method name.String
+      return "!"
+
+    method implicit_type.Type
+      return operand.implicit_type
+
+    method resolve_for_literal_integer_operand( Integer operand_value ).Cmd
+      # TODO
+      # return CmdLiteralInteger( t, !operand_value )
+      return null
+
+    method resolve_for_literal_logical_operand( Logical operand_value ).Cmd
+      return CmdLiteralLogical( t, (not operand_value) )
+
+    method resolve_for_integer_operand.Cmd
+      opcode = Op.bitwise_not_integer
+      return this
+
+    method resolve_for_logical_operand.Cmd
+      opcode = Op.logical_not
+      return this
+
+    method resolve_for_reference_operand.Cmd
+      return CmdAccess( t, operand, "operator!", null ).resolve.require_value
+endClass
+
+class CmdLogicalize : CmdUnary
+  METHODS
+    method create_duplicate.CmdLogicalize
+      return CmdLogicalize( t, operand )
+
+    method name.String
+      return "?"
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( '?' )
+
+    method implicit_type.Type
+      return Types.type_Logical
+
+    method type.Type
+      return Types.type_Logical
+
+    method resolve_for_literal_real_operand( Real operand_value ).Cmd
+      return CmdLiteralLogical( t, operand_value? )
+
+    method resolve_for_literal_integer_operand( Integer operand_value ).Cmd
+      return CmdLiteralLogical( t, operand_value? )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      if (operand.type.is_Logical) return operand
+
+      return prior.resolve
+
+endClass
+
+
+class CmdAccess : Cmd
+  PROPERTIES
+    operand     : Cmd
+    name        : String
+    args        : CmdArgs
+
+  METHODS
+    method init( t, name )
+
+    method init( t, name, args )
+
+    method init( t, operand, name, args )
+
+    method create_duplicate.CmdAccess
+      return CmdAccess( t, duplicate(operand), name, duplicate(args) )
+
+    method implicit_type.Type
+      local var as_type = Types.find_type_or_template( t, name )
+      if (as_type?)
+        return as_type
+      else
+        if (operand is null and args is null)
+          local var v = Analyzer.context.find_local( name )
+          if (v?) return v.type
+        endIf
+      endIf
+      return null
+
+    method print( StringBuilder buffer )
+      if (operand?)
+        operand.print( buffer )
+        buffer.print( '.' )
+      endIf
+      buffer.print( name )
+      if (args?)
+        buffer.print( '(' )
+        args.print( buffer )
+        buffer.print( ')' )
+      endIf
+
+    method resolve.Cmd
+      return resolve_with_type_hint( null )
+
+    method resolve_with_type_hint( Type type_hint ).Cmd
+      if (operand?)
+        operand .= resolve.require_value
+      endIf
+
+      local var as_type = Types.find_type_or_template( t, name )
+
+      if (operand?)
+        # Explicit context
+        operand = operand.resolve_with_type_hint( as_type ).require_value
+
+        local var operand_type = operand.type
+        operand_type.resolve
+        #{
+        if (operand_type.is_primitive)
+          # Primitive context
+          if (as_type? and args is null)
+            return operand.cast_to(t,as_type).resolve
+          endIf
+          throw t.error( "TODO: CmdAccess::resolve with primitive context" )
+        else
+          }#
+          # Object context
+
+          # An object is calling to-type for its own type (e.g. "ABC".String).
+          # Strip the call.
+          if (operand_type is type_hint) return operand
+
+          # Check for methods first
+          local var result = Analyzer.resolve_call( t, operand_type, operand, name, args, false )
+          if (result?) return result
+
+          # Then check for property access
+          local var p = operand_type.find_property( name )
+          if (p?) return CmdReadProperty(t,operand,p).resolve
+
+          local var s = operand_type.find_setting( name )
+          if (s?) return CmdReadSetting(t,operand,s).resolve
+
+          #println( "TODO: check for Object::[TypeName]." )
+
+          # Throw an error while allowing possible candidate methods to print out
+          result = Analyzer.resolve_call( t, operand_type, operand, name, args, true )
+          return null  # never happens
+
+          #endIf
+
+      else
+        # Implicit/'this' context
+        if (args is null)
+          local var v = Analyzer.context.find_local( name )
+          if (v?)
+            return CmdReadLocal( t, v )
+          endIf
+        endIf
+
+        if (as_type?)
+          if (args? or name.ends_with(']'))
+            # New object
+            if (args is null) args = CmdArgs()
+            return CmdNewObject( t, as_type, args ).resolve
+          else
+            # Singleton access
+            if (as_type.generic_base?) throw t.error( "Attempt to read generic-type singleton; generic types do not have singletons." )
+            return CmdReadSingleton( t, as_type ).resolve
+          endIf
+        endIf
+
+        # Check for a method call with an optional return type hint
+        local var result = Analyzer.resolve_call( t, Analyzer.context.this_type, null, name, args, false )
+        if (result?) return result
+
+        # Check for property access
+        local var p = Analyzer.context.this_type.find_property( name )
+        if (p?) return CmdReadProperty( t, null, p ).resolve
+
+        local var s = Analyzer.context.this_type.find_setting( name )
+        if (s?) return CmdReadSetting(t,null,s).resolve
+
+        Analyzer.resolve_call( t, Analyzer.context.this_type, null, name, args, true )  # will generate an error
+      endIf
+
+      throw t.error( "TODO: CmdAccess::resolve()" )
+
+    method resolve_increment.Cmd
+      if (operand?)
+        operand .= resolve
+        local var p = operand.type.find_property( name )
+        if (p?) return CmdIncrementProperty( t, operand, p ).resolve
+
+        p = operand.type.must_find_setting( t, name )
+        return CmdIncrementSetting( t, operand, p ).resolve
+      else
+        local var v = Analyzer.context.find_local( name )
+        if (v?)
+          return CmdIncrementLocal(t,v).resolve
+        endIf
+
+        local var this_type = Analyzer.context.this_type
+        local var p = this_type.find_property( name )
+        if (p?) return CmdIncrementProperty( t, operand, p ).resolve
+
+        p = this_type.must_find_setting( t, name )
+        return CmdIncrementSetting( t, operand, p ).resolve
+      endIf
+
+    method resolve_decrement.Cmd
+      if (operand?)
+        operand .= resolve
+        local var p = operand.type.find_property( name )
+        if (p?) return CmdDecrementProperty( t, operand, p ).resolve
+
+        p = operand.type.must_find_setting( t, name )
+        return CmdDecrementSetting( t, operand, p ).resolve
+      else
+        local var v = Analyzer.context.find_local( name )
+        if (v?)
+          return CmdDecrementLocal(t,v).resolve
+        endIf
+
+        local var this_type = Analyzer.context.this_type
+        local var p = this_type.find_property( name )
+        if (p?) return CmdDecrementProperty( t, null, p ).resolve
+
+        p = this_type.must_find_setting( t, name )
+        return CmdDecrementSetting( t, operand, p ).resolve
+      endIf
+
+    method resolve_assignment( Cmd new_value, Integer operation ).Cmd
+      if (args?)
+        throw t.error( "Illegal target for assignment." )
+      endIf
+
+      local Type context_type
+      if (operand?)
+        operand = operand.resolve.require_value
+        context_type = operand.type
+      else
+        context_type = Analyzer.context.this_method.type_context
+      endIf
+      context_type.resolve
+
+      if (name[0] != '@')
+        # Try "[obj.]name = value" -> [obj.]name( value )
+        if (context_type.find_method( name, 1 )?)
+          local var cmd = Analyzer.resolve_call( t, context_type, operand, name, CmdArgs(new_value), false )
+          if (cmd?) return cmd
+        endIf
+      endIf
+
+      if (operand?)
+        operand = operand.resolve.require_value
+        local var operand_type = operand.type
+        if (args is null)
+          # Most likely to be a property so we'll check for that first
+          local var p = operand_type.find_property( name )
+          if (p?)
+            which (operation)
+              case 0:                                   return CmdWriteProperty(t,operand,p,new_value).resolve
+              case Token.symbol_add_assign:         return CmdAddAssignProperty(t,operand,p,new_value).resolve
+              case Token.symbol_subtract_assign:    return CmdSubtractAssignProperty(t,operand,p,new_value).resolve
+              case Token.symbol_multiply_assign:    return CmdMultiplyAssignProperty(t,operand,p,new_value).resolve
+              case Token.symbol_divide_assign:      return CmdDivideAssignProperty(t,operand,p,new_value).resolve
+              case Token.symbol_mod_assign:         return CmdModAssignProperty(t,operand,p,new_value).resolve
+              case Token.symbol_power_assign:       return CmdPowerAssignProperty(t,operand,p,new_value).resolve
+              case Token.symbol_bitwise_and_assign: return CmdBitwiseAndAssignProperty(t,operand,p,new_value).resolve
+              case Token.symbol_bitwise_or_assign:  return CmdBitwiseOrAssignProperty(t,operand,p,new_value).resolve
+              case Token.symbol_bitwise_xor_assign: return CmdBitwiseXorAssignProperty(t,operand,p,new_value).resolve
+              others:                                   throw Error( "TODO" )
+            endWhich
+          endIf
+
+          # Check for setting
+          p = operand_type.find_setting( name )
+          if (p?)
+            which (operation)
+              case 0:                                   return CmdWriteSetting(t,operand,p,new_value).resolve
+              case Token.symbol_add_assign:         return CmdAddAssignSetting(t,operand,p,new_value).resolve
+              case Token.symbol_subtract_assign:    return CmdSubtractAssignSetting(t,operand,p,new_value).resolve
+              case Token.symbol_multiply_assign:    return CmdMultiplyAssignSetting(t,operand,p,new_value).resolve
+              case Token.symbol_divide_assign:      return CmdDivideAssignSetting(t,operand,p,new_value).resolve
+              case Token.symbol_mod_assign:         return CmdModAssignSetting(t,operand,p,new_value).resolve
+              case Token.symbol_power_assign:       return CmdPowerAssignSetting(t,operand,p,new_value).resolve
+              case Token.symbol_bitwise_and_assign: return CmdBitwiseAndAssignSetting(t,operand,p,new_value).resolve
+              case Token.symbol_bitwise_or_assign:  return CmdBitwiseOrAssignSetting(t,operand,p,new_value).resolve
+              case Token.symbol_bitwise_xor_assign: return CmdBitwiseXorAssignSetting(t,operand,p,new_value).resolve
+              others:                                   throw Error( "TODO" )
+            endWhich
+          endIf
+
+        endIf
+        throw t.error( "Cannot find property " + operand_type + "::" + name + " in CmdAccess::resolve_assignment().  TODO: add check for implicit write method." )
+      endIf
+
+      local var v = Analyzer.context.find_local( name )
+      if (v?)
+        which (operation)
+          case 0:                                   return CmdWriteLocal(t,v,new_value).resolve
+          case Token.symbol_add_assign:         return CmdAddAssignLocal(t,v,new_value).resolve
+          case Token.symbol_subtract_assign:    return CmdSubtractAssignLocal(t,v,new_value).resolve
+          case Token.symbol_multiply_assign:    return CmdMultiplyAssignLocal(t,v,new_value).resolve
+          case Token.symbol_divide_assign:      return CmdDivideAssignLocal(t,v,new_value).resolve
+          case Token.symbol_mod_assign:         return CmdModAssignLocal(t,v,new_value).resolve
+          case Token.symbol_power_assign:       return CmdPowerAssignLocal(t,v,new_value).resolve
+          case Token.symbol_bitwise_and_assign: return CmdBitwiseAndAssignLocal(t,v,new_value).resolve
+          case Token.symbol_bitwise_or_assign:  return CmdBitwiseOrAssignLocal(t,v,new_value).resolve
+          case Token.symbol_bitwise_xor_assign: return CmdBitwiseXorAssignLocal(t,v,new_value).resolve
+          others:                               throw Error( "TODO" )
+        endWhich
+      endIf
+
+      # Check for property
+      local var p = Analyzer.context.this_type.find_property( name )
+      if (p?)
+        which (operation)
+          case 0:                                   return CmdWriteProperty(t,null,p,new_value).resolve
+          case Token.symbol_add_assign:         return CmdAddAssignProperty(t,null,p,new_value).resolve
+          case Token.symbol_subtract_assign:    return CmdSubtractAssignProperty(t,null,p,new_value).resolve
+          case Token.symbol_multiply_assign:    return CmdMultiplyAssignProperty(t,null,p,new_value).resolve
+          case Token.symbol_divide_assign:      return CmdDivideAssignProperty(t,null,p,new_value).resolve
+          case Token.symbol_mod_assign:         return CmdModAssignProperty(t,null,p,new_value).resolve
+          case Token.symbol_power_assign:       return CmdPowerAssignProperty(t,null,p,new_value).resolve
+          case Token.symbol_bitwise_and_assign: return CmdBitwiseAndAssignProperty(t,null,p,new_value).resolve
+          case Token.symbol_bitwise_or_assign:  return CmdBitwiseOrAssignProperty(t,null,p,new_value).resolve
+          case Token.symbol_bitwise_xor_assign: return CmdBitwiseXorAssignProperty(t,null,p,new_value).resolve
+          others:                                   throw Error( "TODO" )
+        endWhich
+      endIf
+
+      # Check for setting
+      local var s = Analyzer.context.this_type.find_setting( name )
+      if (s?)
+        which (operation)
+          case 0:                                   return CmdWriteSetting(t,null,s,new_value).resolve
+          case Token.symbol_add_assign:         return CmdAddAssignSetting(t,null,s,new_value).resolve
+          case Token.symbol_subtract_assign:    return CmdSubtractAssignSetting(t,null,s,new_value).resolve
+          case Token.symbol_multiply_assign:    return CmdMultiplyAssignSetting(t,null,s,new_value).resolve
+          case Token.symbol_divide_assign:      return CmdDivideAssignSetting(t,null,s,new_value).resolve
+          case Token.symbol_mod_assign:         return CmdModAssignSetting(t,null,s,new_value).resolve
+          case Token.symbol_power_assign:       return CmdPowerAssignSetting(t,null,s,new_value).resolve
+          case Token.symbol_bitwise_and_assign: return CmdBitwiseAndAssignSetting(t,null,s,new_value).resolve
+          case Token.symbol_bitwise_or_assign:  return CmdBitwiseOrAssignSetting(t,null,s,new_value).resolve
+          case Token.symbol_bitwise_xor_assign: return CmdBitwiseXorAssignSetting(t,null,s,new_value).resolve
+          others:                                   throw Error( "TODO" )
+        endWhich
+      endIf
+
+      throw t.error( //"$" is undefined.// (name) )
+
+
+endClass
+
+class CmdElementAccess : Cmd
+  PROPERTIES
+    operand : Cmd
+    args    : CmdArgs
+
+  METHODS
+    method init( t, operand, args=CmdArgs() )
+
+    method create_duplicate.CmdElementAccess
+      return CmdElementAccess( t, duplicate(operand), duplicate(args) )
+
+    method is_complex_reference.Logical
+      return true
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print('[')
+      args.print( buffer )
+      buffer.print(']')
+
+    method resolve.Cmd
+      return Analyzer.resolve_call( t, null, operand, "get", args, true )
+
+    method resolve_with_type_hint( Type type_hint ).Cmd
+      return Analyzer.resolve_call( t, null, operand, "get", args, true )
+
+    method resolve_assignment( Cmd new_value, Integer operation ).Cmd
+      if (operation?) throw Error("TODO")
+      args.add( new_value )
+      return Analyzer.resolve_call( t, null, operand, "set", args, true )
+
+endClass
+
+class CmdLocalDeclaration : CmdStatement
+  PROPERTIES
+    local_info : Local
+
+  METHODS
+    method init( t, local_info )
+
+    method create_duplicate.CmdLocalDeclaration
+      return CmdLocalDeclaration( t, local_info )
+
+    method print( StringBuilder buffer )
+      buffer.print( "local " )
+      buffer.print( local_info.name )
+      if (local_info.type?)
+        buffer.print( " : " )
+        buffer.print( local_info.type )
+      endIf
+
+    method resolve.Cmd
+      if (local_info.type?) local_info.type.resolve
+
+      local var existing_p = Analyzer.context.this_type.find_property( local_info.name )
+      if (existing_p?)
+        throw local_info.t.error( "A property named '$' already exists in class $." (local_info.name,Analyzer.context.this_type) )
+      endIf
+
+# print(local_info.name)
+# print(" ")
+# println(local_info.type)
+# println
+      Analyzer.add_local( local_info )
+      return this
+
+endClass
+
+class CmdAssign : CmdStatementWithOperand
+  PROPERTIES
+    new_value : Cmd
+
+  METHODS
+    method init( t, operand, new_value )
+
+    method create_duplicate.CmdAssign
+      return CmdAssign( t, duplicate(operand), duplicate(new_value) )
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( " = " )
+      new_value.print( buffer )
+
+    method resolve.Cmd
+      return operand.resolve_assignment( new_value, 0 )
+endClass
+
+class CmdReadLocal : Cmd
+  PROPERTIES
+    local_info : Local
+
+  METHODS
+    method init( t, local_info )
+
+    method init( local_info )
+      t = local_info.t
+
+    method create_duplicate.CmdReadLocal
+      return CmdReadLocal( t, local_info )
+
+    method type.Type
+      return local_info.type
+
+    method variable_name.String
+      return local_info.name
+
+    method print( StringBuilder buffer )
+      buffer.print( local_info.name )
+
+    method resolve.Cmd
+      return this
+
+endClass
+
+class CmdWriteLocal : CmdStatement
+  PROPERTIES
+    local_info : Local
+    new_value  : Cmd
+
+  METHODS
+    method init( t, local_info, new_value )
+
+    method init( local_info, new_value )
+      t = local_info.t
+
+    method create_duplicate.CmdWriteLocal
+      return CmdWriteLocal( t, local_info, duplicate(new_value) )
+
+    method print( StringBuilder buffer )
+      buffer.print( local_info.name )
+      buffer.print( " = " )
+      new_value.print( buffer )
+
+    method resolve.Cmd
+      new_value = new_value.resolve.require_value
+      local var new_value_type = new_value.type
+
+      if (local_info.type is null)
+        local_info.type = new_value_type
+        new_value_type.resolve
+      endIf
+
+      if (local_info.type.is_reference)
+        local var result = resolve_reference_assignment
+        if (result?) return result
+      endIf
+
+      #if (new_value_type.possibly_null and not local_info.type.possibly_null)
+      #throw t.error( "'" + local_info.name + "' can only store null-checked references." )
+      #endIf
+
+      new_value = new_value.cast_to(t,local_info.type).resolve
+
+      return this
+
+    method resolve_reference_assignment.Cmd
+      return null
+
+endClass
+
+class CmdWriteLocalDefault : CmdStatement
+  PROPERTIES
+    local_info : Local
+
+  METHODS
+    method init( t, local_info )
+      if (local_info.type is null)
+        local_info.type = Types.type_Object
+      endIf
+
+    method create_duplicate.CmdWriteLocalDefault
+      return CmdWriteLocalDefault( t, local_info )
+
+    method print( StringBuilder buffer )
+      buffer.print( local_info.name )
+      buffer.print( " = " )
+      buffer.print( "(default value)" )
+
+    method resolve.Cmd
+      return this
+
+endClass
+
+class CmdIncrement : CmdStatementWithOperand
+  METHODS
+    method create_duplicate.CmdIncrement
+      return CmdIncrement( t, duplicate(operand) )
+
+    method print( StringBuilder buffer )
+      buffer.print( "++" )
+      operand.print( buffer )
+
+    method resolve.Cmd
+      return operand.resolve_increment
+endClass
+
+class CmdIncrementLocal : Cmd
+  PROPERTIES
+    local_info : Local
+
+  METHODS
+    method init( t, local_info )
+
+    method create_duplicate.CmdIncrementLocal
+      return CmdIncrementLocal( t, local_info )
+
+    method print( StringBuilder buffer )
+      buffer.print( "++" )
+      buffer.print( local_info.name )
+
+    method resolve.Cmd
+      if (local_info.type.is_compound)
+        throw t.error( "Cannot increment a compound." )
+      elseIf (local_info.type.is_reference)
+        return CmdAccess( t, CmdReadLocal(t,local_info), "operator++", null ).resolve
+      endIf
+
+      return this
+endClass
+
+class CmdIncrementSetting : Cmd
+  PROPERTIES
+    context  : Cmd
+    setting : Property
+
+  METHODS
+    method init( t, context, setting )
+
+    method create_duplicate.CmdIncrementSetting
+      return CmdIncrementSetting( t, duplicate(context), setting )
+
+    method print( StringBuilder buffer )
+      buffer.print( "++" )
+      buffer.print( setting.name )
+
+    method resolve.Cmd
+      if (context?) context .= resolve
+
+      if (setting.type.is_compound)
+        throw t.error( "Cannot increment a compound." )
+      elseIf (setting.type.is_reference)
+        return CmdAccess( t, CmdReadSetting(t,context,setting), "operator++", null ).resolve
+      endIf
+
+      return this
+endClass
+
+class CmdIncrementProperty : Cmd
+  PROPERTIES
+    context  : Cmd
+    property : Property
+
+  METHODS
+    method init( t, context, property )
+
+    method create_duplicate.CmdIncrementProperty
+      return CmdIncrementProperty( t, duplicate(context), property )
+
+    method print( StringBuilder buffer )
+      buffer.print( "++" )
+      buffer.print( property.name )
+
+    method resolve.Cmd
+      if (context?) context .= resolve
+
+      if (property.type.is_compound)
+        throw t.error( "Cannot increment a compound." )
+      elseIf (property.type.is_reference)
+        return CmdAccess( t, CmdReadProperty(t,context,property), "operator++", null ).resolve
+      endIf
+
+      return this
+endClass
+
+class CmdDecrement : CmdStatementWithOperand
+  METHODS
+    method create_duplicate.CmdDecrement
+      return CmdDecrement( t, duplicate(operand) )
+
+    method print( StringBuilder buffer )
+      buffer.print( "--" )
+      operand.print( buffer )
+
+    method resolve.Cmd
+      return operand.resolve_decrement
+endClass
+
+class CmdDecrementLocal : Cmd
+  PROPERTIES
+    local_info : Local
+
+  METHODS
+    method init( t, local_info )
+
+    method create_duplicate.CmdDecrementLocal
+      return CmdDecrementLocal( t, local_info )
+
+    method print( StringBuilder buffer )
+      buffer.print( "--" )
+      buffer.print( local_info.name )
+
+    method resolve.Cmd
+      return this
+endClass
+
+class CmdDecrementSetting : Cmd
+  PROPERTIES
+    context : Cmd
+    setting : Property
+
+  METHODS
+    method init( t, context, setting )
+
+    method create_duplicate.CmdDecrementSetting
+      return CmdDecrementSetting( t,duplicate(context), setting )
+
+    method print( StringBuilder buffer )
+      buffer.print( "--" )
+      buffer.print( setting.name )
+
+    method resolve.Cmd
+      if (context?) context .= resolve.require_value
+
+      if (not (setting.type.is_primitive))
+        throw t.error( "Cannot decrement a value of type $." (setting.type) )
+      endIf
+
+      return this
+endClass
+
+class CmdDecrementProperty : Cmd
+  PROPERTIES
+    context  : Cmd
+    property : Property
+
+  METHODS
+    method init( t, context, property )
+
+    method create_duplicate.CmdDecrementProperty
+      return CmdDecrementProperty( t,duplicate(context), property )
+
+    method print( StringBuilder buffer )
+      buffer.print( "--" )
+      buffer.print( property.name )
+
+    method resolve.Cmd
+      if (context?) context .= resolve.require_value
+
+      if (not (property.type.is_primitive))
+        throw t.error( "Cannot decrement a value of type $." (property.type) )
+      endIf
+
+      return this
+endClass
+
+class CmdThis( t, Type this_type ) : Cmd
+  METHODS
+    method create_duplicate.CmdThis
+      return CmdThis( t, this_type )
+
+    method type.Type
+      return this_type
+
+    method print( StringBuilder buffer )
+      buffer.print( "(this as" )
+      buffer.print( this_type.name )
+      buffer.print( ")" )
+
+    method resolve.Cmd
+      # Update type in case of propagated method
+      this_type = Analyzer.context.this_type
+      return this
+endClass
+
+class CmdReadSingleton : Cmd
+  PROPERTIES
+    of_type     : Type
+
+  METHODS
+    method init( t, of_type )
+
+    method create_duplicate.CmdReadSingleton
+      return CmdReadSingleton( t, of_type )
+
+    method type.Type
+      return of_type
+
+    method implicit_type.Type
+      return of_type
+
+    method print( StringBuilder buffer )
+      buffer.print( of_type )
+
+    method resolve.Cmd
+      of_type.resolve(t)
+
+      return this
+
+endClass
+
+class CmdReadSetting : Cmd
+  PROPERTIES
+    context  : Cmd
+    setting : Property
+
+  METHODS
+    method init( t, context, setting )
+
+    method create_duplicate.CmdReadSetting
+      return CmdReadSetting( t, duplicate(context), setting )
+
+    method type.Type
+      return setting.type
+
+    method variable_name.String
+      return setting.name
+
+    method print( StringBuilder buffer )
+      if (context?)
+        context.print( buffer )
+        buffer.print( '.' )
+      endIf
+      buffer.print( setting.name )
+
+    method resolve.Cmd
+      setting.type.resolve(t)
+      if (context?)
+        context = context.resolve
+        #if (context.type.possibly_null) throw t.error( "Unchecked reference access." )
+      endIf
+      return this
+endClass
+
+class CmdReadProperty : Cmd
+  PROPERTIES
+    context  : Cmd
+    property : Property
+
+  METHODS
+    method init( t, context, property )
+
+    method init( Local local_info, Property _property )
+      init( local_info.t, CmdReadLocal(local_info.t, local_info), _property )
+
+    method create_duplicate.CmdReadProperty
+      return CmdReadProperty( t, duplicate(context), property )
+
+    method type.Type
+      return property.type
+
+    method variable_name.String
+      return property.name
+
+    method print( StringBuilder buffer )
+      if (context?)
+        context.print( buffer )
+        buffer.print( '.' )
+      endIf
+      buffer.print( property.name )
+
+    method resolve.Cmd
+      if (context?)
+        context = context.resolve
+        #if (context.type.possibly_null) throw t.error( "Unchecked reference access." )
+      endIf
+      property.type.resolve(t)
+      return this
+endClass
+
+class CmdWriteSetting : Cmd
+  PROPERTIES
+    context   : Cmd
+    setting   : Property
+    new_value : Cmd
+
+  METHODS
+    method init( t, context, setting, new_value )
+
+    method create_duplicate.CmdWriteSetting
+      return CmdWriteSetting( t, duplicate(context), setting, duplicate(new_value) )
+
+    method type.Type
+      return null
+
+    method name.String
+      return "="
+
+    method print( StringBuilder buffer )
+      if (context?)
+        context.print( buffer )
+        buffer.print( '.' )
+      endIf
+      buffer.print( setting.name )
+      buffer.print( ' ' )
+      buffer.print( name )
+      buffer.print( ' ' )
+      new_value.print( buffer )
+
+    method resolve.Cmd
+      setting.type.resolve(t)
+      new_value = new_value.resolve.require_value
+
+      #if (new_value.type.possibly_null and not setting.type.possibly_null)
+      #throw t.error( "'" + setting.name + "' can only store null-checked references." )
+      #endIf
+
+      if (context?) context = context.resolve
+
+      if (setting.type.is_reference)
+        local var result = resolve_reference_assignment
+        if (result?) return result
+      endIf
+
+      new_value = new_value.resolve.cast_to(t,setting.type).resolve
+      return this
+
+    method resolve_reference_assignment.Cmd
+      return null
+
+endClass
+
+class CmdWriteProperty : Cmd
+  PROPERTIES
+    context   : Cmd
+    property  : Property
+    new_value : Cmd
+
+  METHODS
+    method init( t, context, property, new_value )
+
+    method create_duplicate.CmdWriteProperty
+      return CmdWriteProperty( t, duplicate(context), property, duplicate(new_value) )
+
+    method is_op_assign.Logical
+      return false
+
+    method type.Type
+      return null
+
+    method name.String
+      return "="
+
+    method print( StringBuilder buffer )
+      if (context?)
+        context.print( buffer )
+        buffer.print( '.' )
+      endIf
+      buffer.print( property.name )
+      buffer.print( ' ' )
+      buffer.print( name )
+      buffer.print( ' ' )
+      new_value.print( buffer )
+
+    method resolve.Cmd
+      property.type.resolve(t)
+      new_value = new_value.resolve.require_value
+
+      #if (new_value.type.possibly_null and not property.type.possibly_null)
+      #throw t.error( "'" + property.name + "' can only store null-checked references." )
+      #endIf
+
+      #{
+      if (context?)
+        context = context.resolve.require_value
+        if (is_op_assign and context.is_complex_reference)
+          # Refactor:
+          #   context.property += result
+          #
+          # into:
+          #   local temp = context
+          #   temp.property += result
+          #
+          # so that it may also be written as:
+          #   local temp = context
+          #   temp.property = temp.property + result
+        endIf
+      endIf
+      }#
+
+      if (property.type.is_reference)
+        local var result = resolve_reference_assignment
+        if (result?) return result
+      endIf
+
+      new_value = new_value.resolve.cast_to(t,property.type).resolve
+      return this
+
+    method resolve_reference_assignment.Cmd
+      return null
+
+endClass
+
+class CmdNewObject : Cmd
+  PROPERTIES
+    of_type     : Type
+    init_method : Method
+    args        : CmdArgs
+
+  METHODS
+    method init( t, of_type )
+
+    method init( t, of_type, args, init_method=null )
+
+    method create_duplicate.CmdNewObject
+      return CmdNewObject( t, of_type, duplicate(args), init_method )
+
+    method is_complex_reference.Logical
+      return true
+
+    method type.Type
+      return of_type
+
+    method print( StringBuilder buffer )
+      buffer.print( of_type )
+      buffer.print( '(' )
+      args.print( buffer )
+      buffer.print( ')' )
+
+    method resolve.Cmd
+      of_type.resolve(t)
+
+      if (of_type.is_native)
+        return CmdAccess( t, CmdReadSingleton(t,of_type), "create", args ).resolve
+      endIf
+
+      if (args?) args.resolve
+
+      local var create_method = Analyzer.find_method( t, of_type, "create", args, false )
+      if (create_method?)
+        return CmdAccess( t, CmdReadSingleton(t,of_type), "create", args ).resolve
+      endIf
+
+      init_method = Analyzer.find_method( t, of_type, "init", args, false )
+      if (init_method?)
+        if (args?) args.cast_to( init_method.parameters )
+      else
+        local StringBuilder buffer()
+        buffer.print( "No 'create' or 'init' method matching signature (" )
+        if (args?)
+          local var first = true
+          forEach (arg in args)
+            if (first) first = false
+            else       buffer.print(',')
+            buffer.print( arg.type )
+          endForEach
+        endIf
+        buffer.print( ") in class " )
+        buffer.print( of_type )
+        buffer.print( '.' )
+        throw t.error( buffer.to_String )
+      endIf
+      return this
+
+endClass
+
+class CmdCall : Cmd
+  PROPERTIES
+    context           : Cmd
+    method_info       : Method
+    args              : CmdArgs
+    duplicate_context : Logical
+
+  METHODS
+    method init( t, context, method_info, args=null )
+      if (args is null) args = Analyzer.empty_args
+
+    method create_duplicate.CmdCall
+      return CmdCall( t, duplicate(context), method_info, duplicate(args) )
+
+    method is_complex_reference.Logical
+      return true
+
+    method type.Type
+      return method_info.return_type
+
+    method variable_name.String
+      return method_info.name
+
+    method print( StringBuilder buffer )
+      buffer.print( '(' )
+
+      if (context?)
+        context.print( buffer )
+        buffer.print( '.' )
+      endIf
+
+      buffer.print( method_info.type_context.name )
+      buffer.print( "::" )
+
+      buffer.print( method_info.name )
+      buffer.print( '(' )
+      args.print( buffer )
+      buffer.print( ')' )
+      if (method_info.return_type?)
+        buffer.print( "->" )
+        buffer.print( method_info.return_type )
+      endIf
+      buffer.print( ')' )
+
+    method resolve.Cmd
+      method_info.type_context.resolve( t )
+
+      if (context?)
+        context = context.resolve.require_value
+        context.type.resolve( t )
+        #local var context_type = context.type
+        #if (context_type.possibly_null) throw t.error( "Unchecked reference access." )
+      endIf
+      args.resolve
+      return this
+
+endClass
+
+class CmdStaticCall : CmdCall
+  METHODS
+    method create_duplicate.CmdStaticCall
+      return CmdStaticCall( t, duplicate(context), method_info, duplicate(args) )
+endClass
+
+class CmdDynamicCall : CmdCall
+  METHODS
+    method init( t, context, method_info, args=null )
+      if (args is null) args = Analyzer.empty_args
+
+    method init( Local local_info, method_info, args=null )
+      init( local_info.t, CmdReadLocal(local_info.t, local_info), method_info, args )
+
+    method create_duplicate.CmdDynamicCall
+      return CmdDynamicCall( t, duplicate(context), method_info, duplicate(args) )
+
+    method resolve.Cmd
+      if (method_info.name == "create") return CmdStaticCall( t, context, method_info, args ).resolve
+
+      if (context?)
+        context = context.resolve.require_value
+      endIf
+
+      args.resolve
+      return this
+
+      return prior.resolve
+endClass
+
+class CmdPriorCall( t, String name, CmdArgs args ) : Cmd
+  METHODS
+    method create_duplicate.CmdPriorCall
+      return CmdPriorCall( t, name, duplicate(args) )
+
+    method is_complex_reference.Logical
+      return true
+
+    method resolve.Cmd
+      return resolve_with_type_hint( null )
+
+    method resolve_with_type_hint( Type type_hint ).Cmd
+      local var cur_m = Analyzer.find_method( t, Analyzer.context.this_type, name, args, true )
+      if (cur_m.is_initializer and Analyzer.context.this_type isNot cur_m.type_context)
+        return CmdStaticCall( t, null, cur_m, args ).resolve
+      else
+        local var cur_type = cur_m.type_context
+        if (cur_type.base_types.count == 0) throw t.error( "No prior definition of $::$." (cur_type,cur_m.signature) )
+        local var m = Analyzer.find_method( t, cur_type.base_types.first, name, args, true )
+        return CmdStaticCall( t, null, m, args ).resolve
+      endIf
+endClass
+
+class CmdStatement : Cmd
+  METHODS
+    method type.Type
+      return null
+
+    method resolve.Cmd
+      return this
+endClass
+
+class CmdControlStructure : CmdStatement
+  PROPERTIES
+    control_id=Analyzer.unique_id  : String
+    control_id_used_in_nested_code : Logical
+endClass
+
+class CmdIf : CmdControlStructure
+  PROPERTIES
+    condition           : Cmd
+    body                : CmdStatementList
+    elseIf_conditions() : Cmd[]
+    elseIf_bodies()     : CmdStatementList[]
+    else_body           : CmdStatementList
+
+  METHODS
+    method init( t, condition )
+      body = CmdStatementList()
+
+    method create_duplicate.CmdIf
+      local var result = CmdIf( t, duplicate(condition) )
+      result.body = duplicate(body)
+      forEach (elseIf_c in elseIf_conditions) result.elseIf_conditions.add( duplicate(elseIf_c) )
+      forEach (elseIf_b in elseIf_bodies) result.elseIf_bodies.add( duplicate(elseIf_b) )
+      result.else_body = duplicate( else_body )
+      return result
+
+    method print( StringBuilder buffer )
+      buffer.print( "if (" )
+      condition.print( buffer )
+      buffer.println( ')' )
+
+      body.print( buffer )
+
+      forEach (index of elseIf_conditions)
+        buffer.print( "      elseIf (" )
+        elseIf_conditions[index].print( buffer )
+        buffer.println( ")" )
+        elseIf_bodies[index].print( buffer )
+      endForEach
+
+      if (else_body?)
+        buffer.println( "      else" )
+        else_body.print( buffer )
+      endIf
+      buffer.println( "      endIf" )
+
+    method resolve.Cmd
+      condition = condition.resolve.require_value
+      local var condition_type = condition.type
+      #{
+      if (condition_type.is_reference)
+        return CmdIfNonNull( t, condition, body, else_body ).resolve
+      endIf
+      }#
+
+      condition.require_logical
+
+      Analyzer.context.control_structure_stack.add( this )
+      body.resolve
+
+      forEach (index of elseIf_conditions)
+        elseIf_conditions[index] .= resolve.require_value
+        elseIf_bodies[index].resolve
+      endForEach
+
+      if (else_body?) else_body.resolve
+
+      Analyzer.context.control_structure_stack.remove_last
+      return this
+endClass
+
+class CmdWhich : CmdControlStructure
+  PROPERTIES
+    expression       : Cmd
+    cases(1)         : CmdWhichCase[]
+    others_case      : CmdStatementList
+
+    which_is = false : Logical
+
+  METHODS
+    method init( t, expression, which_is )
+
+    method create_duplicate.CmdWhich
+      local var result = CmdWhich( t, duplicate(expression), which_is )
+      forEach (c in cases) result.cases.add( duplicate(c) )
+      result.others_case = duplicate( others_case )
+      return result
+
+    method resolve.Cmd
+      expression .= resolve
+
+      local CmdIf cmd_if = null
+      forEach (c in cases)
+        local Cmd ors = CmdLiteralLogical( t, false ) # Seed for the OR expression
+        forEach(v in c.values)
+          local Cmd cmp
+          if (not which_is) cmp = CmdCompareEQ( t, expression, v)
+          else              cmp = CmdCompareIs( t, expression, v)
+
+          ors = CmdLogicalOr(t, ors, cmp ) # "Append" next or to expression
+        endForEach
+
+        if (cmd_if?)
+          cmd_if.elseIf_conditions.add( ors )
+          cmd_if.elseIf_bodies.add( c.body )
+        else
+          cmd_if = CmdIf( t, ors )
+          cmd_if.body = c.body
+        endIf
+      endForEach
+
+      if (others_case?)
+        cmd_if.else_body = others_case
+      endIf
+
+      return cmd_if.resolve
+
+endClass
+
+class CmdWhichCase : Cmd
+  PROPERTIES
+    values(1) : Cmd[]
+    body      : CmdStatementList
+
+  METHODS
+    method init( t )
+      body = CmdStatementList()
+
+    method create_duplicate.CmdWhichCase
+      local var result = CmdWhichCase( t )
+      forEach (v in values) result.values.add( duplicate(v) )
+      result.body = duplicate( body )
+      return result
+
+    method resolve.Cmd
+      throw t.error( "resolve() not implemented for CmdWhichCase." )
+
+endClass
+
+#{
+class CmdIfNonNull : CmdControlStructure
+  PROPERTIES
+    condition     : Cmd
+    body          : CmdStatementList
+    else_body     : CmdStatementList
+    #checked_local : Local
+
+  METHODS
+    method init( t, condition, body, else_body )
+      #local var local_var_name = condition.variable_name
+      #if (local_var_name is null)
+      #throw t.error( "A single variable or method name is required for a checked if." )
+      #endIf
+      #checked_local = Local( t, local_var_name, condition.type.checked_type )
+
+    method resolve.Cmd
+      # condition already resolved
+      Analyzer.context.push_local_scope
+      #Analyzer.locals.add( checked_local )
+      body.resolve
+      Analyzer.context.pop_local_scope
+
+      if (else_body?) else_body.resolve
+      return this
+
+      #{
+    method compile( BCWriter writer )
+      local var label = writer.next_control_id + ""
+
+      condition.compile( writer )
+      writer.write( Op.jump_if_null )
+      if (else_body?) writer.write_address( "else_" + label )
+      else            writer.write_address( "end_" + label )
+
+      #writer.write( Op.write_local_Object )
+      #writer.write( checked_local.offset )
+      body.compile( writer )
+
+      if (else_body?)
+        writer.write( Op.jump )
+        writer.write_address( "end_" + label )
+        writer.define_label( "else_" + label )
+        else_body.compile( writer )
+      endIf
+
+      writer.define_label( "end_" + label )
+      }#
+endClass
+}#
+
+class CmdContingent : CmdControlStructure
+  PROPERTIES
+    body             : CmdStatementList
+    satisfied_body   : CmdStatementList
+    unsatisfied_body : CmdStatementList
+
+  METHODS
+    method init( t, body=CmdStatementList() )
+
+    method create_duplicate.CmdContingent
+      local var result = CmdContingent( t, duplicate(body) )
+      result.satisfied_body = duplicate( satisfied_body )
+      result.unsatisfied_body = duplicate( unsatisfied_body )
+      return result
+
+    method print( StringBuilder buffer )
+      buffer.println( "contingent" )
+      body.print( buffer )
+      if (satisfied_body?)
+        buffer.println( "satisfied" )
+        satisfied_body.print( buffer )
+      endIf
+
+      if (unsatisfied_body?)
+        buffer.println( "unsatisfied" )
+        unsatisfied_body.print( buffer )
+      endIf
+
+    method resolve.Cmd
+      Analyzer.context.control_structure_stack.add( this )
+      body.resolve
+
+      if (satisfied_body?) satisfied_body.resolve
+      if (unsatisfied_body?) unsatisfied_body.resolve
+
+      Analyzer.context.control_structure_stack.remove_last
+
+      return this
+endClass
+
+class CmdContingentControlStructure : CmdStatementWithOperand
+  PROPERTIES
+    label     : String
+    target_id : String
+endClass
+
+class CmdNecessary : CmdContingentControlStructure
+  METHODS
+    method create_duplicate.CmdNecessary
+      return CmdNecessary( t, duplicate(operand) )
+
+    method print( StringBuilder buffer )
+      buffer.print( "necessary " )
+      operand.print( buffer )
+
+    method resolve.Cmd
+      forEach (control_structure in Analyzer.context.control_structure_stack.reverse_order)
+        if (control_structure instanceOf CmdContingent)
+          target_id = control_structure.control_id
+          operand = operand.resolve.require_logical
+          control_structure.control_id_used_in_nested_code = true
+          return this
+        endIf
+      endForEach
+
+      throw t.error( "No enclosing 'contingent' for 'necessary' clause." )
+endClass
+
+class CmdSufficient : CmdContingentControlStructure
+  METHODS
+    method create_duplicate.CmdSufficient
+      return CmdSufficient( t, duplicate(operand) )
+
+    method print( StringBuilder buffer )
+      buffer.print( "sufficient " )
+      operand.print( buffer )
+
+    method resolve.Cmd
+      forEach (control_structure in Analyzer.context.control_structure_stack.reverse_order)
+        if (control_structure instanceOf CmdContingent)
+          target_id = control_structure.control_id
+          operand = operand.resolve.require_logical
+          control_structure.control_id_used_in_nested_code = true
+          return this
+        endIf
+      endForEach
+      throw t.error( "No enclosing 'contingent' for 'sufficient' clause." )
+endClass
+
+class CmdAnonymousBlock : CmdControlStructure
+  PROPERTIES
+    body : CmdStatementList
+
+  METHODS
+    method init( t, body=CmdStatementList() )
+
+    method create_duplicate.CmdAnonymousBlock
+      return CmdAnonymousBlock( t, duplicate(body) )
+
+    method print( StringBuilder buffer )
+      body.print( buffer )
+
+    method resolve.Cmd
+      body.resolve
+      return this
+endClass
+
+class CmdDelegate : Cmd
+  PROPERTIES
+    context_cmd         : Cmd
+    params              : Local[]
+    ret_type            : Type
+    method_name         : String
+    base_class_name     : String
+    extended_class_name : String
+    method_signature    : String
+
+  METHODS
+    method init( t, context_cmd, method_name, method_signature, ...
+                 base_class_name, extended_class_name, params, ret_type )
+
+    method is_complex_reference.Logical
+      return true
+
+    method resolve.Cmd
+      local var buffer = StringBuilder()
+      context_cmd .= resolve
+
+      if (Templates.find( base_class_name ) is null)
+        Analyzer.create_base_delegate_type( t, base_class_name, params, ret_type )
+      endIf
+
+
+      local var obj_class = context_cmd.type
+      # println("found method with signature: " + obj_class.find_method( method_signature ))
+      # println("and params: " + obj_class.find_method( method_signature ).parameters[0].type)
+      # println(obj_class.find_methods_with_name(method_name))
+
+      local var extended_delegate_type   = Types.reference( t, extended_class_name )
+      local String extended_class_string = null
+      if (not extended_delegate_type.is_defined)
+        local var call_buffer = StringBuilder()
+        buffer.println( "class $ : $"(extended_class_name, base_class_name) )
+        buffer.println( "  PROPERTIES" )
+        buffer.println( "    context : $"(context_cmd.type) )
+        buffer.println( "  METHODS" )
+        buffer.println( "    method init( context )" )
+        buffer.print( "    method call( " )
+        if (ret_type?) call_buffer.print( "      return context.$"(method_name) )
+        else call_buffer.print( "      context.$"(method_name) )
+        call_buffer.print( "( " )
+        local var i = 0
+        if(params? and params.count?)
+          forEach(i ..< params.count-1)
+            buffer.print( "p$:$, "(i,params[i].type.to_String) )
+            call_buffer.print( "p$, "(i) )
+          endForEach
+          buffer.print( "p$:$ )"(params.count-1, params.last.type.to_String) )
+          call_buffer.print( "p$ )"(params.count-1) )
+        else
+          buffer.print( " )" )
+          call_buffer.print( " )" )
+        endIf
+        if (ret_type?) buffer.println( "->$"(ret_type.to_String) )
+        else buffer.println
+        buffer.println(call_buffer)
+        buffer.println( "endClass" )
+
+        extended_class_string = buffer.to_String
+        # println(extended_class_string)
+        Parser( "[Internal]", extended_class_string ).parse_content
+        extended_delegate_type = Types.reference(t,extended_class_name).resolve
+        buffer.clear
+      endIf
+
+      return CmdNewObject( t, extended_delegate_type, CmdArgs(context_cmd) ).resolve
+
+endClass
+
+
+class CmdIterationControlStructure : CmdControlStructure
+  PROPERTIES
+    body : CmdStatementList
+endClass
+
+class CmdWhile : CmdIterationControlStructure
+  PROPERTIES
+    condition         : Cmd
+    original_for_each : CmdForEach
+
+  METHODS
+    method init( t, condition, body=CmdStatementList() )
+
+    method create_duplicate.CmdWhile
+      return CmdWhile( t, duplicate(condition), duplicate(body) )
+
+    method print( StringBuilder buffer )
+      buffer.print( "while (" )
+      condition.print( buffer )
+      buffer.println( ')' )
+
+      body.print( buffer )
+
+      buffer.println( "      endWhile" )
+
+    method resolve.Cmd
+      condition = condition.resolve.require_value
+      local var condition_type = condition.type
+      #{
+      if (condition_type.is_reference)
+        return CmdIfNonNull( t, condition, body, else_body ).resolve
+      endIf
+      }#
+
+      condition.require_logical
+
+      if (original_for_each?)
+        original_for_each.control_id = control_id
+        Analyzer.context.control_structure_stack.add( original_for_each )
+      else
+        Analyzer.context.control_structure_stack.add( this )
+      endIf
+
+      body.resolve
+
+      Analyzer.context.control_structure_stack.remove_last
+
+      return this
+
+      #{
+    method compile( BCWriter writer )
+      local var control_id = writer.next_control_id
+      local var next_check = 1
+      local var end_label = "end_" + control_id
+      local var has_else = (else_body? and else_body.count?)
+      local var else_count = 0
+      if (has_else) ++else_count
+
+      condition.compile( writer )
+      writer.write( Op.jump_if_false )
+      if (else_count?)
+        writer.write_address( "check_" + control_id + "_" + next_check )
+      else
+        writer.write_address( end_label )
+      endIf
+
+      body.compile( writer )
+      if (else_count?)
+        writer.write( Op.jump )
+        writer.write_address( end_label )
+      endIf
+
+      if (has_else)
+        writer.define_label( "check_" + control_id + "_" + next_check )
+        else_body.compile( writer )
+      endIf
+
+      writer.define_label( end_label )
+      }#
+endClass
+
+class CmdForEach : CmdIterationControlStructure
+endClass
+
+class CmdForEachElementInCollection : CmdForEach
+  PROPERTIES
+    element_t    : Token
+    element_name : String
+    element_info   : Local
+    collection   : Cmd
+    step_size=1  : Integer
+
+  METHODS
+    method init( t, element_t, element_name, collection, body=CmdStatementList() )
+
+    method create_duplicate.CmdForEachElementInCollection
+      local var result = CmdForEachElementInCollection( t, element_t, element_name, duplicate(collection), duplicate(body)  )
+      result.step_size = step_size
+      return result
+
+    method print( StringBuilder buffer )
+      buffer.print( "forEach (" )
+      buffer.print( element_name )
+      buffer.print( ':' )
+      buffer.print( element_info.type )
+      buffer.print( " in " )
+      collection.print( buffer )
+      buffer.println( ")" )
+      body.print( buffer )
+      buffer.println( "      endForEach" )
+
+    method resolve.Cmd
+      if (element_info?) return this
+
+      collection .= resolve.require_value
+
+      local var collection_type = collection.type
+      collection_type.resolve
+
+      local var m_count = collection_type.find_method( "count()->Integer" )
+      local Property p_count = null
+      if (m_count is null) p_count = collection_type.find_property( "count" )
+      local var has_count = m_count? or p_count?
+
+      local var m_get   = collection_type.find_method( "at(Integer)" )
+      if (m_get is null) m_get = collection_type.find_method( "get(Integer)" )
+
+      if (has_count and m_get?)
+        if (m_get.return_type is null) throw collection.error( "Implicit call to $ returns nil." (m_get.signature) )
+        element_info = Local( element_t, element_name, m_get.return_type )
+      else
+        #println( "has_count:" + has_count )
+        #println( "m_get:" + m_get )
+        throw t.error( "TODO: forEach-in with non-indexed collection." )
+      endIf
+
+      local var index_name = ".index_" + Analyzer.unique_id
+      local var index_info = Local( t, index_name, Types.type_Integer )
+
+      local var collection_name = ".collection_" + Analyzer.unique_id
+      local var collection_info = Local( collection.t, collection_name, collection_type )
+
+      Analyzer.context.this_method.add_local( index_info )
+      Analyzer.context.this_method.add_local( collection_info )
+      Analyzer.context.this_method.add_local( element_info )
+
+      Analyzer.add_local( index_info )
+      Analyzer.add_local( collection_info )
+      Analyzer.add_local( element_info )
+
+      local Cmd count_cmd
+      if (m_count?) count_cmd = CmdDynamicCall( collection_info, m_count )
+      else          count_cmd = CmdReadProperty( collection_info, p_count )
+
+      local var condition = CmdCompareLT( index_info.t, CmdReadLocal(index_info), count_cmd )
+
+      local CmdWhile cmd_while( t, condition, body )
+      cmd_while.original_for_each = this
+
+      body.insert( CmdIncrementLocal( index_info.t, index_info ) )
+      body.insert( CmdWriteLocal( element_info, CmdDynamicCall(collection_info,m_get,CmdArgs(CmdReadLocal(index_info))) ) )
+      body.insert( CmdLocalDeclaration(t,element_info) )
+
+      local CmdStatementList result()
+      result.add( CmdLocalDeclaration(t,index_info) )
+      result.add( CmdLocalDeclaration(t,collection_info) )
+      result.add( CmdWriteLocalDefault(t,index_info) )
+      result.add( CmdAssign( collection.t, CmdAccess(collection.t,collection_name), collection ) )
+      result.add( cmd_while )
+
+      return CmdAnonymousBlock( t, result ).resolve
+
+      #Analyzer.context.push_local_scope
+      #Analyzer.add_local( element_info )
+      #body.resolve
+      #Analyzer.context.pop_local_scope
+      #return this
+
+endClass
+
+class CmdForEachIndexOfCollection : CmdForEach
+  PROPERTIES
+    element_t    : Token
+    element_name : String
+    element_info : Local
+    collection   : Cmd
+    step_size=1  : Integer
+
+  METHODS
+    method init( t, element_t, element_name, collection, body=CmdStatementList() )
+
+    method create_duplicate.CmdForEachIndexOfCollection
+      local var result = CmdForEachIndexOfCollection( t, element_t, element_name, duplicate(collection), duplicate(body)  )
+      result.step_size = step_size
+      return result
+
+    method print( StringBuilder buffer )
+      buffer.print( "forEach (" )
+      buffer.print( element_name )
+      buffer.print( ':' )
+      buffer.print( element_info.type )
+      buffer.print( " of " )
+      collection.print( buffer )
+      buffer.println( ")" )
+      body.print( buffer )
+      buffer.println( "      endForEach" )
+
+    method resolve.Cmd
+      if (element_info?) return this
+
+      collection .= resolve.require_value
+
+      local var collection_type = collection.type
+      collection_type.resolve
+
+      local var m_count = collection_type.find_method( "count()->Integer" )
+      local Property p_count = null
+      if (m_count is null) p_count = collection_type.find_property( "count" )
+      local var has_count = m_count? or p_count?
+
+      local var m_get   = collection_type.find_method( "at(Integer)" )
+      if (m_get is null) m_get = collection_type.find_method( "get(Integer)" )
+
+      if (has_count and m_get?)
+        if (m_get.return_type is null) throw collection.error( "Implicit call to $ returns nil." (m_get.signature) )
+        element_info = Local( element_t, element_name, m_get.return_type )
+      else
+        throw t.error( "TODO: forEach-of with non-indexed collection." )
+      endIf
+
+      element_info = Local( t, element_name, Types.type_Integer )
+
+      local var collection_name = ".collection_" + Analyzer.unique_id
+      local var collection_info = Local( collection.t, collection_name, collection_type )
+
+      Analyzer.context.this_method.add_local( collection_info )
+      Analyzer.context.this_method.add_local( element_info )
+
+      Analyzer.add_local( collection_info )
+      Analyzer.add_local( element_info )
+
+      local Cmd count_cmd
+      if (m_count?) count_cmd = CmdDynamicCall( collection_info, m_count )
+      else          count_cmd = CmdReadProperty( collection_info, p_count )
+
+      local var con_t = element_info.t
+      local var condition = CmdCompareLT( con_t, CmdReadLocal(element_info),
+        CmdSubtract(con_t, count_cmd, CmdLiteralInteger(con_t,1)) )
+
+      local CmdWhile cmd_while( t, condition, body )
+      cmd_while.original_for_each = this
+
+      body.insert( CmdIncrementLocal( element_info.t, element_info ) )
+
+      local CmdStatementList result()
+      result.add( CmdLocalDeclaration(t,element_info) )
+      result.add( CmdLocalDeclaration(t,collection_info) )
+      result.add( CmdWriteLocal(element_info,CmdLiteralInteger(element_info.t,-1)) )
+      result.add( CmdAssign( collection.t, CmdAccess(collection.t,collection_name), collection ) )
+      result.add( cmd_while )
+
+      return CmdAnonymousBlock( t, result ).resolve
+
+endClass
+
+class CmdLoop : CmdIterationControlStructure
+  METHODS
+    method init( t, body=CmdStatementList() )
+
+    method create_duplicate.CmdLoop
+      return CmdLoop( t, duplicate(body) )
+
+    method print( StringBuilder buffer )
+      buffer.println( "loop" )
+      body.print( buffer )
+      buffer.println( "      endLoop" )
+
+    method resolve.Cmd
+      Analyzer.context.control_structure_stack.add( this )
+      body.resolve
+      Analyzer.context.control_structure_stack.remove_last
+      return this
+
+endClass
+
+class CmdTry : CmdControlStructure
+  PROPERTIES
+    body      : CmdStatementList
+    catches() : CmdCatch[]
+
+  METHODS
+    method init( t, body=CmdStatementList() )
+
+    method create_duplicate.CmdTry
+      local var result = CmdTry( t, duplicate(body) )
+      forEach (c in catches) result.catches.add( duplicate(c) )
+      return result
+
+    method resolve.Cmd
+      Analyzer.context.control_structure_stack.add( this )
+
+      body.resolve
+      forEach (cur_catch in catches) cur_catch.resolve
+
+      Analyzer.context.control_structure_stack.remove_last
+
+      return this
+endClass
+
+class CmdCatch : Cmd
+  PROPERTIES
+    parent     : CmdTry
+    local_name : String
+    local_type : Type
+    local_info : Local
+    body       : CmdStatementList
+
+  METHODS
+    method init( t, parent, body=CmdStatementList() )
+
+    method create_duplicate.CmdCatch
+      local var result = CmdCatch( t, parent, duplicate(body) )
+      result.local_name = local_name
+      result.local_type = local_type
+      result.local_info = local_info
+      return result
+
+    method resolve.Cmd
+      if (local_info is null)
+        local_type.resolve
+        local_info = Local( t, local_name, local_type )
+        Analyzer.context.this_method.add_local( local_info )
+      endIf
+
+      Analyzer.context.push_local_scope
+      Analyzer.add_local( local_info )
+
+      body.resolve
+
+      Analyzer.context.pop_local_scope
+      return this
+endClass
+
+class CmdThrow : CmdStatementWithOperand
+  METHODS
+    method create_duplicate.CmdThrow
+      return CmdThrow( t, duplicate(operand) )
+
+    method print( StringBuilder buffer )
+      buffer.print( "throw " )
+      operand.print( buffer )
+
+    method resolve.Cmd
+      operand .= resolve.require_value
+      if (not operand.type.instance_of(Types.type_Exception))
+        throw operand.t.error( "Thrown object must be instance of Exception." )
+      endIf
+      return this
+endClass
+
+class CmdControlReset : CmdStatement
+  PROPERTIES
+    label     : String
+    target_id : String
+endClass
+
+class CmdEscapeContingent : CmdControlReset
+  METHODS
+    method init ( t )
+
+    method create_duplicate.CmdEscapeContingent
+      return CmdEscapeContingent( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "escapeContingent" )
+
+    method resolve.Cmd
+      forEach (control_structure in Analyzer.context.control_structure_stack.reverse_order)
+        if (control_structure instanceOf CmdContingent)
+          target_id = control_structure.control_id
+          control_structure.control_id_used_in_nested_code = true
+          return this
+        endIf
+      endForEach
+      throw t.error( "No enclosing 'contingent' to escape from." )
+endClass
+
+class CmdEscapeForEach : CmdControlReset
+  METHODS
+    method init( t )
+
+    method create_duplicate.CmdEscapeForEach
+      return CmdEscapeForEach( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "escapeForEach" )
+
+    method resolve.Cmd
+      forEach (control_structure in Analyzer.context.control_structure_stack.reverse_order)
+        if (control_structure instanceOf CmdForEach)
+          target_id = control_structure.control_id
+          control_structure.control_id_used_in_nested_code = true
+          return this
+        endIf
+      endForEach
+
+      throw t.error( "No enclosing 'forEach' to escape from." )
+endClass
+
+class CmdEscapeIf : CmdControlReset
+  METHODS
+    method init( t )
+
+    method create_duplicate.CmdEscapeIf
+      return CmdEscapeIf( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "escapeIf" )
+
+    method resolve.Cmd
+      forEach (control_structure in Analyzer.context.control_structure_stack.reverse_order)
+        if (control_structure instanceOf CmdIf)
+          target_id = control_structure.control_id
+          control_structure.control_id_used_in_nested_code = true
+          return this
+        endIf
+      endForEach
+
+      throw t.error( "No enclosing 'if' to escape from." )
+endClass
+
+class CmdEscapeLoop : CmdControlReset
+  METHODS
+    method init( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "escapeLoop" )
+
+    method resolve.Cmd
+      forEach (control_structure in Analyzer.context.control_structure_stack.reverse_order)
+        if (control_structure instanceOf CmdLoop)
+          target_id = control_structure.control_id
+          control_structure.control_id_used_in_nested_code = true
+          return this
+        endIf
+      endForEach
+
+      throw t.error( "No enclosing 'loop' to escape from." )
+endClass
+
+class CmdEscapeTry : CmdControlReset
+  METHODS
+    method init( t )
+
+    method create_duplicate.CmdEscapeTry
+      return CmdEscapeTry( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "escapeTry" )
+
+    method resolve.Cmd
+      forEach (control_structure in Analyzer.context.control_structure_stack.reverse_order)
+        if (control_structure instanceOf CmdTry)
+          target_id = control_structure.control_id
+          control_structure.control_id_used_in_nested_code = true
+          return this
+        endIf
+      endForEach
+
+      throw t.error( "No enclosing 'try' to escape from." )
+endClass
+
+class CmdEscapeWhile : CmdControlReset
+  METHODS
+    method init( t )
+
+    method create_duplicate.CmdEscapeWhile
+      return CmdEscapeWhile( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "escapeWhile" )
+
+    method resolve.Cmd
+      forEach (control_structure in Analyzer.context.control_structure_stack.reverse_order)
+        if (control_structure instanceOf CmdWhile)
+          target_id = control_structure.control_id
+          control_structure.control_id_used_in_nested_code = true
+          return this
+        endIf
+      endForEach
+
+      throw t.error( "No enclosing 'while' to escape from." )
+endClass
+
+class CmdNextIteration : CmdControlReset
+  METHODS
+    method init( t )
+
+    method create_duplicate.CmdNextIteration
+      return CmdNextIteration( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "escapeNextIteration" )
+
+    method resolve.Cmd
+      forEach (control_structure in Analyzer.context.control_structure_stack.reverse_order)
+        if (control_structure instanceOf CmdIterationControlStructure)
+          target_id = control_structure.control_id
+          control_structure.control_id_used_in_nested_code = true
+          return this
+        endIf
+      endForEach
+
+      throw t.error( "No enclosing iterator to escape from." )
+endClass
+
+class CmdStatementWithOperand : CmdStatement
+  PROPERTIES
+    operand : Cmd
+
+  METHODS
+    method init( t, operand )
+
+    method type.Type
+      return null
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      return this
+endClass
+
+class CmdTrace : CmdStatement
+  PROPERTIES
+    method_context : Method
+    labels()       : String[]
+    expressions()  : Cmd[]
+    command        : Cmd
+
+  METHODS
+    method create_duplicate.CmdTrace
+      local var result = CmdTrace( t )
+      result.labels = duplicate(labels)
+      result.expressions = duplicate(expressions)
+      result.command = duplicate(command)
+      return result
+
+    method resolve.Cmd
+      if (command?) return this
+
+      command = CmdLiteralString( t, "[$ line $, $::$]  " (File(t.filepath).filename,t.line,method_context.type_context,method_context.signature) )
+
+      forEach (i of expressions)
+        local var expression = expressions[i].resolve.require_value
+        if (expression instanceOf CmdLiteralString)
+          command = CmdAdd( t, command, expression )
+        else
+          command = CmdAdd( t, command, CmdLiteralString(t,labels[i]+":") )
+          command = CmdAdd( t, command, expression )
+        endIf
+      endForEach
+
+      return CmdAccess( t, CmdReadSingleton(t,Types.type_Global), "println", CmdArgs(command) ).resolve
+endClass
+
+class CmdThrowMissingReturn : CmdStatement
+  METHODS
+    method create_duplicate.CmdThrowMissingReturn
+      return CmdThrowMissingReturn( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "throw MissingReturnError()" )
+endClass
+
+class CmdTron : CmdStatement
+  METHODS
+    method create_duplicate.CmdTron
+      return CmdTron( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "tron" )
+endClass
+
+class CmdTroff : CmdStatement
+  METHODS
+    method create_duplicate.CmdTroff
+      return CmdTroff( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "troff" )
+endClass
+
+class CmdReturn : CmdStatement
+    method create_duplicate.CmdReturn
+      return CmdReturn( t )
+endClass
+
+class CmdReturnNil : CmdReturn
+  METHODS
+    method create_duplicate.CmdReturnNil
+      return CmdReturnNil( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "return" )
+
+    method resolve.Cmd
+      if (Analyzer.context.this_method.name == "init")
+        return CmdReturnThis( t, Analyzer.context.this_method.type_context ).resolve
+      endIf
+      return this
+endClass
+
+class CmdReturnNull : CmdReturn
+  METHODS
+    method create_duplicate.CmdReturnNull
+      return CmdReturnNull( t )
+
+    method print( StringBuilder buffer )
+      buffer.print( "return null" )
+
+    method resolve.Cmd
+      local var return_type = Analyzer.context.this_method.return_type
+      if (return_type is null)
+        throw t.error( "Method is not declared as returning a value." )
+      endIf
+      #if (not return_type.possibly_null) throw t.error( "Non-null return value required." )
+      return this
+
+endClass
+
+class CmdReturnThis : CmdReturn
+  PROPERTIES
+    return_type : Type
+
+  METHODS
+    method init( t, return_type )
+
+    method create_duplicate.CmdReturnThis
+      return CmdReturnThis( t, return_type )
+
+    method print( StringBuilder buffer )
+      buffer.print( "return this" )
+
+    method resolve.Cmd
+      return_type.resolve(t)
+      if (Analyzer.context.this_method.return_type is null)
+        throw t.error( "Method is not declared as returning a value." )
+      endIf
+      return this
+
+endClass
+
+class CmdReturnValue : CmdReturn
+  PROPERTIES
+    operand : Cmd
+
+  METHODS
+    method init( t, operand )
+
+    method create_duplicate.CmdReturnValue
+      return CmdReturnValue( t, duplicate(operand) )
+
+    method type.Type
+      return null
+
+    method determine_implicit_return_type
+      Analyzer.apply_implicit_return_type( operand.implicit_type )
+
+    method print( StringBuilder buffer )
+      buffer.print( "return " )
+      operand.print( buffer )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local var return_type = Analyzer.context.this_method.return_type
+      if (return_type is null)
+        throw t.error( "Method is not declared as returning a value." )
+      endIf
+      operand.require_value
+
+      return_type.resolve
+      operand.type.resolve
+
+      #operand.require_value( return_type.possibly_null )
+      operand = operand.cast_to( t, Analyzer.context.this_method.return_type ).resolve
+      return this
+
+endClass
+
+class CmdCast : CmdUnary
+  METHODS
+    method is_complex_reference.Logical
+      return true
+
+endClass
+
+class CmdImplicitCastToType : CmdCast
+  # In Bard terminology a 'cast' can be either a conversion or a coercion.
+  # Operations such as variable assignments and method calls convert their
+  # operands and arguments to a specific target type using an 'implicit cast'
+  # that resolves to either a conversion, a coercion, or an error.
+  #
+  # IMPLICIT CAST MECHANISMS USED
+  #
+  # SRC TYPE  | TARGET TYPE
+  #           | Object       Reference    Primitive    Compound
+  # Object    | N/A          to->Type     to->Type     to->Type
+  # Reference | Generalize   Generalize/E ERROR        ERROR
+  # Primitive | Box          ERROR        Convert      ERROR
+  # Compound  | Box          ERROR        ERROR        ERROR
+  #
+  PROPERTIES
+    to_type : Type
+
+  METHODS
+    method init( t, operand, to_type )
+
+    method create_duplicate.CmdImplicitCastToType
+      return CmdImplicitCastToType( t, duplicate(operand), to_type )
+
+    method type.Type
+      return to_type
+
+    method implicit_type.Type
+      return to_type
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( " castTo " )
+      buffer.print( to_type )
+
+    method resolve.Cmd
+      to_type.resolve(t)
+
+      operand = operand.resolve_with_type_hint(to_type).require_value
+      local var from_type = operand.type
+
+      if (from_type is to_type) return operand
+
+      if (from_type.is_primitive and to_type.is_primitive)
+        return CmdConvertToType( t, operand, to_type ).resolve
+      endIf
+
+      if (from_type is Types.type_Object)
+        return CmdAccess( t, operand, "to_"+to_type, null ).cast_to(t,to_type).resolve
+
+      elseIf (from_type.is_reference)
+        if (to_type.is_reference)
+          if (from_type.instance_of( to_type)) return CmdGeneralizeReference( t, operand,  to_type).resolve
+          else throw t.error( "Type $ cannot be implicitly cast to type $.  Explicitly convert obj->$ or recast (obj as $)." (from_type,to_type,to_type,to_type) )
+        else
+          throw t.error( "Type $ cannot be implicitly cast to type $.  Explicit obj->$ conversion required." (from_type,to_type,to_type) )
+        endIf
+
+      elseIf (from_type.is_primitive)
+        #println( "From $ to $" (from_type,to_type))
+        #println( System.stack_trace )
+        if (to_type is Types.type_Object)
+          throw t.error( "TODO: box primitive as Object (1)." )
+        else
+          throw t.error( "Type $ cannot be implicitly cast to type $.  Explicit obj->$ conversion required." (from_type,to_type,to_type) )
+        endIf
+
+      else
+        # from_type is compound
+        if (to_type is Types.type_Object)
+          #println( "OPERAND:" + operand )
+          return CmdImplicitCastToType( t, CmdNewObject(t, Types.reference(t,"Boxed<<$>>"(from_type.name)), CmdArgs(operand)), to_type ).resolve
+        else
+          throw t.error( "Type $ cannot be implicitly cast to type $.  Explicit obj->$ conversion required." (from_type,to_type,to_type) )
+        endIf
+
+      endIf
+
+      throw t.error( "Unhandled cast: " + from_type.name + "->" + to_type.name )
+endClass
+
+class CmdConvertToType : CmdCast
+  PROPERTIES
+    to_type : Type
+
+  METHODS
+    method init( t, operand, to_type )
+
+    method create_duplicate.CmdConvertToType
+      return CmdConvertToType( t, duplicate(operand), to_type )
+
+    method type.Type
+      return to_type
+
+    method implicit_type.Type
+      return to_type
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( "->" )
+      buffer.print( to_type )
+
+    method resolve.Cmd
+      to_type.resolve(t)
+
+      operand = operand.resolve_with_type_hint(to_type).require_value
+      local var from_type = operand.type
+      if (from_type is to_type) return operand
+
+      #{
+      if (from_type.def is to_type.def)
+        #if (to_type.possibly_null) return CmdGeneralizeReference( t, operand, to_type )
+        throw t.error( "Cannot cast a possibly null reference to a non-null reference type." )
+      endIf
+      }#
+
+      #{
+      if (from_type.is_primitive and to_type.is_reference)
+        if (to_type.def is Types.type_IntegerObject or to_type.is_Object)
+          return CmdAccess( t, "IntegerObject", CmdArgs(operand) ).resolve
+        endIf
+      endIf
+      }#
+
+      if (from_type.is_primitive and to_type.is_primitive)
+        if (to_type.is_Real)
+          if (from_type.is_Integer) return CmdConvertIntegerToReal( t, operand ).resolve
+        elseIf (to_type.is_Integer)
+          if     (from_type.is_Real)      return CmdConvertRealToInteger( t, operand ).resolve
+          elseIf (from_type.is_Character) return CmdConvertCharacterToInteger( t, operand ).resolve
+          elseIf (from_type.is_Byte)      return CmdConvertByteToInteger( t, operand ).resolve
+          elseIf (from_type.is_Logical)   return CmdConvertLogicalToInteger( t, operand ).resolve
+        elseIf (to_type.is_Character)
+          if     (from_type.is_Integer)   return CmdConvertIntegerToCharacter( t, operand ).resolve
+          else                            return operand.cast_to(t,Types.type_Integer).cast_to(t,Types.type_Character).resolve
+        elseIf (to_type.is_Byte)
+          if     (from_type.is_Integer)   return CmdConvertIntegerToByte( t, operand ).resolve
+          else                            return operand.cast_to(t,Types.type_Integer).cast_to(t,Types.type_Byte).resolve
+        endIf
+
+      else
+        # "obj->Type" -> "obj.to()->Type"
+        local var cmd = Analyzer.resolve_call( t, null, operand, "to_"+to_type, null, false )
+        if (cmd?) return cmd
+
+        throw t.error( //Type $ does not define conversion "method to->$".// (from_type,to_type) )
+      endIf
+endClass
+
+class CmdRecastAsType : CmdCast
+  PROPERTIES
+    as_type : Type
+
+  METHODS
+    method init( t, operand, as_type )
+
+    method create_duplicate.CmdRecastAsType
+      return CmdRecastAsType( t, duplicate(operand), as_type )
+
+    method type.Type
+      return as_type
+
+    method implicit_type.Type
+      return as_type
+
+    method print( StringBuilder buffer )
+      buffer.print( '(' )
+      operand.print( buffer )
+      buffer.print( " as " )
+      buffer.print( as_type )
+      buffer.print( ')' )
+
+    method resolve.Cmd
+      as_type.resolve(t)
+
+      operand = operand.resolve_with_type_hint(as_type).require_value
+      local var from_type = operand.type
+      if (from_type is as_type) return operand
+
+      if (from_type.is_reference and as_type.is_reference)
+        if (from_type.instance_of( as_type)) return CmdGeneralizeReference( t, operand,  as_type)
+        else                                 return CmdSpecializeReference( t, operand,  as_type)
+      endIf
+
+      if (from_type.is_reference and not as_type.is_reference)
+        throw t.error( //Cannot recast a reference to a non-reference type.  You can write "ref->$" to call the to->$()() conversion method of the reference.// (as_type,as_type)  )
+      endIf
+
+      if (not from_type.is_reference and as_type.is_reference)
+        throw t.error( //Cannot recast a value type to a reference type.  You can write "value->$" to call "$.create_from(value)" (compiler's first choice) or "$.to(value)->$()()" (compiler's second choice).// (as_type,as_type,from_type,as_type) )
+      endIf
+
+      #{
+      if (as_type.is_Real)
+        #if (from_type.is_Integer) return CmdConvertIntegerToReal( t, operand ).resolve
+      elseIf (as_type.is_Integer)
+        #if     (from_type.is_Real)      return CmdConvertRealToInteger( t, operand ).resolve
+        if (from_type.is_Character) return CmdCharacterAsInteger( t, operand, as_type ).resolve
+        #elseIf (from_type.is_Logical)   return CmdConvertLogicalToInteger( t, operand ).resolve
+      elseIf (as_type.is_Character)
+        #if     (from_type.is_Real)      return CmdConvertRealToInteger( t, operand ).resolve
+        if (from_type.is_Integer)   return CmdIntegerAsCharacter( t, operand, as_type ).resolve
+        #elseIf (from_type.is_Logical)   return CmdConvertLogicalToInteger( t, operand ).resolve
+      endIf
+      }#
+
+      throw t.error( "Unhandled recast: " + from_type.name + " as " + as_type.name )
+endClass
+
+#{
+class CmdCharacterAsInteger : CmdRecastAsType
+  METHODS
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local var literal_operand = operand as CmdLiteralCharacter
+      if (literal_operand?)
+        return CmdLiteralInteger( t, Integer(literal_operand.value) )
+      endIf
+      return this
+endClass
+
+class CmdIntegerAsCharacter : CmdRecastAsType
+  METHODS
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local var literal_operand = operand as CmdLiteralInteger
+      if (literal_operand?)
+        return CmdLiteralCharacter( t, Char(literal_operand.value) )
+      endIf
+      return this
+endClass
+}#
+
+class CmdGeneralizeReference : CmdRecastAsType
+  METHODS
+    method create_duplicate.CmdGeneralizeReference
+      return CmdGeneralizeReference( t, duplicate(operand), as_type )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      return this
+
+endClass
+
+class CmdSpecializeReference : CmdRecastAsType
+  METHODS
+    method create_duplicate.CmdSpecializeReference
+      return CmdSpecializeReference( t, duplicate(operand), as_type )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      return this
+
+endClass
+
+class CmdConvertIntegerToReal : CmdCast
+  METHODS
+    method type.Type
+      return Types.type_Real
+
+    method create_duplicate.CmdConvertIntegerToReal
+      return CmdConvertIntegerToReal( t, duplicate(operand) )
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( "->Real" )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      if (operand instanceOf CmdLiteral) return CmdLiteralReal( t, operand.(CmdLiteralInteger).value )
+      return this
+
+endClass
+
+class CmdConvertRealToInteger : CmdCast
+  METHODS
+    method create_duplicate.CmdConvertRealToInteger
+      return CmdConvertRealToInteger( t, duplicate(operand) )
+
+    method type.Type
+      return Types.type_Integer
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( "->Integer" )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      if (operand instanceOf CmdLiteral) return CmdLiteralInteger( t, operand.(CmdLiteralReal).value )
+      return this
+
+endClass
+
+class CmdConvertCharacterToInteger : CmdCast
+  METHODS
+    method create_duplicate.CmdConvertCharacterToInteger
+      return CmdConvertCharacterToInteger( t, duplicate(operand) )
+
+    method type.Type
+      return Types.type_Integer
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( "->Integer" )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local var character_operand = (operand as CmdLiteralCharacter)
+      if (character_operand?)
+        return CmdLiteralInteger( t, Integer(character_operand.value) )
+      endIf
+      return this
+
+endClass
+
+class CmdConvertByteToInteger : CmdCast
+  METHODS
+    method create_duplicate.CmdConvertByteToInteger
+      return CmdConvertByteToInteger( t, duplicate(operand) )
+
+    method type.Type
+      return Types.type_Integer
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( "->Integer" )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local var byte_operand = (operand as CmdLiteralByte)
+      if (byte_operand?)
+        return CmdLiteralInteger( t, Integer(byte_operand.value) )
+      endIf
+      return this
+
+endClass
+
+class CmdConvertIntegerToCharacter : CmdCast
+  METHODS
+    method create_duplicate.CmdConvertIntegerToCharacter
+      return CmdConvertIntegerToCharacter( t, duplicate(operand) )
+
+    method type.Type
+      return Types.type_Character
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( "->Character" )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local var integer_operand = (operand as CmdLiteralInteger)
+      if (integer_operand?)
+        return CmdLiteralCharacter( t, Char(integer_operand.value) )
+      endIf
+      return this
+
+endClass
+
+class CmdConvertIntegerToByte : CmdCast
+  METHODS
+    method create_duplicate.CmdConvertIntegerToByte
+      return CmdConvertIntegerToByte( t, duplicate(operand) )
+
+    method type.Type
+      return Types.type_Byte
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( "->Byte" )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local var integer_operand = (operand as CmdLiteralInteger)
+      if (integer_operand?)
+        return CmdLiteralByte( t, integer_operand.value & 255 )
+      endIf
+      return this
+
+endClass
+
+class CmdConvertLogicalToInteger : CmdCast
+  METHODS
+    method create_duplicate.CmdConvertLogicalToInteger
+      return CmdConvertLogicalToInteger( t, duplicate(operand) )
+
+    method type.Type
+      return Types.type_Integer
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( "->Integer" )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      if (operand instanceOf CmdLiteral)
+        local var value = 0
+        if (operand.(CmdLiteralLogical).value) value = 1
+        return CmdLiteralInteger( t, value )
+      endIf
+      return this
+
+endClass
+
+class CmdTypeManipulation : Cmd
+  PROPERTIES
+    operand : Cmd
+    target_type : Type
+
+  METHODS
+    method init( t, operand, target_type )
+
+    method is_complex_reference.Logical
+      return true
+
+    method resolve.Cmd
+      target_type.resolve(t)
+      return this
+
+endClass
+
+class CmdInstanceOf : CmdTypeManipulation
+  METHODS
+    method create_duplicate.CmdInstanceOf
+      return CmdInstanceOf( t, duplicate(operand), target_type )
+
+    method type.Type
+      return Types.type_Logical
+
+    method implicit_type.Type
+      return Types.type_Logical
+
+    method print( StringBuilder buffer )
+      buffer.print( '(' )
+      operand.print( buffer )
+      buffer.print( " instanceOf " )
+      buffer.print( target_type )
+      buffer.print( ')' )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local var operand_type = operand.type
+
+      if (operand_type.instance_of(target_type)) return CmdLiteralLogical( t, true )
+
+      if (operand_type.is_primitive) return CmdLiteralLogical( t, false )
+
+      if (target_type.is_primitive)
+        return CmdLiteralLogical( t, false )
+      endIf
+
+      return this
+
+endClass
+
+
+class CmdBinary : Cmd
+  PROPERTIES
+    lhs, rhs    : Cmd
+    opcode = -1 : Integer
+
+  METHODS
+    method init( t, lhs, rhs )
+
+    method implicit_type.Type
+      local var lhs_type = lhs.implicit_type
+      local var rhs_type = rhs.implicit_type
+      if (lhs_type is null or rhs_type is null) return null
+      return common_type( lhs, rhs )
+
+    method is_complex_reference.Logical
+      return true
+
+    method type.Type
+      return lhs.type
+
+    method name.String
+      return "[unnamed binary op]"
+
+    method print( StringBuilder buffer )
+      buffer.print( '(' )
+      lhs.print( buffer )
+      buffer.print( ' ' )
+      buffer.print( name )
+      buffer.print( ' ' )
+      rhs.print( buffer )
+      buffer.print( ')' )
+
+    method resolve.Cmd
+      lhs = lhs.resolve.require_value
+      rhs = rhs.resolve.require_value
+      local var lhs_type = lhs.type
+      local var rhs_type = rhs.type
+
+      return resolve_for_operand_types( lhs_type, rhs_type )
+
+    method resolve_for_operand_types( Type lhs_type, Type rhs_type ).Cmd
+      local Cmd result
+
+      if (lhs_type.is_reference) result = resolve_with_lhs_reference
+      if (result?) return result
+
+      if (rhs_type.is_reference) result = resolve_with_rhs_reference
+      if (result?) return result
+
+      if (lhs_type.is_compound)  result = resolve_with_lhs_reference
+      if (result?) return result
+
+      if (rhs_type.is_compound)  result = resolve_with_rhs_reference
+      if (result?) return result
+
+      local var common_type = common_type( lhs, rhs )
+      cast_to_common_type( common_type )
+      return resolve_for_common_type( common_type )
+
+    method resolve_with_lhs_reference.Cmd
+      return null
+
+    method resolve_with_rhs_reference.Cmd
+      return null
+
+    method resolve_for_common_type( Type common_type ).Cmd
+      if (common_type is null) common_type = common_type( lhs, rhs )
+
+      if (lhs instanceOf CmdLiteral and rhs instanceOf CmdLiteral)
+        if (common_type.is_Real)
+          local var result = combine_literal_Real_operands( (lhs as CmdLiteralReal).value, (rhs as CmdLiteralReal).value )
+          if (result?) return result
+        elseIf (common_type.is_Integer)
+          local var result = combine_literal_Integer_operands( (lhs as CmdLiteralInteger).value, (rhs as CmdLiteralInteger).value )
+          if (result?) return result
+        elseIf (common_type.is_Logical)
+          local var result = combine_literal_Logical_operands( (lhs as CmdLiteralLogical).value, (rhs as CmdLiteralLogical).value )
+          if (result?) return result
+        else
+          local var result = combine_literal_operands( common_type )
+          if (result?) return result
+        endIf
+      endIf
+
+      return this
+
+    method cast_to_common_type( Type common_type )
+      lhs = lhs.cast_to( lhs.t, common_type ).resolve
+      rhs = rhs.cast_to( rhs.t, common_type ).resolve
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return null
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return null
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return null
+
+    method combine_literal_operands( Type common_type ).Cmd
+      return null
+
+endClass
+
+class CmdOpAssign : CmdAssign
+  PROPERTIES
+    operation : Integer
+
+  METHODS
+    method init( t, operand, new_value, operation )
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( ' ' )
+      buffer.print( Token.name(operation) )
+      buffer.print( ' ' )
+      new_value.print( buffer )
+
+    method resolve.Cmd
+      return operand.resolve_assignment( new_value, operation )
+
+endClass
+
+class CmdOpAssignLocal : CmdWriteLocal
+  METHODS
+    method name.String
+      return "?"
+
+    method print( StringBuilder buffer )
+      buffer.print( local_info.name )
+      buffer.print( ' ' )
+      buffer.print( name )
+      buffer.print( ' ' )
+      new_value.print( buffer )
+
+endClass
+
+class CmdAddAssignLocal : CmdOpAssignLocal
+  METHODS
+    method create_duplicate.CmdAddAssignLocal
+      return CmdAddAssignLocal( t, local_info, duplicate(new_value) )
+
+    method name.String
+      return "+="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignLocal( t, local_info, "operator+=", new_value ).resolve
+
+endClass
+
+class CmdSubtractAssignLocal : CmdOpAssignLocal
+  METHODS
+    method create_duplicate.CmdSubtractAssignLocal
+      return CmdSubtractAssignLocal( t, local_info, duplicate(new_value) )
+
+    method name.String
+      return "-="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignLocal( t, local_info, "operator-=", new_value ).resolve
+endClass
+
+class CmdMultiplyAssignLocal : CmdOpAssignLocal
+  METHODS
+    method create_duplicate.CmdMultiplyAssignLocal
+      return CmdMultiplyAssignLocal( t, local_info, duplicate(new_value) )
+
+    method name.String
+      return "*="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignLocal( t, local_info, "operator*=", new_value ).resolve
+endClass
+
+class CmdDivideAssignLocal : CmdOpAssignLocal
+  METHODS
+    method create_duplicate.CmdDivideAssignLocal
+      return CmdDivideAssignLocal( t, local_info, duplicate(new_value) )
+
+    method name.String
+      return "/="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignLocal( t, local_info, "operator/=", new_value ).resolve
+endClass
+
+class CmdModAssignLocal : CmdOpAssignLocal
+  METHODS
+    method create_duplicate.CmdModAssignLocal
+      return CmdModAssignLocal( t, local_info, duplicate(new_value) )
+
+    method name.String
+      return "%="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignLocal( t, local_info, "operator%=", new_value ).resolve
+endClass
+
+class CmdPowerAssignLocal : CmdOpAssignLocal
+  METHODS
+    method create_duplicate.CmdPowerAssignLocal
+      return CmdPowerAssignLocal( t, local_info, duplicate(new_value) )
+
+    method name.String
+      return "^="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignLocal( t, local_info, "operator^=", new_value ).resolve
+endClass
+
+class CmdBitwiseAndAssignLocal : CmdOpAssignLocal
+  METHODS
+    method create_duplicate.CmdBitwiseAndAssignLocal
+      return CmdBitwiseAndAssignLocal( t, local_info, duplicate(new_value) )
+
+    method name.String
+      return "&="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignLocal( t, local_info, "operator&=", new_value ).resolve
+endClass
+
+class CmdBitwiseOrAssignLocal : CmdOpAssignLocal
+  METHODS
+    method create_duplicate.CmdBitwiseOrAssignLocal
+      return CmdBitwiseOrAssignLocal( t, local_info, duplicate(new_value) )
+
+    method name.String
+      return "|="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignLocal( t, local_info, "operator|=", new_value ).resolve
+endClass
+
+class CmdBitwiseXorAssignLocal : CmdOpAssignLocal
+  METHODS
+    method create_duplicate.CmdBitwiseXorAssignLocal
+      return CmdBitwiseXorAssignLocal( t, local_info, duplicate(new_value) )
+
+    method name.String
+      return "~="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignLocal( t, local_info, "operator~=", new_value ).resolve
+endClass
+
+class CmdAccessAssignLocal : Cmd
+  PROPERTIES
+    local_info : Local
+    access     : Cmd
+
+  METHODS
+    method init( t, local_info, String name, Cmd new_value )
+      access = CmdAccess( t, CmdReadLocal(t,local_info), name, CmdArgs(new_value) ).resolve.require_value
+
+    method resolve.Cmd
+      return this
+endClass
+
+
+class CmdOpAssignProperty : CmdWriteProperty
+  METHODS
+    method name.String
+      return "?"
+
+    method is_op_assign.Logical
+      return true
+
+    method print( StringBuilder buffer )
+      buffer.print( property.name )
+      buffer.print( ' ' )
+      buffer.print( name )
+      buffer.print( ' ' )
+      new_value.print( buffer )
+
+endClass
+
+class CmdAddAssignProperty : CmdOpAssignProperty
+  METHODS
+    method create_duplicate.CmdAddAssignProperty
+      return CmdAddAssignProperty( t, duplicate(context), property, duplicate(new_value) )
+
+    method name.String
+      return "+="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignProperty( t, context, property, "operator+=", new_value ).resolve
+endClass
+
+class CmdSubtractAssignProperty : CmdOpAssignProperty
+  METHODS
+    method create_duplicate.CmdSubtractAssignProperty
+      return CmdSubtractAssignProperty( t, duplicate(context), property, duplicate(new_value) )
+
+    method name.String
+      return "-="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignProperty( t, context, property, "operator-=", new_value ).resolve
+endClass
+
+class CmdMultiplyAssignProperty : CmdOpAssignProperty
+  METHODS
+    method create_duplicate.CmdMultiplyAssignProperty
+      return CmdMultiplyAssignProperty( t, duplicate(context), property, duplicate(new_value) )
+
+    method name.String
+      return "*="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignProperty( t, context, property, "operator*=", new_value ).resolve
+endClass
+
+class CmdDivideAssignProperty : CmdOpAssignProperty
+  METHODS
+    method create_duplicate.CmdDivideAssignProperty
+      return CmdDivideAssignProperty( t, duplicate(context), property, duplicate(new_value) )
+
+    method name.String
+      return "/="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignProperty( t, context, property, "operator/=", new_value ).resolve
+endClass
+
+class CmdModAssignProperty : CmdOpAssignProperty
+  METHODS
+    method create_duplicate.CmdModAssignProperty
+      return CmdModAssignProperty( t, duplicate(context), property, duplicate(new_value) )
+
+    method name.String
+      return "%="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignProperty( t, context, property, "operator%=", new_value ).resolve
+endClass
+
+class CmdPowerAssignProperty : CmdOpAssignProperty
+  METHODS
+    method create_duplicate.CmdPowerAssignProperty
+      return CmdPowerAssignProperty( t, duplicate(context), property, duplicate(new_value) )
+
+    method name.String
+      return "^="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignProperty( t, context, property, "operator^=", new_value ).resolve
+endClass
+
+class CmdBitwiseAndAssignProperty : CmdOpAssignProperty
+  METHODS
+    method create_duplicate.CmdBitwiseAndAssignProperty
+      return CmdBitwiseAndAssignProperty( t, duplicate(context), property, duplicate(new_value) )
+
+    method name.String
+      return "&="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignProperty( t, context, property, "operator&=", new_value ).resolve
+endClass
+
+class CmdBitwiseOrAssignProperty : CmdOpAssignProperty
+  METHODS
+    method create_duplicate.CmdBitwiseOrAssignProperty
+      return CmdBitwiseOrAssignProperty( t, duplicate(context), property, duplicate(new_value) )
+
+    method name.String
+      return "|="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignProperty( t, context, property, "operator|=", new_value ).resolve
+endClass
+
+class CmdBitwiseXorAssignProperty : CmdOpAssignProperty
+  METHODS
+    method create_duplicate.CmdBitwiseXorAssignProperty
+      return CmdBitwiseXorAssignProperty( t, duplicate(context), property, duplicate(new_value) )
+
+    method name.String
+      return "~="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignProperty( t, context, property, "operator~=", new_value ).resolve
+endClass
+
+class CmdAccessAssignProperty : CmdStatement
+  PROPERTIES
+    property  : Property
+    context   : Cmd
+    name      : String
+    new_value : Cmd
+
+  METHODS
+    method init( t, context, property, name, new_value )
+
+    method resolve.Cmd
+      if (context?) 
+        context .= resolve.require_value
+        local var temp_name = "temp_" + property.name + "_" + Analyzer.unique_id
+        local var temp_info = Local( t, temp_name, context.type )
+        local var statements = CmdStatementList()
+        statements.add( CmdWriteLocal( t, temp_info, context ) )
+        local var cmd_read_and_access = CmdAccess( t, CmdReadProperty(t,CmdReadLocal(t,temp_info),property), name, CmdArgs(new_value) )
+        local var cmd_assign = CmdWriteProperty( t, CmdReadLocal(t,temp_info), property, cmd_read_and_access )
+        statements.add( cmd_assign )
+        return CmdAnonymousBlock( t, statements ).resolve
+      else
+        return CmdWriteProperty( t, null, property, CmdAccess( t, CmdReadProperty(t,context,property), name, CmdArgs(new_value) ) ).resolve
+      endIf
+endClass
+
+
+class CmdOpAssignSetting : CmdWriteSetting
+  METHODS
+    method name.String
+      return "?"
+
+    method print( StringBuilder buffer )
+      buffer.print( setting.name )
+      buffer.print( ' ' )
+      buffer.print( name )
+      buffer.print( ' ' )
+      new_value.print( buffer )
+endClass
+
+class CmdAddAssignSetting : CmdOpAssignSetting
+  METHODS
+    method create_duplicate.CmdAddAssignSetting
+      return CmdAddAssignSetting( t, duplicate(context), setting, duplicate(new_value) )
+
+    method name.String
+      return "+="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignSetting( t, context, setting, "operator+=", new_value ).resolve
+endClass
+
+class CmdSubtractAssignSetting : CmdOpAssignSetting
+  METHODS
+    method create_duplicate.CmdSubtractAssignSetting
+      return CmdSubtractAssignSetting( t, duplicate(context), setting, duplicate(new_value) )
+
+    method name.String
+      return "-="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignSetting( t, context, setting, "operator-=", new_value ).resolve
+endClass
+
+class CmdMultiplyAssignSetting : CmdOpAssignSetting
+  METHODS
+    method create_duplicate.CmdMultiplyAssignSetting
+      return CmdMultiplyAssignSetting( t, duplicate(context), setting, duplicate(new_value) )
+
+    method name.String
+      return "*="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignSetting( t, context, setting, "operator*=", new_value ).resolve
+endClass
+
+class CmdDivideAssignSetting : CmdOpAssignSetting
+  METHODS
+    method create_duplicate.CmdDivideAssignSetting
+      return CmdDivideAssignSetting( t, duplicate(context), setting, duplicate(new_value) )
+
+    method name.String
+      return "/="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignSetting( t, context, setting, "operator/=", new_value ).resolve
+endClass
+
+class CmdModAssignSetting : CmdOpAssignSetting
+  METHODS
+    method create_duplicate.CmdModAssignSetting
+      return CmdModAssignSetting( t, duplicate(context), setting, duplicate(new_value) )
+
+    method name.String
+      return "%="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignSetting( t, context, setting, "operator%=", new_value ).resolve
+endClass
+
+class CmdPowerAssignSetting : CmdOpAssignSetting
+  METHODS
+    method create_duplicate.CmdPowerAssignSetting
+      return CmdPowerAssignSetting( t, duplicate(context), setting, duplicate(new_value) )
+
+    method name.String
+      return "^="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignSetting( t, context, setting, "operator^=", new_value ).resolve
+endClass
+
+class CmdBitwiseAndAssignSetting : CmdOpAssignSetting
+  METHODS
+    method create_duplicate.CmdBitwiseAndAssignSetting
+      return CmdBitwiseAndAssignSetting( t, duplicate(context), setting, duplicate(new_value) )
+
+    method name.String
+      return "&="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignSetting( t, context, setting, "operator&=", new_value ).resolve
+endClass
+
+class CmdBitwiseOrAssignSetting : CmdOpAssignSetting
+  METHODS
+    method create_duplicate.CmdBitwiseOrAssignSetting
+      return CmdBitwiseOrAssignSetting( t, duplicate(context), setting, duplicate(new_value) )
+
+    method name.String
+      return "|="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignSetting( t, context, setting, "operator|=", new_value ).resolve
+endClass
+
+class CmdBitwiseXorAssignSetting : CmdOpAssignSetting
+  METHODS
+    method create_duplicate.CmdBitwiseXorAssignSetting
+      return CmdBitwiseXorAssignSetting( t, duplicate(context), setting, duplicate(new_value) )
+
+    method name.String
+      return "~="
+
+    method resolve_reference_assignment.Cmd
+      return CmdAccessAssignSetting( t, context, setting, "operator~=", new_value ).resolve
+endClass
+
+class CmdAccessAssignSetting : CmdStatement
+  PROPERTIES
+    setting  : Property
+    access   : Cmd
+
+  METHODS
+    method init( t, Cmd context, setting, String name, Cmd new_value )
+      access = CmdAccess( t, CmdReadSetting(t,context,setting), name, CmdArgs(new_value) ).resolve.require_value
+
+    method resolve.Cmd
+      return this
+endClass
+
+
+class CmdConcatenateStrings : CmdBinary
+  PROPERTIES
+    builder : Cmd
+    # visited in Visitor::visit(CmdConcatenateStrings)
+
+  METHODS
+    method create_duplicate.CmdConcatenateStrings
+      local var result = CmdConcatenateStrings( t, duplicate(lhs), duplicate(rhs) )
+      result.builder = duplicate( builder )
+      return result
+
+    method name.String
+      return "+"
+
+    method type.Type
+      return Types.type_String
+
+    method resolve.Cmd
+      if (lhs.type.is_compound) lhs = CmdAccess( t, lhs, "to_String", null ).cast_to(t,Types.type_String).resolve
+      if (rhs.type.is_compound) rhs = CmdAccess( t, rhs, "to_String", null ).cast_to(t,Types.type_String).resolve
+
+      if (lhs instanceOf CmdConcatenateStrings)
+        builder = CmdAccess( t, (lhs as CmdConcatenateStrings).builder, "print", CmdArgs(rhs) ).resolve
+      else
+        builder = CmdNewObject( t, Types.type_StringBuilder )
+        builder = CmdAccess( t, builder, "print", CmdArgs(lhs) )
+        builder = CmdAccess( t, builder, "print", CmdArgs(rhs) )
+        builder = CmdAccess( t, builder, "to_String", null ).cast_to(t,Types.type_String)
+        builder .= resolve
+      endIf
+      return this
+endClass
+
+class CmdAdd : CmdBinary
+  METHODS
+    method create_duplicate.CmdAdd
+      return CmdAdd( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "+"
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralReal( t, lhs_value + rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value + rhs_value )
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value or rhs_value )
+
+    method combine_literal_operands( Type common_type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralString( t, (lhs as CmdLiteralCharacter).value + "" + (rhs as CmdLiteralCharacter).value )
+
+      elseIf (common_type.is_String)
+        return CmdLiteralString( t, (lhs as CmdLiteralString).value + (rhs as CmdLiteralString).value )
+
+      else
+        return null
+      endIf
+
+    method resolve.Cmd
+      lhs .= resolve.require_value
+      rhs .= resolve.require_value
+
+      local var lhs_type = lhs.type
+      local var rhs_type = rhs.type
+
+      if (lhs instanceOf CmdLiteral and rhs instanceOf CmdLiteral)
+        local var lhs_is_string = lhs_type.instance_of(Types.type_String)
+        local var rhs_is_string = rhs_type.instance_of(Types.type_String)
+        if (lhs_is_string or rhs_is_string)
+          return CmdLiteralString( t, lhs.to_String + rhs.to_String )
+        else
+          return prior.resolve
+        endIf
+      endIf
+
+      if (lhs_type.instance_of(Types.type_String) or rhs_type.instance_of(Types.type_String))
+        return CmdConcatenateStrings( t, lhs, rhs ).resolve
+      else
+        return prior.resolve
+      endIf
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,lhs.type), "operator+", CmdArgs(lhs,rhs) ).resolve.require_value
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,rhs.type), "operator+", CmdArgs(lhs,rhs) ).resolve.require_value
+endClass
+
+class CmdSubtract : CmdBinary
+  METHODS
+    method create_duplicate.CmdSubtract
+      return CmdSubtract( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "-"
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralReal( t, lhs_value - rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value - rhs_value )
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,lhs.type), "operator-", CmdArgs(lhs,rhs) ).resolve.require_value
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,rhs.type), "operator-", CmdArgs(lhs,rhs) ).resolve.require_value
+endClass
+
+class CmdMultiply : CmdBinary
+  METHODS
+    method create_duplicate.CmdMultiply
+      return CmdMultiply( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "*"
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralReal( t, lhs_value * rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value * rhs_value )
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value and rhs_value )
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,lhs.type), "operator*", CmdArgs(lhs,rhs) ).resolve.require_value
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,rhs.type), "operator*", CmdArgs(lhs,rhs) ).resolve.require_value
+endClass
+
+class CmdDivide : CmdBinary
+  METHODS
+    method create_duplicate.CmdDivide
+      return CmdDivide( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "/"
+
+    method implicit_type.Type
+      local var lhs_type = lhs.implicit_type
+      local var rhs_type = rhs.implicit_type
+      if (lhs_type is null or rhs_type is null) return null
+      local var result = common_type( lhs, rhs )
+      if (result.is_Integer) return Types.type_Real
+      return result
+
+    method common_type( Cmd lhs, Cmd rhs ).Type
+      local var ctype = prior.common_type( lhs, rhs )
+      if (ctype.is_Integer or ctype.is_Character) return Types.type_Real
+      return ctype
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralReal( t, lhs_value / rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralReal( t, Real(lhs_value) / Real(rhs_value) )
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,lhs.type), "operator/", CmdArgs(lhs,rhs) ).resolve.require_value
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,rhs.type), "operator/", CmdArgs(lhs,rhs) ).resolve.require_value
+endClass
+
+class CmdMod : CmdBinary
+  METHODS
+    method name.String
+      return "%"
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralReal( t, lhs_value % rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value % rhs_value )
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,lhs.type), "operator%", CmdArgs(lhs,rhs) ).resolve.require_value
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,rhs.type), "operator%", CmdArgs(lhs,rhs) ).resolve.require_value
+endClass
+
+class CmdPower : CmdBinary
+  METHODS
+    method create_duplicate.CmdPower
+      return CmdPower( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "^"
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralReal( t, lhs_value ^ rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value ^ rhs_value )
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,lhs.type), "operator^", CmdArgs(lhs,rhs) ).resolve.require_value
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,rhs.type), "operator^", CmdArgs(lhs,rhs) ).resolve.require_value
+endClass
+
+class CmdBitwiseAnd : CmdBinary
+  METHODS
+    method create_duplicate.CmdBitwiseAnd
+      return CmdBitwiseAnd( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "&"
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value & rhs_value )
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value and rhs_value )
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.bitwise_and_integer
+      return this
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,lhs.type), "operator&", CmdArgs(lhs,rhs) ).resolve.require_value
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,rhs.type), "operator&", CmdArgs(lhs,rhs) ).resolve.require_value
+endClass
+
+class CmdBitwiseOr : CmdBinary
+  METHODS
+    method create_duplicate.CmdBitwiseOr
+      return CmdBitwiseOr( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "|"
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value | rhs_value )
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value or rhs_value )
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.bitwise_or_integer
+      return this
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,lhs.type), "operator|", CmdArgs(lhs,rhs) ).resolve.require_value
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,rhs.type), "operator|", CmdArgs(lhs,rhs) ).resolve.require_value
+endClass
+
+class CmdBitwiseXor : CmdBinary
+  METHODS
+    method create_duplicate.CmdBitwiseXor
+      return CmdBitwiseXor( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "~"
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value ~ rhs_value )
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return CmdLiteralLogical( t, (lhs_value and not rhs_value) or (not lhs_value and rhs_value) )
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.bitwise_xor_integer
+      return this
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,lhs.type), "operator~", CmdArgs(lhs,rhs) ).resolve.require_value
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,rhs.type), "operator~", CmdArgs(lhs,rhs) ).resolve.require_value
+endClass
+
+class CmdBitwiseSHL : CmdBinary
+  METHODS
+    method create_duplicate.CmdBitwiseSHL
+      return CmdBitwiseSHL( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return ":<<:"
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value.left_shifted(rhs_value) )
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,lhs.type), "operator:<<:", CmdArgs(lhs,rhs) ).resolve.require_value
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, CmdReadSingleton(t,rhs.type), "operator:<<:", CmdArgs(lhs,rhs) ).resolve.require_value
+endClass
+
+class CmdBitwiseSHR : CmdBinary
+  METHODS
+    method create_duplicate.CmdBitwiseSHR
+      return CmdBitwiseSHR( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return ":>>:"
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value.right_shifted(rhs_value) )
+
+endClass
+
+class CmdBitwiseSHRX : CmdBinary
+  METHODS
+    method create_duplicate.CmdBitwiseSHRX
+      return CmdBitwiseSHRX( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return ":>>>:"
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralInteger( t, lhs_value.right_xshifted(rhs_value) )
+
+endClass
+
+class CmdLogicalAnd : CmdBinary
+  METHODS
+    method init( t, lhs, rhs )
+
+    method create_duplicate.CmdLogicalAnd
+      return CmdLogicalAnd( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "and"
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value and rhs_value )
+
+    method resolve_for_Logical_operands.Cmd
+      return this
+endClass
+
+class CmdLogicalOr : CmdBinary
+  METHODS
+    method create_duplicate.CmdLogicalOr
+      return CmdLogicalOr( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "or"
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value or rhs_value )
+
+    method resolve_for_operand_types( Type lhs_type, Type rhs_type ).Cmd
+      local var common_type = common_type( lhs, rhs )
+
+      if (common_type.is_reference)
+        throw error( "TODO: || with reference types." )
+        #{
+        local var lhs_type = lhs.type
+        local var rhs_type = rhs.type
+        if (lhs_type.is_reference and rhs_type.is_reference)
+          if (not lhs_type.possibly_null) return lhs
+          #if (not rhs_type.possibly_null and common_type.possibly_null) common_type = common_type.checked_type
+          return CmdEitherOr( t, lhs, rhs, common_type ).resolve
+        endIf
+        }#
+      endIf
+
+      cast_to_common_type( common_type )
+      return resolve_for_common_type( common_type )
+
+    method resolve_for_Logical_operands.Cmd
+      return this
+
+endClass
+
+#{
+class CmdEitherOr : CmdBinary
+  PROPERTIES
+    common_type : Type
+
+  METHODS
+    method init( t, lhs, rhs, common_type )
+
+    method name.String
+      return "or"
+
+    method type.Type
+      return common_type
+
+    method resolve.Cmd
+      # lhs and rhs have already been individually resolved
+      if (lhs instanceOf CmdLiteralNull) return rhs
+      if (rhs instanceOf CmdLiteralNull) return lhs
+      return this
+
+      #{
+    method compile( BCWriter writer )
+      local var label = writer.next_control_id + ""
+      lhs.compile( writer )
+      writer.write( Op.jump_if_not_null )
+      writer.write_address( label )
+      rhs.compile( writer )
+      writer.define_label( label )
+      }#
+endClass
+}#
+
+class CmdLogicalXor : CmdBinary
+  METHODS
+    method create_duplicate.CmdLogicalXor
+      return CmdLogicalXor( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "xor"
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return CmdLiteralLogical( t, (lhs_value and not rhs_value) or (not lhs_value and rhs_value) )
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.bitwise_xor_integer
+      return this
+
+    method resolve.Cmd
+      lhs = lhs.resolve.require_logical
+      rhs = rhs.resolve.require_logical
+      return prior.resolve
+endClass
+
+class CmdComparison : CmdBinary
+  METHODS
+    method type.Type
+      return Types.type_Logical
+
+    method implicit_type.Type
+      return Types.type_Logical
+
+endClass
+
+class CmdCompareEQ : CmdComparison
+  METHODS
+    method create_duplicate.CmdCompareEQ
+      return CmdCompareEQ( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "=="
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value == rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value == rhs_value )
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value == rhs_value )
+
+    method combine_literal_operands( Type common_type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value == (rhs as CmdLiteralCharacter).value )
+
+      elseIf (common_type.is_Byte)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralByte).value == (rhs as CmdLiteralByte).value )
+
+      elseIf (common_type.is_String)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralString).value == (rhs as CmdLiteralString).value )
+
+      else
+        return null
+      endIf
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdAccess( t, lhs, "equals", CmdArgs(rhs) ).resolve.require_logical
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdAccess( t, rhs, "equals", CmdArgs(lhs) ).resolve.require_logical
+
+endClass
+
+class CmdCompareIs : CmdComparison
+  METHODS
+    method create_duplicate.CmdCompareIs
+      return CmdCompareIs( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "is"
+
+    method resolve.Cmd
+      lhs .= resolve
+      rhs .= resolve
+
+      local var lhs_type = lhs.type
+      local var rhs_type = rhs.type
+
+      if (not lhs_type.is_reference or not rhs_type.is_reference)
+        return CmdCompareEQ(t, lhs, rhs).resolve
+      endIf
+
+      if (lhs instanceOf CmdLiteralNull)
+        if (rhs instanceOf CmdLiteralNull) return CmdLiteralLogical( t, true )
+      endIf
+
+      return this
+
+
+    # method resolve_with_lhs_reference.Cmd
+    #   return CmdAccess( t, lhs, "==", CmdArgs(rhs) ).resolve.require_logical
+
+    # method resolve_with_rhs_reference.Cmd
+    #   return null
+
+endClass
+
+class CmdCompareNE : CmdComparison
+  METHODS
+    method create_duplicate.CmdCompareNE
+      return CmdCompareNE( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "!="
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value != rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value != rhs_value )
+
+    method combine_literal_Logical_operands( Logical lhs_value, Logical rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value != rhs_value )
+
+    method combine_literal_operands( Type common_type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value != (rhs as CmdLiteralCharacter).value )
+
+      elseIf (common_type.is_String)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralString).value != (rhs as CmdLiteralString).value )
+
+      else
+        return null
+      endIf
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdNegate( t, CmdAccess(t, lhs, "equals", CmdArgs(rhs)).resolve.require_logical ).resolve
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdNegate( t, CmdAccess(t, rhs, "equals", CmdArgs(lhs)).resolve.require_logical ).resolve
+
+endClass
+
+class CmdCompareIsNot : CmdComparison
+  METHODS
+    method create_duplicate.CmdCompareIsNot
+      return CmdCompareIsNot( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "isNot"
+
+endClass
+
+class CmdCompareLT : CmdComparison
+  METHODS
+    method create_duplicate.CmdCompareLT
+      return CmdCompareLT( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "<"
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value < rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value < rhs_value )
+
+    method combine_literal_operands( Type common_type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value < (rhs as CmdLiteralCharacter).value )
+      endIf
+      return null
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdCompareLT( t, CmdAccess(t, lhs, "compare_to", CmdArgs(rhs)).resolve.require_integer, CmdLiteralInteger(t,0) ).resolve
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdCompareGT( t, CmdAccess(t, rhs, "compare_to", CmdArgs(lhs)).resolve.require_integer, CmdLiteralInteger(t,0) ).resolve
+
+endClass
+
+class CmdCompareGT : CmdComparison
+  METHODS
+    method create_duplicate.CmdCompareGT
+      return CmdCompareGT( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return ">"
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value > rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value > rhs_value )
+
+    method combine_literal_operands( Type common_type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value > (rhs as CmdLiteralCharacter).value )
+      endIf
+      return null
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdCompareGT( t, CmdAccess(t, lhs, "compare_to", CmdArgs(rhs)).resolve.require_integer, CmdLiteralInteger(t,0) ).resolve
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdCompareLT( t, CmdAccess(t, rhs, "compare_to", CmdArgs(lhs)).resolve.require_integer, CmdLiteralInteger(t,0) ).resolve
+
+endClass
+
+class CmdCompareLE : CmdComparison
+  METHODS
+    method create_duplicate.CmdCompareLE
+      return CmdCompareLE( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return "<="
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value <= rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value <= rhs_value )
+
+    method combine_literal_operands( Type common_type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value <= (rhs as CmdLiteralCharacter).value )
+      endIf
+      return null
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdCompareLE( t, CmdAccess(t, lhs, "compare_to", CmdArgs(rhs)).resolve.require_integer, CmdLiteralInteger(t,0) ).resolve
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdCompareGE( t, CmdAccess(t, rhs, "compare_to", CmdArgs(lhs)).resolve.require_integer, CmdLiteralInteger(t,0) ).resolve
+
+endClass
+
+class CmdCompareGE : CmdComparison
+  METHODS
+    method create_duplicate.CmdCompareGE
+      return CmdCompareGE( t, duplicate(lhs), duplicate(rhs) )
+
+    method name.String
+      return ">="
+
+    method combine_literal_Real_operands( Real lhs_value, Real rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value >= rhs_value )
+
+    method combine_literal_Integer_operands( Integer lhs_value, Integer rhs_value ).Cmd
+      return CmdLiteralLogical( t, lhs_value >= rhs_value )
+
+    method combine_literal_operands( Type common_type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value >= (rhs as CmdLiteralCharacter).value )
+      endIf
+      return null
+
+    method resolve_with_lhs_reference.Cmd
+      return CmdCompareGE( t, CmdAccess(t, lhs, "compare_to", CmdArgs(rhs)).resolve.require_integer, CmdLiteralInteger(t,0) ).resolve
+
+    method resolve_with_rhs_reference.Cmd
+      return CmdCompareLE( t, CmdAccess(t, rhs, "compare_to", CmdArgs(lhs)).resolve.require_integer, CmdLiteralInteger(t,0) ).resolve
+
+endClass
+
+class CmdCreateArray( t, Type array_type, Type element_type, Cmd size_expression ) : Cmd
+  METHODS
+    method create_duplicate.CmdCreateArray
+      return CmdCreateArray( t, array_type, element_type, size_expression )
+
+    method is_complex_reference.Logical
+      return true
+
+    method type.Type
+      return array_type
+
+    method print( StringBuilder buffer )
+      buffer.print( array_type.name )
+      buffer.print( '(' )
+      size_expression.print( buffer )
+      buffer.print( ')' )
+
+    method resolve.Cmd
+      array_type.resolve
+      element_type.resolve
+      size_expression .= resolve.require_integer
+      return this
+endClass
+
+class CmdArrayCount( t, operand ) : CmdUnary
+  METHODS
+    method create_duplicate.CmdArrayCount
+      return CmdArrayCount( t, operand )
+
+    method type.Type
+      return Types.type_Integer
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( ".count" )
+
+    method resolve.Cmd
+      operand .= resolve
+      return this
+endClass
+
+class CmdReadArrayElement( t, operand, Cmd index_expression, Type element_type ) : CmdUnary
+  METHODS
+    method create_duplicate.CmdReadArrayElement
+      return CmdReadArrayElement( t, operand, index_expression, element_type )
+
+    method type.Type
+      return element_type
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( '[' )
+      index_expression.print( buffer )
+      buffer.print( ']' )
+
+    method resolve.Cmd
+      operand .= resolve
+      index_expression .= resolve.require_integer
+      element_type.resolve
+      return this
+endClass
+
+class CmdWriteArrayElement( t, Type array_type, Type element_type, operand, Cmd index_expression, Cmd new_value ) : CmdUnary
+  METHODS
+    method create_duplicate.CmdWriteArrayElement
+      return CmdWriteArrayElement( t, array_type, element_type, operand, index_expression, new_value )
+
+    method type.Type
+      return array_type
+
+    method print( StringBuilder buffer )
+      operand.print( buffer )
+      buffer.print( '[' )
+      index_expression.print( buffer )
+      buffer.print( "] = " )
+      new_value.print( buffer )
+
+    method resolve.Cmd
+      operand .= resolve
+      index_expression .= resolve.require_integer
+      new_value .= resolve
+      array_type.resolve
+      element_type.resolve
+      return this
+endClass
+

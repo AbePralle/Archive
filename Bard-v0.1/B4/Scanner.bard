@@ -1,0 +1,618 @@
+[include "Token.bard"]
+singleton class Keywords
+  PROPERTIES
+    lookup()      : HashTable<<String,Integer>>
+    name_lookup() : HashTable<<Integer,String>>
+
+  METHODS
+    method configure
+      if (lookup.count?) return
+      add( "and",              Token.keyword_and )
+      add( "as",               Token.keyword_as )
+      add( "aspect",           Token.keyword_aspect )
+      add( "case",             Token.keyword_case )
+      add( "catch",            Token.keyword_catch )
+      add( "compound",         Token.keyword_compound )
+      add( "contingent",       Token.keyword_contingent )
+      add( "class",            Token.keyword_class )
+      add( "delegate",         Token.keyword_delegate )
+      add( "else",             Token.keyword_else )
+      add( "elseIf",           Token.keyword_elseIf )
+      add( "endAspect",        Token.keyword_endAspect )
+      add( "endCompound",      Token.keyword_endCompound )
+      add( "endContingent",    Token.keyword_endContingent )
+      add( "endClass",         Token.keyword_endClass )
+      add( "endDelegate",      Token.keyword_endDelegate )
+      add( "endForEach",       Token.keyword_endForEach )
+      add( "endFunction",      Token.keyword_endFunction )
+      add( "endIf",            Token.keyword_endIf )
+      add( "endLambda",        Token.keyword_endLambda )
+      add( "endLoop",          Token.keyword_endLoop )
+      add( "endPrimitive",     Token.keyword_endPrimitive )
+      add( "endTry",           Token.keyword_endTry )
+      add( "endWhile",         Token.keyword_endWhile )
+      add( "endWhich",         Token.keyword_endWhich )
+      add( "endWhichIs",       Token.keyword_endWhichIs )
+      add( "ENUMERATE",        Token.keyword_ENUMERATE )
+      add( "escapeContingent", Token.keyword_escapeContingent )
+      add( "escapeForEach",    Token.keyword_escapeForEach )
+      add( "escapeIf",         Token.keyword_escapeIf )
+      add( "escapeLoop",       Token.keyword_escapeLoop )
+      add( "escapeTry",        Token.keyword_escapeTry )
+      add( "escapeWhile",      Token.keyword_escapeWhile )
+      add( "false",            Token.literal_Logical_false )
+      add( "forEach",          Token.keyword_forEach )
+      add( "function",         Token.keyword_function )
+      add( "if",               Token.keyword_if )
+      add( "in",               Token.keyword_in )
+      add( "instanceOf",       Token.keyword_instanceOf )
+      add( "is",               Token.keyword_is )
+      add( "isNot",            Token.keyword_isNot )
+      add( "lambda",           Token.keyword_lambda )
+      add( "local",            Token.keyword_local )
+      add( "loop",             Token.keyword_loop )
+      add( "METHODS",          Token.keyword_METHODS )
+      add( "method",           Token.keyword_method )
+      add( "necessary",        Token.keyword_necessary )
+      add( "nextIteration",    Token.keyword_nextIteration )
+      add( "noAction",         Token.keyword_noAction )
+      add( "not",              Token.keyword_not )
+      add( "notInstanceOf",    Token.keyword_notInstanceOf )
+      add( "null",             Token.keyword_null )
+      add( "of",               Token.keyword_of )
+      add( "or",               Token.keyword_or )
+      add( "others",           Token.keyword_others )
+      add( "pi",               Token.keyword_pi )
+      add( "primitive",        Token.keyword_primitive )
+      add( "prior",            Token.keyword_prior )
+      add( "PROPERTIES",       Token.keyword_PROPERTIES )
+      add( "return",           Token.keyword_return )
+      add( "satisfied",        Token.keyword_satisfied )
+      add( "SETTINGS",         Token.keyword_SETTINGS )
+      add( "sufficient",       Token.keyword_sufficient )
+      add( "this",             Token.keyword_this )
+      add( "throw",            Token.keyword_throw )
+      add( "trace",            Token.keyword_trace )
+      add( "tron",             Token.keyword_tron )
+      add( "troff",            Token.keyword_troff )
+      add( "true",             Token.literal_Logical_true )
+      add( "try",              Token.keyword_try )
+      add( "unsatisfied",      Token.keyword_unsatisfied )
+      add( "while",            Token.keyword_while )
+      add( "which",            Token.keyword_which )
+      add( "whichIs",          Token.keyword_whichIs )
+      add( "xor",              Token.keyword_xor )
+
+      add( "Real64",           Token.illegal_keyword )
+      add( "Real32",           Token.illegal_keyword )
+      add( "Int64",            Token.illegal_keyword )
+      add( "Int32",            Token.illegal_keyword )
+      add( "Boolean",          Token.illegal_keyword )
+      add( "var",              Token.illegal_keyword )
+
+    method add( String identifier, Integer token_type )
+      lookup[identifier] = token_type
+      name_lookup[token_type] = identifier
+
+    method contains( String identifier ).Logical
+      return lookup.contains( identifier )
+
+    method get( String identifier ).Integer
+      return lookup[identifier]
+endClass
+
+class BardParseReader : ParseReader
+  METHODS
+    method peek( Int32 num_ahead ).Char
+      # Map new peek(0-based) to old peek(1-based)
+      return prior.peek(num_ahead+1)
+
+    method position.Integer
+      return pos
+endClass
+
+class BardScanner
+  PROPERTIES
+    tokens   : Token[]
+    filepath : String
+    reader   : BardParseReader
+
+    line     : Integer
+    column   : Integer
+
+    buffer() : StringBuilder
+
+  METHODS
+    method tokenize( filepath ).Token[]
+      reader = BardParseReader( File(filepath).create_reader )
+      return tokenize
+
+    method tokenize( filepath, String data ).Token[]
+      reader = BardParseReader( data )
+      return tokenize
+
+    method tokenize.Token[]
+      Keywords.configure
+      tokens = Token[]()
+
+      while (reader.has_another)
+        consume_spaces
+        local var t = scan_next_token
+        if (t?) tokens.add( t )
+      endWhile
+
+      tokens.add( Token(filepath, reader.line, reader.column, Token.eol) )
+
+      return tokens
+
+    method error( String message ).BardError
+      return BardError( filepath, line, column, message )
+
+    method consume( Char ch ).Logical
+      if (reader.peek != ch) return false
+      reader.read
+      return true
+
+    method consume( String st ).Logical
+      return reader.consume(st)
+
+    method consume_spaces.Logical
+      if (not reader.consume(' ')) return false
+      while (reader.consume(' '))  noAction
+      return true
+
+    method scan_next_token.Token
+      line = reader.line
+      column = reader.column
+
+      local var ch = reader.peek
+
+      if (ch == '\n')
+        reader.read
+        return Token( filepath, line, column, Token.eol )
+      endIf
+
+      if (ch.is_letter or ch == '_')
+        local var st = parse_identifier
+        if (Keywords.contains(st))
+          local var token_type = Keywords[st]
+          if (token_type != Token.illegal_keyword)
+            return Token( filepath, line, column, Keywords[st] )
+          else
+            local var t = IdentifierToken( filepath, line, column, st )
+            which (st)
+              case "Real64":  throw t.error( "Use 'Real' instead of 'Real64'." )
+              case "Real32":  throw t.error( "Bard does not support type Real32." )
+              case "Int64":   throw t.error( "Bard does not support type Int64." )
+              case "Int32":   throw t.error( "Use 'Integer' instead of 'Int32'." )
+              case "Boolean": throw t.error( "Use 'Logical' instead of 'Boolean'." )
+              case "var":     throw t.error( //Illegal keyword 'var' - write "local x = value" instead of "local var x = value".// )
+              others:         throw t.error( "Illegal keyword '$'." (st) )
+            endWhich
+          endIf
+        else
+          return IdentifierToken( filepath, line, column, st )
+        endIf
+
+      elseIf (ch >= '0' and ch <= '9')
+        which (reader.peek(1))
+          case 'b': return scan_integer_in_base(2)
+          case 'c': return scan_integer_in_base(8)
+          case 'x': return scan_integer_in_base(16)
+          others:   return scan_number
+        endWhich
+
+      elseIf (ch == '\'')
+        return scan_String( '\'' )
+
+      elseIf (ch == '"')
+        return scan_String( '"' )
+
+      elseIf (ch == '#')
+        scan_comment
+        return null
+
+      else
+        local var token_type = scan_symbol
+        # println(scan_symbol)
+        if (token_type == -1) return null
+        return Token( filepath, line, column, token_type )
+
+      endIf
+
+      throw error( "Unexpected '$'." (ch) )
+
+    method parse_identifier.String
+      buffer.clear
+      local var ch = reader.peek
+      while ((ch>='a' and ch<='z') or (ch>='A' and ch<='Z') or (ch>='0' and ch<='9') or ch=='_')
+        buffer.print( reader.read )
+        ch = reader.peek
+      endWhile
+      return buffer.to_String
+
+    method scan_String( Char terminator ).Token
+      buffer.clear
+      reader.read
+      while (reader.has_another)
+        local var ch = reader.peek
+        if (ch == terminator)
+          reader.read
+          # if(reader.peek == '(') scan_String_format_values()
+          return buffer_to_String_or_Character(terminator)
+        else
+          buffer.print( scan_Character )
+        endIf
+      endWhile
+
+      throw error( "End Of File reached while looking for end of string." )
+
+    method scan_alternate_String.Token
+      buffer.clear
+
+      while (reader.has_another)
+        if (reader.has_another)
+          local var ch = reader.peek
+          if (ch == '/')
+            reader.read
+            ch = reader.peek
+            if (ch == '/')
+              reader.read
+              return buffer_to_String_or_Character('/')
+            else
+              buffer.print( '/' )
+            endIf
+          else
+            buffer.print( scan_Character )
+          endIf
+        endIf
+      endWhile
+
+      throw error( "End Of File reached while looking for end of string." )
+
+    # method scan_String_format_values
+
+    method scan_Character.Char
+      if (not reader.has_another) throw error( "Char expected." )
+
+      local var ch = reader.peek
+      if (ch == '\n') throw error( "Character expected; found End Of Line." )
+
+      if (ch == '\\')
+        reader.read
+        if (not reader.has_another) throw error( "Escaped character expected; found End Of File." )
+
+        if (consume('b')) return Char(8)
+        if (consume('f')) return Char(12)
+        if (consume('n')) return '\n'
+        if (consume('r')) return '\r'
+        if (consume('t')) return '\t'
+        if (consume('0')) return '\0'
+        if (consume('/')) return '/'
+        if (consume('\''))return '\''
+        if (consume('\\'))return '\\'
+        if (consume('"')) return '"'
+        if (consume('x')) return scan_hex_value(2)
+        if (consume('u')) return scan_hex_value(4)
+        throw error( "Invalid escape sequence.  Supported: \\n \\r \\t \\0 \\/ \\' \\\\ \\\" \\" + "uXXXX \\" + "xXX." );
+      endIf
+
+      local Integer value = reader.read
+      if ((value & 0x80) != 0)
+        # Handle UTF8 encoding
+        local Integer ch2 = reader.read
+
+        if ((value & 0x20) == 0)
+          # %110xxxxx 10xxxxxx
+          value = value & 0x1f;
+          ch2 = value & 0x3f;
+          return Char((value.left_shifted(6)) | ch2)
+        else
+          # %1110xxxx 10xxxxxx 10xxxxxx
+          local Integer ch3 = reader.read
+          value = value & 15;
+          ch2 = ch2 & 0x3f;
+          ch3 = ch3 & 0x3f;
+          return Char((value.left_shifted(2)) | (ch2.left_shifted(6)) | ch3)
+        endIf
+      endIf
+      return Char(value)
+
+    method scan_hex_value( Integer digits ).Char
+      local var value = 0
+      forEach (1..digits)
+        if (not reader.has_another) throw error( digits + "-digit hex value expected; found end of file." )
+        if (not next_is_hex_digit)
+          local var ch = reader.peek
+          local var error_buffer = StringBuilder()
+          error_buffer.print( "Invalid hex digit " )
+          if (ch < ' ' or Integer(ch) == 127) error_buffer.print( Integer(ch) )
+          else error_buffer.print( "'$'" (ch) )
+          error_buffer.print('.')
+          throw error( error_buffer.to_String )
+        endIf
+        local Integer intval = reader.read
+        value = (value.left_shifted(4)) + intval
+      endForEach
+      return Char(value)
+
+    method next_is_hex_digit.Logical
+      local var ch = reader.peek
+      return (ch >= '0' and ch <= '9') or (ch >= 'a' and ch <= 'f') or (ch >= 'A' and ch <= 'F')
+
+    method scan_integer_in_base( Integer base ).Token
+      reader.read  # '0'
+      reader.read  # [b,c,x] = [2,8,16]
+
+      local var bits_per_value = 1
+      while (2^bits_per_value < base) ++bits_per_value
+
+      local var count = 0
+      local var n = 0
+      local var digit = reader.peek.to_value
+      while (reader.has_another and digit != -1)
+        if (digit >= base) throw error( "Digit out of range for base " + base + "." )
+        ++count
+        n = n * base + digit
+        reader.read
+        digit = reader.peek.to_value
+      endWhile
+
+      if (count == 0) throw error( "One or more digits expected." )
+
+      if (bits_per_value * count > 32) throw error( "Number too large for base " + base + "." )
+
+      return IntegerToken( filepath, line, column, n )
+
+    method scan_number.Token
+      local var is_negative = consume('-')
+      local var is_Real = false
+
+      local var n  = scan_Integer
+      local var ch = reader.peek
+      while (ch >= '0' and ch <= '9')
+        local Integer intval = reader.read - '0'
+        n = n * 10.0 + intval
+        ch = reader.peek
+      endWhile
+
+      if (reader.peek == '.')
+        ch = reader.peek(1)
+        if (ch >= '0' and ch <= '9')
+          reader.read
+          is_Real = true
+          local var start_pos = reader.position
+          local var fraction = scan_Integer
+          n += fraction / 10^(reader.position - start_pos)
+        else
+          if (is_negative) n = -n
+          return RealToken( filepath, line, column, n )
+        endIf
+      endIf
+
+      if (consume('E') or consume('e'))
+        is_Real = true
+        local var negative_exponent = consume('-')
+        if (not negative_exponent) consume('+')
+        local var power = scan_Integer
+        if (negative_exponent) n /= power
+        else                   n *= power
+      endIf
+
+      if (is_negative) n = -n;
+
+      if (is_Real)
+        return RealToken( filepath, line, column, n )
+      else
+        return IntegerToken( filepath, line, column, n.(Integer) )
+      endIf
+
+
+    method scan_Integer.Real
+      local var n = 0.0
+      local var ch = reader.peek
+      while (ch >= '0' and ch <= '9')
+        local Integer intval = reader.read - '0'
+        n = n * 10.0 + intval
+        ch = reader.peek
+      endWhile
+      return n#.(Integer)
+
+    method scan_comment
+      #if (buffer.count?) buffer.println
+      buffer.clear
+      reader.read  # '#'
+      if (consume('{'))
+        local var nesting_count = 1
+        local var keep_reading = true
+        while (reader.has_another)
+          local var ch = reader.read
+          which (ch)
+            case '#'
+              buffer.print('#')
+              if (consume('{'))
+                buffer.print('{')
+                ++nesting_count
+              endIf
+
+            case '}'
+              if (consume('#'))
+                --nesting_count
+                if (nesting_count == 0) return
+                else buffer.print('}'); buffer.print('#')
+              else
+                buffer.print('}')
+              endIf
+
+            others
+              buffer.print( ch )
+          endWhich
+        endWhile
+      else
+        while (reader.has_another and reader.peek != '\n') buffer.print( reader.read )
+      endIf
+
+    method scan_symbol.Integer
+      local var ch = reader.read
+      if (ch == '\n')
+        return Token.eol
+
+      elseIf (ch == '!')
+        if (consume('=')) return Token.symbol_ne
+        else              return Token.symbol_bitwise_not
+
+      elseIf (ch == '$' )
+        ch = reader.peek
+        if (ch.is_letter or ch == '_')
+          local var name = parse_identifier
+          tokens.add( TypePlaceholderToken(filepath,line,column,"$"+name) )
+          return -1
+        endIf
+        return Token.symbol_dollar
+
+      elseIf (ch == '%')
+        if     (consume('=')) return Token.symbol_mod_assign
+        else                  return Token.symbol_percent
+
+      elseIf (ch == '&' )
+        if     (consume('&')) throw error( "Use 'and' instead of '&&'." )
+        elseIf (consume('=')) return Token.symbol_bitwise_and_assign
+        else                  return Token.symbol_ampersand
+
+      elseIf (ch == '(')
+        return Token.symbol_open_paren
+
+      elseIf (ch == ')')
+      return Token.symbol_close_paren
+
+      elseIf (ch == '*')
+        if     (consume('=')) return Token.symbol_multiply_assign
+        else                  return Token.symbol_times
+
+      elseIf (ch == '+')
+        if     (consume('=')) return Token.symbol_add_assign
+        elseIf (consume('+')) return Token.symbol_increment
+        else                  return Token.symbol_plus
+
+      elseIf (ch == ',')
+        return Token.symbol_comma
+
+      elseIf (ch == '-')
+        if     (consume('='))  return Token.symbol_subtract_assign
+        elseIf (consume('-'))  return Token.symbol_decrement
+        elseIf (reader.peek(0) == '>' and reader.peek(1) == '>') return Token.symbol_minus
+        elseIf (consume('>'))  return Token.symbol_arrow
+        else                   return Token.symbol_minus
+
+      elseIf (ch == '.' )
+          if (consume('.'))
+            if (consume('.'))
+              # ellipsis
+              while (consume(' ')) noAction
+              if (not consume('\n')) throw error( "End of line expected after '...'." )
+              return -1
+            #elseIf (consume('<'))
+            #  return Token.symbol_uptolessthan
+            #elseIf (consume('>'))
+            #  return Token.symbol_downtogreaterthan
+            else
+              return Token.symbol_upTo
+            endIf
+          elseIf (consume('='))
+            return Token.symbol_access_assign
+          else
+            return Token.symbol_period
+          endIf
+
+      elseIf (ch == '/')
+          if (consume('/'))
+            tokens.add( scan_alternate_String )
+            return -1
+          elseIf (consume('='))
+            return Token.symbol_divide_assign
+          else
+            return Token.symbol_divide
+          endIf
+
+      elseIf (ch == ':')
+        if (consume(':'))
+          return Token.symbol_delegate_accessor
+        endIf
+
+        if (consume("<<:"))  return Token.symbol_shl
+        elseIf (consume(">>:"))  return Token.symbol_shr
+        elseIf (consume(">>>:")) return Token.symbol_shrx
+        return Token.symbol_colon
+
+      elseIf (ch == ';')
+        return Token.symbol_semicolon
+
+      elseIf (ch == '<' )
+        if     (consume('<')) return Token.symbol_open_special
+        elseIf (consume('=')) return Token.symbol_le
+        elseIf (consume('>')) return Token.symbol_compare
+        else                  return Token.symbol_lt
+
+      elseIf (ch == '=' )
+        if (consume('=')) return Token.symbol_eq
+        else              return Token.symbol_equals
+
+      elseIf (ch == '>' )
+        if      (consume('=')) return Token.symbol_ge
+        elseIf  (consume('>')) return Token.symbol_close_special
+        else                   return Token.symbol_gt
+
+      elseIf (ch == '?')
+        return Token.symbol_question_mark
+
+      elseIf (ch == '@' )
+        #if (consume('|'))
+        #  return scan_actual_string()
+        #endIf
+        return Token.symbol_at
+
+      elseIf (ch == '[')
+        if (consume(']')) return Token.symbol_empty_brackets
+        return Token.symbol_open_bracket
+
+      elseIf (ch == '\\')
+        return Token.symbol_backslash
+
+      elseIf (ch == ']')
+        return Token.symbol_close_bracket
+
+      elseIf (ch == '^')
+        if     (consume('=')) return Token.symbol_power_assign
+        else                  return Token.symbol_power
+
+      elseIf (ch == '{')
+        if (consume('}')) return Token.symbol_empty_braces
+        return Token.symbol_open_brace
+
+      elseIf (ch == '|' )
+        if     (consume('=')) return Token.symbol_bitwise_or_assign
+        elseIf (consume('|')) return Token.eol
+        else                  return Token.symbol_bitwise_or
+
+      elseIf (ch == '}' )
+        if     (consume('#')) return Token.symbol_close_comment # used for error reporting
+        else                  return Token.symbol_close_brace
+
+      elseIf (ch == '~')
+        if     (consume('=')) return Token.symbol_bitwise_xor_assign
+        else                  return Token.symbol_bitwise_xor
+
+      else
+        throw error( "Unexpected input '$'." (ch) )
+      endIf
+
+    method buffer_to_String_or_Character( Char terminator ).Token
+      # We have a String already; convert it to a Character if it's count 1.
+      if (buffer.count == 1 and terminator == '\'')
+        return CharacterToken(filepath,line,column,Integer(buffer[0]))
+      else
+        return StringToken(filepath,line,column,buffer.to_String)
+      endIf
+
+endClass
+

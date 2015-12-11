@@ -1,0 +1,218 @@
+<<include "Cmd.bard">>
+<<include "Local.bard">>
+
+class Method
+  PROPERTIES
+    t            : Token
+    type_context : Type
+    name         : String
+    return_type  : Type
+
+    attributes   = Attributes()
+
+    parameters   = Local[]
+    locals       = Local[]  # the first parameters.count locals are the same as parameters
+
+    signature      : String
+    call_signature : String
+    x_signature    : String
+    generic_base   : String
+
+    body = CmdStatementList()
+
+    literal_string_values = String[]
+    literal_real_values   = Real[]
+
+    local_index=-1  : Integer
+    global_index=-1 : Integer
+    ip              : Integer
+    ip_limit        : Integer
+      # one beyond end
+    line_info_index : Integer
+
+    organized      : Logical
+    resolved       : Logical
+    compiled       : Logical
+    is_initializer : Logical
+
+    slot_count   : Integer
+
+    exception_handlers = ExceptionHandler[]
+
+  METHODS
+    method init( t, type_context, name )
+      # Leave off "init_settings" since it doesn't return a value
+      is_initializer = (name == "init" or name == "init_defaults")
+
+    method clone( cmd_list:CmdStatementList )->CmdStatementList
+      if (cmd_list?) return cmd_list.clone
+      return null
+
+    method clone_for_type( new_type_context:Type )->Method
+      local m = Method( t, new_type_context, name )
+      m.attributes.flags = attributes.flags
+      forEach (parameter in parameters)
+        m.add_parameter( Local(parameter.t,parameter.name,parameter.type) )
+      endForEach
+      m.return_type = return_type
+      m.body = clone( body )
+      return m
+
+    method to->String
+      return signature
+
+    method add_parameter( v:Local )
+      parameters.add( v )
+      add_local( v )
+      
+    method add_local( v:Local )
+      v.index = locals.count
+      locals.add( v )
+
+    method invalidate_signatures
+      @signature = null
+      @call_signature = null
+
+    method signature->String
+      if (@signature?) return @signature
+
+      local buffer = StringBuilder()
+      buffer.print( name )
+      buffer.print( '(' )
+      local first = true
+      forEach (parameter in parameters)
+        if (first) first = false
+        else       buffer.print(',')
+
+        if (parameter.type?)
+          buffer.print(parameter.type.name)
+        else
+          throw t.error( "Cannot use auto-intializing parameters in a generic type definition." )
+          #{
+          contingent
+            forEach (p in type_context.property_list)
+              if (p.name == name)
+                if (p.type?)
+                  buffer.print( p.type )
+                  sufficient (true)
+                else
+                  throw t.error( "In a generic type definition the property corresponding to an auto-intializing parameter must have an explicit type." )
+                endIf
+              endIf
+            endForEach
+          unsatisfied
+          throw parameter.t.error( "In a generic type definition the property corresponding to an auto-initializing parameter must be declared or re-declared in the current class PROPERTIES." )
+          endContingent
+          }#
+        endIf
+      endForEach
+      buffer.print( ')' )
+
+      @call_signature = buffer->String
+
+      if (return_type?)
+        buffer.print( "->" )
+        buffer.print( return_type )
+      endIf
+
+      @signature = buffer->String
+
+      return @signature
+
+    method call_signature->String
+      signature  # force signature and call_signature to be built
+      return @call_signature
+
+    method x_signature->String
+      if (@x_signature?) return @x_signature
+
+      local buffer = StringBuilder()
+      buffer.print( Analyzer.convert_string_to_valid_identifier(name) )
+      if (parameters.count? or return_type?)
+        if (parameters.count?)
+          buffer.print( "_" )
+          forEach (parameter in parameters)
+            buffer.print('_')
+            buffer.print( parameter.type.x_name )
+          endForEach
+        endIf
+      endIf
+
+      @x_signature = buffer->String
+      return @x_signature
+
+    method print( index:Integer )
+      print( "    " )
+      if (index != -1) print( "[" + index + "]" )
+      println( " method " + type_context.name + "::" + signature )
+
+      if (type_context.is_aspect and signature != "init_settings()") return
+
+      Analyzer.push_context
+      Analyzer.context.this_type = type_context
+      Analyzer.context.this_method = this
+      
+      local buffer = StringBuilder()
+      body.print( buffer )
+      println( buffer )
+
+      Analyzer.pop_context
+
+    method organize
+      if (organized) return
+      organized = true
+
+      # Fix up return type
+      local return_t = t
+      if (is_initializer)
+        if (return_type is null)
+          return_type = type_context
+          invalidate_signatures
+        endIf
+      endIf
+
+    method resolve
+      if (resolved) return
+      resolved = true
+
+      if (type_context.is_aspect and signature != "init_settings()") return
+
+      Analyzer.push_context
+      Analyzer.context.this_type = type_context
+
+      Analyzer.context.push_local_scope
+      forEach (p in parameters) Analyzer.context.locals.add( p )
+
+      Analyzer.context.this_method = this
+      body.resolve
+      Analyzer.context.pop_local_scope
+
+      Analyzer.pop_context
+
+      # Assign slot index to each local
+      if (not (type_context.is_generic_map or type_context.generic_base?))
+        local next_slot_index = 0
+        forEach (v in locals)
+          #println( "v.type: " + v.type )
+          next_slot_index -= v.type.slot_count
+          v.slot_index = next_slot_index
+          slot_count += v.type.slot_count
+        endForEach
+      endIf
+endClass
+
+class ExceptionHandler
+  PROPERTIES
+    ip_start   : Integer
+    ip_limit   : Integer
+    catches    = ExceptionHandlerCatch[]
+
+  METHODS
+    method init( ip_start, ip_limit )
+endClass
+
+class ExceptionHandlerCatch( local_info:Local, label_name:String )
+  PROPERTIES
+    handler_ip : Integer
+endClass
+

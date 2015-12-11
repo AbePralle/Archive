@@ -1,0 +1,23 @@
+class BardError : Error
+  PROPERTIES
+    filepath : String
+    line     : Integer
+    column   : Integer
+
+  METHODS
+    method init( filepath, line, column, message )
+
+    method init( message )
+
+    method to_String.String
+      if (filepath?)
+        return //===============================================================================\n// +
+               //ERROR in "$" line $, column $:\n$\n// (File(filepath).filename,line,column,message) +
+               //===============================================================================//
+      else
+        return //===============================================================================\n// +
+               //INTERNAL ERROR\n  $\n// (message) +
+               //===============================================================================//
+      endIf
+
+endClass

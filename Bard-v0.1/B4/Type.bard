@@ -1,0 +1,616 @@
+[include "Property.bard"]
+
+class Type
+  ENUMERATE
+    reference_type
+    real_type
+    integer_type
+    character_type
+    byte_type
+    logical_type
+    compound_type
+
+  PROPERTIES
+    t               : Token
+    name            : String
+    x_name          : String
+    attributes()    : Attributes
+
+    base_types()    : Type[]
+    generic_base    : Type  # for generic placeholder types only
+    target_compound : Type  # for compound functionality singletons only
+
+    index=-1        : Integer
+
+    is_generic_map  : Logical
+    is_defined      : Logical
+
+    visiting        : Logical
+    organized       : Logical
+    resolved        : Logical
+
+    settings_list() : Property[]
+    property_list() : Property[]
+    method_list()   : Method[]
+
+    # When part of a compound
+    slot_count      : Integer
+
+  METHODS
+    method init( t, name )
+      Types.add( this )
+      if (name.contains('$')) is_generic_map = true
+
+    method x_type.Type
+      if (generic_base?) return generic_base.x_type
+      return this
+
+    method find_setting( String setting_name ).Property
+      # Recursion guard
+      if (visiting) return null
+
+      if (setting_name[0] == '@') setting_name .= substring(1)
+
+      forEach (setting in settings_list)
+        if (setting.name == setting_name) return setting
+      endForEach
+
+      visiting = true
+      forEach (base_type in base_types)
+        if (not base_type.is_aspect)
+          local var result = base_type.find_setting( setting_name )
+          if (result?)
+            visiting = false
+            return result
+          endIf
+        endIf
+      endForEach
+
+      visiting = false
+      return null
+
+    method must_find_setting( Token t, String property_name ).Property
+      local var result = find_setting( property_name )
+      if (result?) return result
+      throw t.error( "No such setting '$' in type $." (property_name,name) )
+      return null
+
+    method find_property( String property_name ).Property
+      if (property_name[0] =='@') property_name .= substring(1)
+      forEach (property in property_list)
+        if (property.name == property_name) return property
+      endForEach
+
+      return null
+
+    method must_find_property( Token t, String property_name ).Property
+      local var result = find_property( property_name )
+      if (result?) return result
+      throw t.error( "No such property '$' in type $." (property_name,name) )
+      return null
+
+    method find_method( String name, Integer param_count ).Method
+      forEach (m in method_list)
+        if (m.parameters.count == param_count and m.name == name) return m
+      endForEach
+      return null
+
+    method find_method( String call_signature, Type return_type ).Method
+      local Method best_match = null
+      forEach (m in method_list)
+        #println( "2 Checking $ <> $" (m.call_signature,signature) )
+        if (m.call_signature == call_signature)
+          if (m.return_type?)
+            if (m.return_type is return_type)
+              return m
+            elseIf (m.is_initializer)
+              return m
+            elseIf (m.return_type.instance_of(return_type))
+              if (best_match?)
+                if (m.return_type.instance_of(best_match.return_type))
+                  best_match = m  # save method with more specific return type
+                endIf
+              else
+                best_match = m
+              endIf
+            endIf
+          endIf
+        endIf
+      endForEach
+      return best_match
+
+    method find_method( String signature ).Method
+      if (signature.contains("->"))
+        forEach (m in method_list)
+          #println( "1 Checking $ <> $" (m.signature,signature) )
+          if (m.signature == signature) return m
+        endForEach
+      else
+        forEach (m in method_list)
+          #println( "2 Checking $ <> $" (m.call_signature,signature) )
+          if (m.call_signature == signature) return m
+        endForEach
+      endIf
+      return null
+
+    method find_methods_with_name( String name ).Method[]
+      local var result = Method[]()
+      forEach (m in method_list)
+        if (m.name == name) result.add(m)
+      endForEach
+
+      if (result.count?) return result
+
+      return null
+
+
+    method must_find_method( String call_signature, Type return_type ).Method
+      if (return_type is null) return must_find_method( call_signature )
+
+      local var m = find_method( call_signature, return_type )
+      if (m?) return m
+      throw Error( "Unable to find required method $::$->$." (name,call_signature,return_type.name) )
+
+    method must_find_method( String signature ).Method
+      local var m = find_method( signature )
+      if (m?) return m
+      throw Error( "Unable to find required method $::$." (name,signature) )
+
+    method to_String.String
+      return name
+
+    method classification.Integer
+      if (is_reference) return reference_type
+      if (is_compound)  return compound_type
+      if (is_Real)      return real_type
+      if (is_Integer)   return integer_type
+      if (is_Character) return character_type
+      if (is_Byte)      return byte_type
+      if (is_Logical)   return logical_type
+      throw Error( "[Internal] Unable to classify type $." (name) )
+
+    method is_class.Logical
+      return attributes.is_class
+
+    method is_aspect.Logical
+      return attributes.is_aspect
+
+    method is_reference.Logical
+      return attributes.is_reference
+
+    method is_compound.Logical
+      return attributes.is_compound
+
+    method is_primitive.Logical
+      return attributes.is_primitive
+
+    method is_functional.Logical
+      return attributes.is_functional
+
+    method is_root_object.Logical
+      return (this is Types.type_Object)
+
+    method is_String.Logical
+      return this is Types.type_String
+
+    method is_Real.Logical
+      return (this is Types.type_Real)
+
+    method is_Integer.Logical
+      return (this is Types.type_Integer)
+
+    method is_Character.Logical
+      return (this is Types.type_Character)
+
+    method is_Byte.Logical
+      return (this is Types.type_Byte)
+
+    method is_Logical.Logical
+      return (this is Types.type_Logical)
+
+    method is_integer_family.Logical
+      return (this is Types.type_Integer) or (this is Types.type_Character) or (this is Types.type_Byte)
+
+    method is_native.Logical
+      return (attributes.flags & Attributes.flag_native)?
+
+    method instance_of( Type ancestor ).Logical
+      if (this is ancestor) return true
+      forEach (base_type in base_types)
+        if (base_type.instance_of(ancestor)) return true
+      endForEach
+      return false
+
+    method add_property( Property p )
+      property_list.add( p )
+
+    method add_method( Method m )
+      method_list.add( m )
+
+    method organize
+      organize( t )
+
+    method organize( Token ref_t )
+      if (organized) return
+      organized = true
+
+      # Instantiate template (all class definitions start as templates)
+      if (not is_defined)
+        is_defined = true
+        if (is_generic_map)
+          if (not (name[0] == '$' or name.ends_with(']')))
+            organized = false
+            local var templ = Templates[ name.before_first('<') ]
+            templ.create_generic_map
+          endIf
+        else
+          Templates.instantiate( ref_t, this )
+          if (this is Types.main_type) attributes.add( Attributes.flag_singleton )
+        endIf
+      endIf
+
+      if (is_aspect and attributes.is_singleton)
+        throw t.error( "An aspect cannot be designated [singleton]." )
+      endIf
+
+      # Organize base types
+      local Type base_class = null
+      forEach (base_type in base_types)
+        base_type.organize
+        if (base_type.is_class)
+          if (base_class?) throw t.error( "Type $ has multiple base classes including $ and $." (name,base_class.name,base_type.name) )
+          else             base_class = base_type
+        endIf
+      endForEach
+
+      #println( "$ has base classes $" (name,base_types) )
+      if (base_class?)
+        base_types.remove( base_class )
+        base_types.insert( base_class )
+      elseIf (this.is_reference and this isNot Types.type_Object and not this.attributes.is_functional)
+        base_class = Types.type_Object
+        base_types.insert( base_class )
+      endIf
+
+      #{
+      if (base_types.count == 0 and this.is_reference and this isNot Types.type_Object)
+        base_types.add( Types.type_Object )
+      endIf
+      }#
+
+      if (base_types.count?)
+        local var base_type = base_types.first
+        if (base_type.is_primitive) throw t.error( "Primitive type '$' cannot be extended." (base_type) )
+        if (this.is_compound and not base_type.is_compound) throw t.error( "A compound cannot extend a class." )
+        if (not this.is_compound and base_type.is_compound) throw t.error( "A class cannot extend a compound." )
+
+        if (base_types.count > 1 and not this.is_reference)
+          throw t.error( "Compounds cannot use multiple inheritance." )
+        endIf
+      endIf
+
+      forEach (base_type in base_types)
+        base_type.organize
+        if (base_type isNot base_types.first)
+          if (not base_type.is_reference)
+            throw t.error( "Illegal base type '$' - only classes and aspects can base types." (base_type) )
+          endIf
+        endIf
+      endForEach
+
+      check_for_cyclic_dependencies( this )
+
+      collect_settings
+      collect_properties
+
+      if (property_list.count? and attributes.is_native)
+        throw property_list.first.t.error( "A native class cannot define Bard-side properties." )
+      endIf
+
+      # Set up slot info for compounds
+      if (is_compound)
+        forEach (p in property_list)
+          p.type.organize( t )
+          p.slot_index = slot_count
+          slot_count += p.type.slot_count
+        endForEach
+      else
+        slot_count = 1
+      endIf
+
+      # Assign types and values to autoinitializing parameters
+      forEach (m in method_list)
+        forEach (parameter in m.parameters.reverse_order)
+          if (parameter.type is null)
+            if (m.attributes.is_native or this.is_native)
+              throw parameter.t.error( "Auto-initializing parameter declarations are not allowed in native types and methods." )
+            endIf
+
+            local var property = find_property( parameter.name )
+            if (property?)
+              local var pt = parameter.t
+              local var temp_name = "." + parameter.name
+              parameter.type = property.type
+              if (not this.is_compound)
+                local var target_name = parameter.name
+                if (parameter.is_direct) target_name = "@" + target_name
+                m.body.insert( CmdAssign( pt, CmdAccess(pt,target_name), CmdAccess(pt,temp_name) ) )
+              endIf
+              parameter.name = temp_name
+            else
+              throw parameter.t.error( "No such property for auto-initializing parameter '$'." (parameter.name) )
+            endIf
+          endIf
+        endForEach
+      endForEach
+
+      if (is_compound) organize_compound
+
+      create_init_settings_method
+      create_init_defaults_method
+
+      # Inherit methods
+      collect_methods
+
+      # Organize methods
+      forEach (m in method_list) m.organize
+
+    method check_for_cyclic_dependencies( Type starting_type )
+      if (visiting) throw starting_type.t.error( "Cyclic dependency detected between types $ and $." (starting_type,name) )
+      visiting = true
+      forEach (base_type in base_types) base_type.check_for_cyclic_dependencies( starting_type )
+      visiting = false
+
+    method organize_compound
+
+    method collect_settings
+      # Re-collect settings to ensure no duplicates
+      settings_list = collect_settings( Property[]() )
+
+    method collect_settings( Property[] list ).Property[]
+      forEach (p in settings_list) collect_setting( list, p )
+      return list
+
+    method collect_setting( Property[] list, Property p )
+      local var p_name = p.name
+      local var p_index = 0
+      forEach (existing_p in list)
+        if (existing_p.name == p_name)
+          if (p.type is null) p.type = existing_p.type
+          if (p.type isNot existing_p.type)
+            throw p.t.error( "Cannot redefine setting '$' with a different type." (p.name) )
+          endIf
+          if (p.type_context is existing_p.type_context) throw p.t.error( "Duplicate definition of '$'." (p_name) )
+          p.prior_declaration = existing_p
+          list[ p_index ] = p
+          return
+        endIf
+        ++p_index
+      endForEach
+      list.add( p )
+
+    method collect_properties
+      local Property[] list()
+      forEach (base_type in base_types) base_type.collect_properties( list )
+      collect_properties( list )
+      property_list = list
+
+    method collect_properties( Property[] list ).Property[]
+      forEach (p in property_list) collect_property( list, p )
+      return list
+
+    method collect_property( Property[] list, Property p )
+      local var setting = find_setting( p.name )
+      if (setting?)
+        throw p.t.error( "A setting named '$' already exists." (p.name) )
+      endIf
+
+      local var p_name = p.name
+      local var p_index = 0
+      forEach (existing_p in list)
+        if (existing_p.name == p_name)
+          if (p.type is null) p.type = existing_p.type
+          if (p.type isNot existing_p.type)
+            throw p.t.error( "Cannot redefine '$' with a different type." (p.name) )
+          endIf
+          if (p.type_context is existing_p.type_context) throw p.t.error( "Duplicate definition of '$'." (p_name) )
+          p.prior_declaration = existing_p
+          list[ p_index ] = p
+          return
+        endIf
+        ++p_index
+      endForEach
+      list.add( p )
+
+    method collect_methods
+      # Tag methods overloaded by return type only (among new, non-inherited 
+      # methods) and check for duplicate method definitions.
+      #local var i = 0
+      #forEach (m in method_list)
+      #  forEach (j in 0..(i-1))
+      #    local var m2 = method_list[j]
+      #    if (m isNot m2)
+      #      if (m.call_signature == m2.call_signature)
+      #        if (m.return_type == m2.return_type)
+      #          throw m.t.error( "Duplicate definition of $." (m.signature) )
+      #        else
+      #          m.attributes.add( Attributes.flag_return_type_overload )
+      #        endIf
+      #      endIf
+      #    endIf
+      #  endForEach
+      #  ++i
+      #endForEach
+
+      local Method[] list()
+      forEach (base_type in base_types)
+        base_type.collect_methods( this, list )
+      endForEach
+      collect_methods( this, list )
+      method_list = list
+
+      #if (name == "Writer<<String>>") print
+
+    method collect_methods( Type for_type, Method[] list )
+      forEach (m in method_list)
+        collect_method( for_type, list, m )
+      endForEach
+
+    method collect_method( Type for_type, Method[] list, Method m )
+      # Methods with overloaded return types perform strict overrides (full signatures must match).
+      # Methods without overloaded return types perform covariant overrides - an extended method
+      # with a compatible but more specialized return type will overload a base method with a
+      # matching call signature but more general return type.
+      if (m.type_context.is_aspect)
+        # Clone the aspect method before incorporating.
+        m = m.duplicate_for_type( for_type )
+      else
+        # Don't collect methods that this aspect inherits from Object.
+        if (this.is_aspect) return
+      endIf
+
+      local var call_signature = m.call_signature
+      local var m_index = 0
+      forEach (existing_m in list)
+        if (existing_m.call_signature == call_signature)
+          if (m.return_type is null)
+            if (m.is_initializer) m.return_type = m.type_context
+            else                  m.return_type = existing_m.return_type
+            m.invalidate_signatures
+          elseIf (existing_m.return_type is null)
+            throw m.t.error( "Cannot override a nil-returning method with a value-returning method." )
+          endIf
+
+          if (m.is_initializer or m.signature == existing_m.signature)
+            # Exact match
+            list[ m_index ] = m
+            return
+          else
+            # Compatible match
+            if (m.return_type.instance_of(existing_m.return_type))
+              if (existing_m.return_type.instance_of(m.return_type))
+                throw m.t.error( "An method that differs only by return type cannot override a more specialized return type with a more general return type." )
+              endIf
+              list[ m_index ] = m
+              return
+            endIf
+          endIf
+        endIf
+
+        ++m_index
+      endForEach
+
+      # No match - add/inherit method
+      if (m.attributes.is_propagated)
+        if (m.type_context isNot for_type) 
+          m = m.duplicate_for_type( for_type )
+        endIf
+      endIf
+
+      list.add( m )
+
+    method create_init_settings_method
+      # Create or modify an init_settings() method
+      if (generic_base?) return
+
+      local Method m = find_method( "init_settings()" )
+      if (m is null)
+        m = Method( t, this, "init_settings" )
+        add_method( m )
+      endIf
+
+      forEach (s in settings_list.reverse_order)
+        if (s.initial_value?)
+          m.body.insert(
+            CmdAssign( s.t,
+              CmdAccess( s.t, s.name, null ),
+              s.initial_value
+            )
+          )
+        endIf
+      endForEach
+
+
+    method create_init_defaults_method
+      # Add init_defaults() method with initial property values where specified
+      if (generic_base is null and not is_aspect)
+        local Method m_init_defaults = find_method( "init_defaults()" )
+        if (m_init_defaults is null)
+          m_init_defaults = Method( t, this, "init_defaults" )
+          add_method( m_init_defaults )
+        endIf
+        m_init_defaults.return_type = this
+        m_init_defaults.invalidate_signatures
+
+        forEach (property in property_list.reverse_order)
+          if (property.initial_value? and (property.type_context is this or property.type_context.is_aspect))
+            m_init_defaults.body.insert( CmdWriteProperty(t,null,property,property.initial_value) )
+          endIf
+        endForEach
+
+        if (base_types.count?)
+          forEach (i in base_types.count-1 downTo 1)
+            local var base_type = base_types[i]
+            local var existing_m = base_type.find_method( "init_defaults()" )
+            if (existing_m? and existing_m.body.count?)
+              m_init_defaults.body.insert( CmdAnonymousBlock( existing_m.t, existing_m.body.create_duplicate ) )
+            endIf
+          endForEach
+
+          m_init_defaults.body.insert( CmdStaticCall(t,null,base_types.first.must_find_method("init_defaults()") ) )
+        endIf
+
+      endIf
+
+    method resolve.Type
+      return resolve( null )
+
+    method resolve( Token ref_t ).Type
+      if (resolved) return this
+      resolved = true
+
+      if (ref_t is null) ref_t = t
+      organize( ref_t )
+
+      # Resolve base types
+      forEach (base_type in base_types) base_type.resolve
+
+      # Resolve property types
+      forEach (p in property_list) p.type.resolve
+
+      # Resolve methods
+      forEach (m in method_list)
+        m.resolve
+      endForEach
+
+      return this
+
+
+    method print
+      print( "class " + name )
+      println
+
+      if (property_list.count?)
+        println( "  PROPERTIES" )
+        forEach (p in property_list)
+          p.print
+        endForEach
+        println
+      endIf
+
+      println( "  METHODS" )
+      forEach (i of method_list)
+        method_list[i].print(i)
+        println
+      endForEach
+
+    method print_method( String signature )
+      local var m = find_method( signature )
+      m.print( m.local_index )
+
+    method x_name.String
+      if (&x_name is null) &x_name = Analyzer.convert_string_to_valid_identifier( name )
+      return &x_name
+endClass
+
+

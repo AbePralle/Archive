@@ -1,0 +1,90 @@
+class Console : Printer [singleton]
+  PROPERTIES
+    buffer = StringBuilder()
+
+  METHODS
+    method flush->Console
+      if (buffer.count?)
+        write( buffer )
+        buffer.clear
+      endIf
+      return this
+
+    method indent->Integer
+      return buffer.indent
+
+    method indent( new_indent:Integer )->Console
+      buffer.indent = new_indent
+      return this
+
+    method print( value:String )->Console
+      buffer.print( value )
+      return this
+
+    method print( value:Real )->Console
+      buffer.print( value )
+      return this
+
+    method print( value:Real, decimal_places:Integer )->Console
+      buffer.print( value, decimal_places )
+      return this
+
+    method print( value:Integer )->Console
+      buffer.print( value )
+      return this
+
+    method print( value:Character )->Console
+      buffer.print( value )
+      return this
+
+    method print( value:Object )->Console
+      if (value?) buffer.print( value->String )
+      else        buffer.print( "null" )
+      return this
+
+    method print( value:Byte )->Console
+      buffer.print( value->Integer )
+      return this
+
+    method print( value:Logical )->Console
+      if (value) buffer.print( "true" )
+      else       buffer.print( "false" )
+      return this
+
+    method println( value:Object )->Console
+      return print(value).print('\n').flush
+
+    method println( value:String )->Console
+      return print(value).print('\n').flush
+
+    method println( value:Real )->Console
+      return print(value).print('\n').flush
+
+    method println( value:Real, decimal_places:Integer )->Console
+      return print(value).print('\n').flush
+
+    method println( value:Integer )->Console
+      return print(value).print('\n').flush
+
+    method println( value:Character )->Console
+      return print(value).print('\n').flush
+
+    method println( value:Byte )->Console
+      return print(value).print('\n').flush
+
+    method println( value:Logical )->Console
+      return print(value).print('\n').flush
+
+    method println->Console
+      return print('\n').flush
+
+    method write( value:Character )->Console [native]
+
+    method write( value:String )->Console    [native]
+
+    method write( value:StringBuilder )->Console
+      # TODO: make native
+      forEach (ch in value) write(ch)
+      return this
+endClass
+

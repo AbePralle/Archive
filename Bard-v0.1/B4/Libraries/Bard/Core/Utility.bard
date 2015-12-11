@@ -1,0 +1,30 @@
+#==============================================================================
+# Integer64
+#==============================================================================
+compound Integer64( as_real:Real )
+  METHODS
+    method create( high:Integer, low:Integer ) [native]
+
+    method high->Integer [native]
+
+    method low->Integer  [native]
+
+    method operator+( lhs:Integer64, rhs:Integer64 )->Integer64 [native]
+    method operator-( lhs:Integer64, rhs:Integer64 )->Integer64 [native]
+    method operator*( lhs:Integer64, rhs:Integer64 )->Integer64 [native]
+    method operator/( lhs:Integer64, rhs:Integer64 )->Integer64 [native]
+
+    method operator&( lhs:Integer64, rhs:Integer64 )->Integer64
+      return Integer64( lhs.high & rhs.high, lhs.low & rhs.low )
+
+    method operator|( lhs:Integer64, rhs:Integer64 )->Integer64
+      return Integer64( lhs.high | rhs.high, lhs.low | rhs.low )
+
+    method operator~( lhs:Integer64, rhs:Integer64 )->Integer64
+      return Integer64( lhs.high ~ rhs.high, lhs.low ~ rhs.low )
+
+    method operator!->Integer64
+      return Integer64( !high, !low )
+
+    method to->Real [native]
+endCompound

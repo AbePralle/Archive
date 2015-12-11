@@ -1,0 +1,557 @@
+<<include "Visitor.bard">>
+<<include "BCWriter.bard">>
+#[include "JSXCWriter.bard"]
+
+class Analyzer [singleton]
+  PROPERTIES
+    context       : Context
+    context_stack = Context[]
+
+    method_list   = Method[]  # all methods
+
+    empty_args    = CmdArgs()
+
+    next_unique_id : Integer
+
+  METHODS
+    method unique_id->String
+      ++next_unique_id
+      return ""+next_unique_id
+
+    method resolve_types
+      Types.resolve
+      #Types["BC"].print
+      #Types["Main"].print_method("init()")
+      #Types["Writer<<String>>"].print
+
+      # Assign property and method indices
+      local next_method_index = 0
+      forEach (type in Types.type_list)
+        if (type.is_generic_map) nextIteration
+
+        # Settings index
+        local setting_index = 0
+        while (setting_index < type.settings_list.count)
+          type.settings_list[setting_index].index = setting_index
+          ++setting_index
+        endWhile
+
+        # Property index
+        local property_index = 0
+        while (property_index < type.property_list.count)
+          type.property_list[property_index].index = property_index
+          ++property_index
+        endWhile
+
+        # Method index
+        local next_local_method_index = 0
+        forEach (m in type.method_list)
+          if (m.global_index == -1)
+            if (m.generic_base is null)
+              m.global_index = next_method_index
+              ++next_method_index
+              method_list.add( m )
+            endIf
+          endIf
+          m.local_index = next_local_method_index
+          ++next_local_method_index
+        endForEach
+      endForEach
+
+      # Remove generic map helper types from type list
+      local placeholder_types = Type[]
+      local surviving_types = Type[]
+
+      forEach (type in Types.type_list)
+        if (type.generic_base?)
+          placeholder_types.add( type )
+        elseIf (not type.is_generic_map)
+          surviving_types.add( type )
+        endIf
+      endForEach
+      Types.type_list = surviving_types
+
+      # Assign type indices
+      local index = 0
+      while (index < Types.type_list.count)
+        local type = Types.type_list[index]
+        type.index = index
+        ++index
+      endWhile
+
+      # Change type and method indices of temporary placholder types
+      # to map to generic types and methods.
+      forEach (type in placeholder_types)
+        type.index = type.generic_base.index
+
+        forEach (m in type.method_list)
+          if (m.generic_base?)
+            m.global_index = type.generic_base.find_method( m.generic_base ).global_index
+          endIf
+        endForEach
+      endForEach
+
+    method push_context
+      context_stack.add( context )
+      context = Context()
+
+    method pop_context
+      context = context_stack.remove_last
+
+    method push_local_scope
+      context.push_local_scope
+
+    method add_local( v:Local )
+      context.locals.add( v )
+
+    method pop_local_scope
+      context.pop_local_scope
+
+    method resolve_call( t:Token, context_type:Type, operand:Cmd, name:String, args:CmdArgs, error_on_fail:Logical )->Cmd
+      if (operand?)
+        operand = operand.resolve.require_value
+        context_type = operand.type
+      endIf
+
+      local m = find_method( t, context_type, name, args, error_on_fail )
+      if (m is null) 
+        if (operand?) return null  # explicit operand; don't look in Global
+        m = find_method( t, Types.type_Global, name, args, error_on_fail )  # look in Global
+        if (m is null) return null  # still no match
+        operand = CmdReadSingleton( t, Types.type_Global )
+      endIf
+
+      # Cast each argument to its corresponding method parameter type
+      if (args?)
+        args = args.cast_to( m )
+      endIf
+
+      if (m.attributes.is_special)
+#println( m.type_context.name + " has base types " + m.type_context.base_types )
+        if (m.type_context.instance_of(Types.type_GenericArray))
+          if (m.name == "create")
+            local m_get = m.type_context.find_method( "get(Integer)" )
+            return CmdCreateArray( t, m.type_context, m_get.return_type, args.first ).resolve
+          elseIf (m.name == "count")
+            return CmdArrayCount( t, operand ).resolve
+          elseIf (m.name == "get")
+            return CmdReadArrayElement( t, operand, args.first, m.return_type ).resolve
+          elseIf (m.name == "set")
+            return CmdWriteArrayElement( t, m.type_context, m.parameters[1].type, operand, args[0], args[1] ).resolve
+          endIf
+        endIf
+        throw t.error( "Unhandled call to special method " + m.type_context + "::" + m.signature )
+      endIf
+
+      if (context_type.is_compound or context_type.is_primitive)
+        return CmdStaticCall( t, operand, m, args ).resolve
+      else
+        return CmdDynamicCall( t, operand, m, args ).resolve
+      endIf
+
+    method find_method( t:Token, context_type:Type, name:String, args:CmdArgs, error_on_fail:Logical )->Method
+      local original_args = args
+      if (args is null) args = empty_args
+
+      local candidate_methods = Method[]
+      local compatible_methods = Method[]
+      local exact_matches = Method[]
+
+      context_type.resolve
+      forEach (index of args) 
+        local arg = args[index]
+        arg = args[index].resolve.require_value
+        args[index] = arg
+        arg.type.resolve
+      endForEach
+
+      # println( "------------------------ $::$()($)" (context_type,name,args) )
+      forEach (m in context_type.method_list)
+        # println( m )
+        if (m.name == name)
+          #{
+          if (m.parameters.count == 1 and m.parameters.first.type == Types.type_DataStack)
+            return m
+          elseIf (m.parameters.count == args.count)
+          }#
+          if (m.parameters.count == args.count)
+            candidate_methods.add( m )
+          endIf
+        endIf
+      endForEach
+
+      args.resolve
+
+      local have_character_args = false
+      forEach (arg in args)
+        if (arg.type.is_Character) have_character_args = true
+      endForEach
+
+      contingent
+        necessary  (candidate_methods.count?)
+
+        # Filter out methods with incompatible parameter types, parameter counts, or return types
+        forEach (m in candidate_methods)
+          contingent
+            necessary (m.parameters.count == args.count)
+            local index = 0
+            while (index < m.parameters.count)
+              local parameter_type = m.parameters[index].type
+              local arg_type = args[index].type
+              sufficient (args[index].instance_of(parameter_type))
+              necessary  (not arg_type.is_Logical and not parameter_type.is_Logical)
+              sufficient (arg_type.is_primitive and parameter_type.is_primitive)
+              necessary  (parameter_type is Types.type_Object)
+              ++index
+            endWhile
+          satisfied
+            compatible_methods.add( m )
+          endContingent
+        endForEach
+
+        combine_match_results( compatible_methods, exact_matches, candidate_methods )
+        necessary  (candidate_methods.count?)
+        sufficient (candidate_methods.count == 1)
+
+        # Look for exact parameter type matches
+        forEach (m in candidate_methods)
+          contingent
+            local index = 0
+            while (index < m.parameters.count)
+              necessary (m.parameters[index].type is args[index].type)
+              ++index
+            endWhile
+          satisfied
+            exact_matches.add( m )
+          unsatisfied
+            compatible_methods.add( m )
+          endContingent
+        endForEach
+
+        combine_match_results( compatible_methods, exact_matches, candidate_methods )
+        necessary  (candidate_methods.count?)
+        sufficient (candidate_methods.count == 1)
+
+#if (name=="print" and args.count==1 and args.first.type is Types.type_StringBuilder) println( "5: " + candidate_methods )
+        # Look for exact non-reference type matches
+        forEach (m in candidate_methods)
+          contingent
+            local index = 0
+            while (index < m.parameters.count)
+              local param_type = m.parameters[index].type
+              local arg_type = args[index].type
+              necessary (param_type is arg_type or not param_type.is_primitive or not arg_type.is_primitive)
+              ++index
+            endWhile
+          satisfied
+            exact_matches.add( m )
+          unsatisfied
+            compatible_methods.add( m )
+          endContingent
+        endForEach
+
+        combine_match_results( compatible_methods, exact_matches, candidate_methods )
+        necessary  (candidate_methods.count?)
+        sufficient (candidate_methods.count == 1)
+
+        # Choose methods with args that are instanceOf the corresponding args
+        # in other methods without the reverse being true.
+        forEach (m1 in candidate_methods)
+
+          contingent
+
+            # Only keep m1 if m1.arg[i].type is instance of m2.arg[i].type for all m2
+            forEach (m2 in candidate_methods)
+              #if (BC.tracing) trace m2?
+              if (m1 is m2) 
+                #if (BC.tracing) trace
+                nextIteration # TODO: nextIteration not correctly going to forEach
+              endIf
+
+              local index = 0
+              while (index < m1.parameters.count)
+                local m1_param_type = m1.parameters[index].type
+                local m2_param_type = m2.parameters[index].type
+                necessary (m1_param_type.instance_of(m2_param_type))
+                ++index
+              endWhile
+
+            endForEach
+
+          satisfied
+            compatible_methods.add( m1 )
+          endContingent
+
+        endForEach
+
+        combine_match_results( compatible_methods, exact_matches, candidate_methods, false )
+        necessary  (candidate_methods.count?)
+        sufficient (candidate_methods.count == 1)
+
+        necessary (candidate_methods.count == 1)
+
+      satisfied
+#if (name=="print" and args.count==1 and args.first.type is Types.type_StringBuilder) println( "Match: " + candidate_methods )
+        return candidate_methods.first
+
+      unsatisfied
+#if (name=="print" and args.count==1 and args.first.type is Types.type_StringBuilder) println( "No match: " + candidate_methods )
+        if (not error_on_fail)
+          return null
+        endIf
+
+        local buffer = StringBuilder()
+
+        if (candidate_methods.count?)
+          buffer.print( "Multiple matches for call to " )
+        else
+          buffer.print( "No such " )
+          if (original_args?) buffer.print( "method " )
+          else                buffer.print( "property or method " )
+          args = original_args
+        endIf
+
+        buffer.print( "'" )
+        buffer.print( name )
+        if (args?)
+          buffer.print('(')
+          local first = true
+          forEach (arg in args)
+            if (first) first = false
+            else       buffer.print(',')
+            buffer.print( arg.type.name )
+          endForEach
+          buffer.print(')')
+        endIf
+
+        buffer.print( "'" )
+
+        buffer.print( " in type " )
+        buffer.print( context_type.name )
+        #context_type.print
+        #println( System.stack_trace )
+        buffer.print( "." )
+
+        if (candidate_methods.count?)
+          buffer.println( "  Candidates:" )
+          buffer.println
+          forEach (m in candidate_methods)
+            buffer.println( m.signature )
+          endForEach
+        endIf
+
+        throw t.error( buffer->String )
+      endContingent
+
+    method combine_match_results( compatible_methods:Method[], exact_matches:Method[], candidate_methods:Method[] )
+      combine_match_results( compatible_methods, exact_matches, candidate_methods, true )
+
+    method combine_match_results( compatible_methods:Method[], exact_matches:Method[], candidate_methods:Method[], force:Logical )
+      if (exact_matches.count?)
+        compatible_methods.clear
+      elseIf (compatible_methods.count == 0)
+        if (force) candidate_methods.clear
+        return
+      endIf
+
+      candidate_methods.clear
+      candidate_methods.add( exact_matches )
+      candidate_methods.add( compatible_methods )
+      exact_matches.clear
+      compatible_methods.clear
+
+    method compile_bc( filepath:String )
+      BCWriter().compile( filepath )
+
+      #{ FIXME
+    method compile_js( filepath:String )
+      JSXCWriter().compile( filepath )
+      }#
+
+    method convert_string_to_valid_identifier( st:String )->String
+      # Similar to get_delegate_class_names_helper but a little different.
+      local i1 = st.find("<<")
+      local i2 = st.find_last(">>")
+      while (i1 >= 0 and i2 >= 0)
+        st = st.leftmost(i1) + "_of_" + st.substring(i1+2,i2-1) + st.substring(i2+2)
+        i1 = st.find("<<")
+        i2 = st.find_last(">>")
+      endWhile
+
+      i1 = st.find( "[]" )
+      while (i1 >= 0)
+        st = st.substring(0,i1-1) + "List"
+        i1 = st.find( "[]" )
+      endWhile
+
+      i1 = st.find( "->" )
+      while (i1 >= 0)
+        st = st.substring( 0, i1-1 ) + "__" + st.substring( i1+2 )
+        i1 = st.find( "->" )
+      endWhile
+
+      local type_buffer = StringBuilder()
+      forEach(c in st)
+        which (c)
+          case '+': type_buffer.print("PLUS")
+          case '-': type_buffer.print("MINUS")
+          case '*': type_buffer.print("TIMES")
+          case '/': type_buffer.print("DIVIDE")
+          case '%': type_buffer.print("MOD")
+          case '^': type_buffer.print("POWER")
+          case '&': type_buffer.print("AND")
+          case '|': type_buffer.print("OR")
+          case '~': type_buffer.print("TILDE")
+          case '!': type_buffer.print("BWNOT")
+          case '=': type_buffer.print("EQUALS")
+          others
+            if (c.is_alphanumeric) type_buffer.print(c)
+            else                   type_buffer.print('_')
+        endWhich
+      endForEach
+      # println(type_buffer)
+
+      return type_buffer->String
+
+
+    method create_base_delegate_type( t:Token, base_class_name:String, params:Local[], ret_type:Type )
+      local buffer = StringBuilder()
+      local base_delegate_type   = Types.reference( t, base_class_name )
+      local base_class_string : String
+
+      if (not Types.reference( t, base_class_name ).is_defined)
+        buffer.println( "class " + base_class_name )
+        buffer.println( "  METHODS" )
+        buffer.print( "    method call( " )
+        local i = 0
+        if(params? and params.count?)
+          local i = 0
+          while (i < params.count - 1)
+            buffer.print( "p" + i + ":" + params[i].type->String + ", " )
+            ++i
+          endWhile
+
+          if (params.count?) buffer.print( "p" + (params.count-1) + ":" + params.last.type->String )
+        endIf
+        buffer.print(" )")
+
+        if (ret_type?) buffer.println( "->" + ret_type.name )
+        else           buffer.println
+
+        buffer.println( "endClass" )
+
+        base_class_string = buffer->String
+        # println(base_class_name)
+        #println "BASE CLASS STRING: " + base_class_string
+        Parser( "[Internal]", base_class_string ).parse_content
+        base_delegate_type = Types.reference(t,base_class_name).resolve
+        buffer.clear
+      endIf
+
+    method get_delegate_signature( name:String, params:Local[], ret_type:Type )->String
+      local sig_buffer = StringBuilder()
+      sig_buffer.print("(")
+      if (params? and params.count?)
+        local i = 0
+        while (i < params.count-1)
+          sig_buffer.print( params[i].type.name + "," )
+          ++i
+        endWhile
+        sig_buffer.print( params.last.type.name )
+      endIf
+      sig_buffer.print(")")
+
+      if (ret_type?) sig_buffer.println( "->" + ret_type.name )
+
+      return name + sig_buffer->String
+
+    method get_delegate_class_names_helper( type_name:String )->String
+      local type_buffer = StringBuilder()
+      local prev_char = ' '
+      forEach(c in type_name)
+        which (c)
+          case '[': type_buffer.print("List")
+          case '<':
+            if (prev_char != '<') type_buffer.print("_of_")
+          case '>',']': noAction
+          case ',': type_buffer.print("_")
+          case '+': type_buffer.print("PLUS")
+          case '-': type_buffer.print("MINUS")
+          case '*': type_buffer.print("TIMES")
+          case '/': type_buffer.print("DIVIDE")
+          case '%': type_buffer.print("MOD")
+          case '^': type_buffer.print("POWER")
+          case '&': type_buffer.print("AND")
+          case '|': type_buffer.print("OR")
+          case '~': type_buffer.print("TILDE")
+          case '!': type_buffer.print("BWNOT")
+          case '=': type_buffer.print("EQUALS")
+          others:   type_buffer.print(c)
+        endWhich
+        prev_char = c
+      endForEach
+      # println(type_buffer)
+
+      return type_buffer->String
+
+
+    method get_delegate_class_names( name:String, class_type:Type, params:Local[], ret_type:Type )->String[]
+      local result = String[]
+      local buffer = StringBuilder()
+      if (params? and params.count?)
+        local i = 0
+        local p_string = ""
+        while (i < params.count - 1)
+          p_string = get_delegate_class_names_helper( params[i].type->String )
+          buffer.print( p_string + "_" )
+          ++i
+        endWhile
+        p_string = get_delegate_class_names_helper( params.last.type->String )
+        buffer.print( p_string )
+      endIf
+
+      buffer.print( "__" )
+      if (ret_type?)
+        local ret_string = get_delegate_class_names_helper( ret_type->String )
+        buffer.print( ret_string )
+      endIf
+
+      # local test_res
+
+      result.add("Delegate__" + buffer->String)
+      if(class_type?) result.add("Delegate__"+class_type.name+"__"+name+"__"+buffer->String)
+
+      # println(result)
+
+      return result
+
+
+
+endClass
+
+class Context
+  PROPERTIES
+    this_type     : Type
+    this_method   : Method
+    locals        = Local[]
+    scope_stack   = Integer[]
+    control_structure_stack = CmdControlStructure[]
+
+  METHODS
+    method push_local_scope
+      scope_stack.add( locals.count )
+
+    method pop_local_scope
+      if (scope_stack.count == 0) throw BardError( "Scope stack empty in Analyzer.pop_local_scope()" )
+      locals.discard_from( scope_stack.remove_last )
+
+    method find_local( name:String )->Local
+      local i = locals.count - 1
+      while (i >= 0)
+        local v = locals[i]
+        if (v.name == name) return v
+        --i
+      endWhile
+      return null
+endClass
+

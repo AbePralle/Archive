@@ -1,0 +1,36 @@
+class JSWriter
+  PROPERTIES
+    base64_code() : StringBuilder
+
+  METHODS
+    method compile( String filepath )
+      local var bytes = File(filepath+".bc").to_bytes
+      convert_to_base64( bytes )
+
+      local var writer = File(filepath+".js").create_writer
+      writer.print( //var bard_code_string = "// )
+      writer.print( base64_code )
+      writer.println( //";// )
+      writer.close
+
+    method convert_to_base64( Byte[] data )
+      while (data.count % 3 != 0) data.add(0)
+
+      local var base64_values = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+      local var i = 0
+      while (i < data.count)
+        local var x = data[i]
+        local var y = data[i+1]
+        local var z = data[i+2]
+        local var a = x.right_shifted(2) & 0x3f
+        local var b = (x.left_shifted(4) | y.right_shifted(4)) & 0x3f
+        local var c = (y.left_shifted(2) | z.right_shifted(6)) & 0x3f
+        local var d = z & 0x3f
+        base64_code.print( base64_values[a] )
+        base64_code.print( base64_values[b] )
+        base64_code.print( base64_values[c] )
+        base64_code.print( base64_values[d] )
+        i += 3
+      endWhile
+endClass

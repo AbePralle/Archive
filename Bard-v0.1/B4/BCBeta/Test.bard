@@ -1,0 +1,81 @@
+<<include "../Libraries/Bard/Core/Array.bard">>
+#<<include "Libraries/Bard/Core/BigInteger.bard">>
+<<include "../Libraries/Bard/Core/Console.bard">>
+#<<include "Libraries/Bard/Core/EventManager.bard">>
+<<include "../Libraries/Bard/Core/Exception.bard">>
+<<include "../Libraries/Bard/Core/File.bard">>
+<<include "../Libraries/Bard/Core/Global.bard">>
+<<include "../Libraries/Bard/Core/List.bard">>
+<<include "../Libraries/Bard/Core/Math.bard">>
+<<include "../Libraries/Bard/Core/Object.bard">>
+<<include "../Libraries/Bard/Core/Primitives.bard">>
+<<include "../Libraries/Bard/Core/Printer.bard">>
+<<include "../Libraries/Bard/Core/Random.bard">>
+<<include "../Libraries/Bard/Core/Runtime.bard">>
+<<include "../Libraries/Bard/Core/String.bard">>
+<<include "../Libraries/Bard/Core/StringBuilder.bard">>
+<<include "../Libraries/Bard/Core/Table.bard">>
+#<<include "Libraries/Bard/Core/Task.bard">>
+<<include "../Libraries/Bard/Core/Time.bard">>
+<<include "../Libraries/Bard/Core/Utility.bard">>
+
+class Main
+  ENUMERATE
+    alpha, beta, gamma
+    psi = 23, omega
+
+  PROPERTIES
+    position : Vector2
+
+  METHODS
+    method init
+      println "Hello World!!"
+      #print_variations "Hello World!"
+      #trace alpha
+      #trace beta
+      #trace gamma
+      #trace psi
+      #trace omega
+
+
+    method print_variations( st:String )
+      local stopwatch = Stopwatch()
+      println "Here's a word: " + st
+      println "In reverse: " + st.reversed
+      println "In uppercase: " + st.to_uppercase
+      println "In lowercase: " + st.to_lowercase
+      println "In CrAzY CaPs: " + crazy_caps(st)
+      println "Elapsed time for printing: " + stopwatch
+      local i = 0
+      local sum = 0
+      while (i < 1000000)
+        sum += i
+        ++i
+      endWhile
+      println "Sum: " + sum
+      println "Elapsed time for sum: " + stopwatch
+      stopwatch.restart
+      println 33.14
+
+      position = Vector2(3,4)
+      println position->String
+
+    method crazy_caps( st:String )->String
+      local uc = st.to_uppercase
+      local lc = st.to_lowercase
+      local result = StringBuilder( st.count )
+
+      forEach (i of st )
+        if ((i&1)?) result.print( lc[i] );
+        else        result.print( uc[i] );
+      endForEach
+
+      return result->String
+
+endClass
+
+compound Vector2( x:Real, y:Real )
+  METHODS
+    method to->String
+      return "(" + x + "," + y + ")"
+endCompound

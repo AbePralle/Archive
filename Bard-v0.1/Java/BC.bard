@@ -1,0 +1,5769 @@
+class Main : Object
+  PROPERTIES
+    ch : Character
+
+  METHODS
+    method init
+      Parser.parse( "Test.bard" )
+
+      TypeDefs.resolve
+
+      local writer = JavaVMWriter()
+      TypeDefs.compile( writer )
+      writer.save( "TestProgram" )
+
+endClass
+
+
+class Object [built_in]
+  METHODS
+    method init
+
+    method String [native]
+
+    method Character:  return 0
+    method Real:  return 0.0
+    method Integer: return 0
+    method Logical: return false
+
+    method get( v:Variant ).Variant
+      throw "ERROR - get() not defined for this object (method likely called on Variant instead of object type in a forEach loop)."
+
+    method set( key:Variant, value:Variant ).Object
+      println "setting " + key + " to " + value
+      throw "ERROR - set() not defined for this object."
+
+    method Collection 
+      throw "ERROR - object is not a Collection"
+
+    method List 
+      throw "ERROR - object is not a list"
+
+    method Table 
+      throw "ERROR - object is not a table"
+
+    method key( index:Integer ).Variant: return null
+    method keys.List: return []
+endClass
+
+class System : Object
+  METHODS
+    method Real_to_Integer_high_bits( n:Real ).Integer [native]
+      return 0
+
+    method Real_to_Integer_low_bits( n:Real ).Integer  [native]
+      return 0
+
+    method sleep( seconds:Real ) [native]
+endClass
+
+class Collection : Object
+  METHODS
+    method Collection
+      return this
+
+    method count.Integer
+
+endClass
+
+class List : Collection [native]
+  METHODS
+    method count.Integer            [built_in]
+      return this.count
+
+    method clear                    [built_in]
+      this.clear
+
+    method add( value:Variant ).List  [built_in]
+
+    method add_all( other:List ).List
+      forEach (value in other) add( value )
+      return this
+
+    method get( index:Integer ).Variant                   [built_in]
+      return this[index]
+
+    method get( v:Variant ).Variant
+      if (not (v instanceOf Integer)) return null
+      return get( v.Integer )
+
+    method remove( value:Variant ).Logical                  [native]
+    method remove_at( index:Integer ).Variant               [built_in]
+    method insert( obj:Variant ).List                       [built_in]
+    method insert( obj:Variant, before_index:Integer ).List [built_in]
+
+    method swap( i1:Integer, i2:Integer ).List
+      local temp = this[i1]
+      this[i1] = this[i2]
+      this[i2] = temp
+      return this
+
+    method reverse.List
+      local i1 = 0
+      local i2 = count - 1
+      while (i1 < i2)
+        local temp = this[i1]
+        this[i1] = this[i2]
+        this[i2] = temp
+        ++i1
+        --i2
+      endWhile
+      return this
+
+    method first.Variant
+      return this[0]
+
+    method last.Variant
+      return this[ count - 1 ]
+
+    method remove_first.Variant
+      remove_at( 0 )
+
+    method remove_last.Variant
+      return remove_at( count - 1 )
+
+    method sort.List
+      # bubble sort as a placeholder
+      local pass = 1
+      while (pass < count)
+        local sorted = true
+        local i = 0
+        while (i < count-pass)
+          local a = this[i]   : Real
+          local b = this[i+1] : Real
+          if (a < b)
+            swap(i,i+1)
+            sorted = false
+          endIf
+          ++i
+        endWhile
+        if (sorted) pass = count  # poor man's escapeWhile
+        ++pass
+      endWhile
+      return this
+
+    method String
+      local buffer = Character[]
+      buffer.print('[')
+      local first = true
+      forEach (element in this)
+        if (first) first = false
+        else       buffer.print(',')
+        buffer.print( element )
+      endForEach
+      buffer.print(']')
+      return buffer.String
+
+endClass
+
+class Table : Collection [native]
+  METHODS
+    method count.Integer                [built_in]
+      return this.count
+
+    method get( key:Variant ).Variant  [built_in]
+      return this.get(key)
+
+    method at( index:Integer ).Variant [native]
+
+    method set( key:Variant, value:Variant ).Table  [built_in]
+      return this.set(key,value)
+
+    method key( index:Integer ).Variant    [native]
+    method keys.List                       [native]
+    method contains( key:Variant ).Logical [native]
+endClass
+
+
+class Time
+  METHODS
+    method current.Real  [native]
+endClass
+
+
+object Random [native]
+  # This random number generator produces evenly distributed 
+  # pseudo-random values.  
+  #
+  # Use any the following methods
+  #
+  #   Real()
+  #     Returns a real number n where 0.0 < n < 1.0.
+  #
+  #   Real64(low,high)
+  #     Returns a real number n where low < n < high.
+  #
+  #   Integer()
+  #     Returns a number between 0 and 0xffffffff (-1).
+  #
+  #   Integer(limit).Integer
+  #     Returns an integer n where 0 <= n < limit.
+  #
+  #   Integer(low,high).Integer
+  #     Returns an integer n where low <= n <= high.
+  #
+  #   Logical().Logical:
+  #     Returns either "true" or "false" with a 50/50 chance.
+  #
+  # You may create a Random object with a 'seed' 
+  # value; generators created with the same seed always return
+  # the same sequence of random numbers.
+  #
+  # Underneath, the RandomNumberGenerator operates on a 48-bit 
+  # integer using the linear congruence formula with most of
+  # the "drand48" parameters:
+  #
+  #   next = (a * prev + c) mod (2^48)
+  #
+  # Where a=0x5DEECE66D, c=11, and bits 31:0 of
+  # 'next' are retrieved with each read call.
+  METHODS
+    method init
+      init( Time.current * 1000 )
+
+    method init( seed_value:Integer )
+      seed = seed_value
+
+    method seed( value:Integer )       [native]
+
+    method bits( n:Integer ).Integer   [native]
+
+    method Real
+      # Real has 53 bits of precision
+      return ((bits(30) * (2.0^23.0) + bits(23)) + 1) / ((2.0^53) + 1)
+
+    method Real( low:Real, high:Real )
+      return this.Real * (high-low) + low
+
+    method Integer
+      return bits(32)
+
+    method Integer( limit:Integer )
+      return bits(32) % limit
+
+    method Integer( low:Integer, high:Integer )
+      return (bits(32) % ((high-low)+1)) + low
+
+    method Logical
+      return bits(1) == 1
+
+    method String
+      return "Random Number Generator"
+endObject
+
+class Writer
+  METHODS
+    method write( value:Variant )
+      println( "Call to undefined write()" )
+
+    method print( value:Variant ).Writer
+      write 'x'
+      return this
+
+    method println.Writer
+      print '\n'
+      return this
+
+    method println( value:Variant ).Writer
+      print value
+      print '\n'
+      return this
+
+    method close
+endClass
+
+class Byte[] : Writer  [native]
+  METHODS
+    method clear.Byte[]                 [native]
+    method count.Integer                [native]
+    method add( n:Integer ).Byte[]      [native]
+    method get( index:Integer ).Integer [native]
+
+    method Writer
+      return this
+
+    method write( value:Variant ).Byte[]
+      add( value.Byte )
+      return this
+endClass
+
+class String [native]
+  METHODS
+    method duplicate.String
+      return this  # Strings are immutable
+
+    method substring( i1:Integer, i2:Integer ).String  [native]
+
+    method substring( i1:Integer ).String
+      return substring( i1, count-1 )
+
+    method index_of( look_for:Character ).Integer
+      local i = 0
+      while (i < count)
+        if (get(i) == look_for) return i
+        ++i
+      endWhile
+      return -1
+
+    method contains( ch:Character ).Logical
+      return index_of(ch) != -1
+
+    method before( index:Integer ).String
+      return substring( 0, index-1 )
+
+    method after( index:Integer ).String
+      return substring( index+1, count-1 )
+
+    method count.Integer                   [native]
+    method get( index:Integer ).Character  [native]
+
+    method compare_to( other:String ).Integer [native]
+
+    method Reader
+      return StringReader(this)
+
+    method String
+      return this
+
+endClass
+
+class Character[] : String, Writer [native]
+  METHODS
+    method ensure_capacity(n:Integer)  [native]
+    method clear.Character[]                [native]
+    method add( value:Variant ).Character[] [native]
+
+    method duplicate.Character[]
+      local result = Character[]
+      result.ensure_capacity( count )
+      result.print( this )
+      return result
+
+    method LineReader
+      return LineReader( this.Reader )
+
+    method Writer
+      return TextWriter(this)
+
+    method write( value:Variant ).Character[]
+      return add( value )
+
+    method print( value:Variant ).Character[]
+      return add( value )
+
+    method String
+      return this
+endClass
+
+class Integer[] [native]
+  METHODS
+    method count.Integer                                  [native]
+    method get( index:Integer ).Integer                   [native]
+    method set( index:Integer, value:Integer ).Integer[]  [native]
+
+    method ensure_capacity(n:Integer).Integer[]  [native]
+    method clear.Integer[]                       [native]
+    method add( value:Integer ).Integer[]        [native]
+
+    method add( list:Integer[] ).Integer[]
+      forEach (value in list) add(value)
+
+    method duplicate.Integer[]
+      local result = Integer[]
+      result.ensure_capacity( count )
+      result.add( this )
+      return result
+
+    method first.Integer
+      return this[0]
+
+    method last.Integer
+      return this[count-1]
+
+    method String
+      local buffer = Character[]
+      buffer.print('[')
+      local first = true
+      forEach (value in this)
+        if (first) first = false
+        else       buffer.print(',')
+        buffer.print( value )
+      endForEach
+      buffer.print(']')
+      return buffer
+endClass
+
+class Pair
+  PROPERTIES
+    a : Variant
+    b : Variant
+
+  METHODS
+    method init( _a:Variant, _b:Variant )
+      a = _a
+      b = _b
+
+    method String
+      return Character[].print(a).print(' ').print(b)
+endClass
+
+class File
+  PROPERTIES
+    filepath : String
+
+  METHODS
+    method init( _filepath:String )
+      filepath = _filepath
+
+    method LineReader
+      return LineReader( this.Reader )
+
+    method Reader
+      return FileReader( filepath )
+
+    method Writer
+      return TextWriter( FileWriter(filepath) )
+
+    method Character[]  [native]
+endClass
+
+class Reader
+  METHODS
+    method available.Integer
+    method has_another.Logical
+    method read.Variant
+    method peek.Variant
+    method close
+endClass
+
+class FileReader : Reader  [native]
+  METHODS
+    method init( filepath:String )  [native]
+    method available.Integer        [native]
+    method has_another.Logical      [native]
+    method read.Variant             [native]
+    method peek.Variant             [native]
+    method close                    [native]
+endClass
+
+class NativeFileWriter [native]
+  METHODS
+    method init( filepath:String )  [native]
+    method ready.Logical            [native]
+    method write( ch:Character )         [native]
+    method close                    [native]
+endClass
+
+class FileWriter : Writer
+  PROPERTIES
+    dest   : NativeFileWriter
+    buffer : Character[]
+
+  METHODS
+    method init( filepath:String )
+      dest = NativeFileWriter( filepath )
+
+    method ready.Logical
+      return dest.ready
+
+    method write( value:Variant )
+      if (value instanceOf Character)
+        dest.write( value.Character )
+      else
+        if (buffer is null) buffer = Character[]
+        buffer.clear.write( value )
+        forEach (ch in buffer) dest.write( ch )
+      endIf
+
+    method close
+      dest.close
+endClass
+
+class LineReader : Reader
+  PROPERTIES
+    src     : Reader
+    buffer  : Character[]
+    prepped : Logical
+
+  METHODS
+    method init( _src:Reader )
+      src = _src
+      prepped = false
+      buffer = Character[]
+
+    method available.Integer
+      if (has_another) return 1
+      else             return 0
+
+    method has_another.Logical
+      return (prepped or src.has_another)
+
+    method peek.Variant
+      if (not prepped) read; prepped = true
+      return buffer
+
+    method read.Variant
+      if (prepped) prepped = false; return buffer
+
+      buffer.clear
+      while (src.has_another)
+        local ch = src.read.Character
+        if (ch == '\n') return buffer
+        buffer.print( ch )
+      endWhile
+      return buffer
+
+endClass
+
+class StringReader : Reader
+  PROPERTIES
+    data     : String
+    count    : Integer
+    position : Integer
+
+  METHODS
+    method init( _data:String )
+      data = _data
+      count = data.count
+      position = 0
+
+    method available.Integer
+      return (count - position)
+
+    method has_another.Logical
+      return (position < count)
+
+    method peek.Variant
+      if (position == count) return 0
+      return data[position]
+
+    method peek( offset:Integer ).Character
+      if (position + offset >= count)
+        local zero_char = 0 : Character
+        return zero_char
+      endIf
+      return data[position+offset]
+
+    method read.Variant
+      ++position
+      return data[position-1]
+
+    method consume( ch:Character ).Logical
+      if (peek.Character != ch) return false
+      read
+      return true
+
+    method consume_whitespace.Logical
+      if (consume(' ') or consume('\t'))
+        while (consume(' ') or consume('\t')) noAction
+        return true
+      endIf
+      return false
+
+    method consume( st:String ).Logical
+      forEach (i of st)
+        if (peek(i) != st[i]) return false
+      endForEach
+      position += st.count
+      return true;
+endClass
+
+class TextWriter : Writer
+  PROPERTIES
+    dest   : Writer
+    buffer : Character[]
+
+  METHODS
+    method init
+      dest = Character[]
+      buffer = Character[]
+
+    method init( _dest:Writer )
+      dest = _dest
+      buffer = Character[]
+
+    method write( value:Variant )
+      print( value )
+
+    method print( value:Variant ).TextWriter
+      buffer.clear.print( value )
+      forEach (ch in buffer) dest.write(ch)
+      return this
+
+    method println( value:Variant ).TextWriter
+      print( value )
+      print( '\n' )
+      return this
+
+    method String
+      return dest.String
+endClass
+
+class Math
+  METHODS
+    method floor( n:Real ).Real         [native]
+endClass
+
+class ParseReader
+  PROPERTIES
+    data     : String
+    position : Integer
+    count    : Integer
+    line     : Integer
+    column   : Integer
+
+  METHODS
+    method init( filename:String )
+      local reader = File(filename).Reader
+      local buffer = Character[]
+      buffer.ensure_capacity( reader.available )
+      while (reader.has_another)
+        local ch = reader.read.Character as Integer
+        if (ch == 10 or (ch >= 32 and ch <= 126)) buffer.add( ch as Character )
+        elseIf (ch == 8) buffer.print( "  " )
+      endWhile
+      data = buffer
+      count = data.count
+      position = 0
+      line = 1
+      column = 1
+
+    method init( filename:String, _data:String )
+      local buffer = Character[]
+      buffer.ensure_capacity( _data.count )
+      forEach (ch in _data)
+        local value = ch as Integer
+        if (value == 10 or (value >= 32 and value <= 126)) buffer.add( ch )
+        elseIf (value == 8) buffer.print( "  " )
+      endForEach
+      data = buffer
+      count = data.count
+      position = 0
+      line = 1
+      column = 1
+
+    method has_another.Logical
+      return position < count
+
+    method peek.Character
+      if (position == count) return 0
+      return data[position]
+
+    method peek( offset:Integer ).Character
+      if (position+offset >= count) return 0
+      return data[position+offset]
+
+    method read.Character
+      local result = data[position]
+      ++position
+      if (result == '\n')
+        ++line
+        column = 1
+      else
+        ++column
+      endIf
+      return result
+
+endClass
+
+object TokenType
+  PROPERTIES
+    # general non-statement
+    eof                              = 0,
+    eol                              = 1,
+
+    # structure
+    symbol_class                     = 2,
+    symbol_function                  = 3,
+    symbol_else                      = 4,
+    symbol_elseIf                    = 5,
+    symbol_endClass                  = 6,
+    symbol_endForEach                = 7,
+    symbol_endFunction               = 8,
+    symbol_endIf                     = 9,
+    symbol_endLoop                   = 10,
+    symbol_endObject                 = 11,
+    symbol_endWhile                  = 12,
+    symbol_in                        = 13,
+    symbol_METHODS                   = 14,
+    symbol_method                    = 15,
+    symbol_object                    = 16,
+    symbol_of                        = 17,
+    symbol_PROPERTIES                = 18,
+    symbol_close_brace               = 19,
+    symbol_close_bracket             = 20,
+    symbol_close_comment             = 21,
+    symbol_close_paren               = 22,
+    symbol_close_special             = 23,
+
+    symbol_last_non_statement        = 24,  # End non-statement list
+
+    # general
+    comment                          = 25,
+    identifier                       = 26,
+
+    # control
+    symbol_forEach                   = 27,
+    symbol_if                        = 28,
+    symbol_loop                      = 29,
+    symbol_return                    = 30,
+    symbol_throw                     = 31,
+    symbol_trace                     = 32,
+    symbol_tron                      = 33,
+    symbol_troff                     = 34,
+    symbol_while                     = 35,
+
+    # expressions
+    literal_Real                     = 36,
+    literal_Real_pi                  = 37,
+    literal_Integer                  = 38,
+    literal_Character                = 39,
+    literal_Logical_true             = 40,
+    literal_Logical_false            = 41,
+    literal_String                   = 42,
+    symbol_add_with_assign           = 43,
+    symbol_ampersand                 = 44,
+    symbol_and                       = 45,
+    symbol_as                        = 46,
+    symbol_at                        = 47,
+    symbol_bitwise_and_with_assign   = 48,
+    symbol_bitwise_not               = 49,
+    symbol_bitwise_or                = 50,
+    symbol_bitwise_or_with_assign    = 51,
+    symbol_bitwise_xor               = 52,
+    symbol_bitwise_xor_with_assign   = 53,
+    symbol_colon                     = 54,
+    symbol_comma                     = 55,
+    symbol_compare                   = 56,
+    symbol_decrement                 = 57,
+    symbol_divide                    = 58,
+    symbol_divide_with_assign        = 59,
+    symbol_dollar                    = 60,
+    symbol_downtogreaterthan         = 61,
+    symbol_empty_braces              = 62,
+    symbol_empty_brackets            = 63,
+    symbol_eq                        = 64,
+    symbol_equals                    = 65,
+    symbol_ge                        = 66,
+    symbol_global                    = 67,
+    symbol_gt                        = 68,
+    symbol_increment                 = 69,
+    symbol_instanceOf                = 70,
+    symbol_is                        = 71,
+    symbol_le                        = 72,
+    symbol_lt                        = 73,
+    symbol_local                     = 74,
+    symbol_member_with_assign        = 75,
+    symbol_minus                     = 76,
+    symbol_mod_with_assign           = 77,
+    symbol_multiply_with_assign      = 78,
+    symbol_ne                        = 79,
+    symbol_noAction                  = 80,
+    symbol_not                       = 81,
+    symbol_null                      = 82,
+    symbol_open_brace                = 83,
+    symbol_open_bracket              = 84,
+    symbol_open_paren                = 85,
+    symbol_open_special              = 86,
+    symbol_or                        = 87,
+    symbol_percent                   = 88,
+    symbol_period                    = 89,
+    symbol_plus                      = 90,
+    symbol_power                     = 91,
+    symbol_power_with_assign         = 92,
+    symbol_question_mark             = 93,
+    symbol_semicolon                 = 94,
+    symbol_shl                       = 95,
+    symbol_shr                       = 96,
+    symbol_shrx                      = 97,
+    symbol_subtract_with_assign      = 98,
+    symbol_this                      = 99,
+    symbol_times                     = 100,
+    symbol_upto                      = 101,
+    symbol_uptolessthan              = 102,
+    symbol_xor                       = 103,
+    
+    last_token                       = 200 : Integer;  # 101, ,
+
+    name_lookup =
+    {
+      eof : "[End Of File]",
+      eol : "[End Of Line]",
+      symbol_class                     : "class",
+      symbol_function                  : "function",
+      symbol_else                      : "else",
+      symbol_elseIf                    : "elseIf",
+      symbol_endClass                  : "endClass",
+      symbol_endForEach                : "endForEach",
+      symbol_endFunction               : "endFunction",
+      symbol_endIf                     : "endIf",
+      symbol_endLoop                   : "endLoop",
+      symbol_endObject                 : "endObject",
+      symbol_endWhile                  : "endWhile",
+      symbol_in                        : "in",
+      symbol_METHODS                   : "METHODS",
+      symbol_method                    : "method",
+      symbol_object                    : "object",
+      symbol_of                        : "of",
+      symbol_PROPERTIES                : "PROPERTIES",
+      symbol_close_brace               : "}",
+      symbol_close_bracket             : "]",
+      symbol_close_comment             : "}#",
+      symbol_close_paren               : ")",
+      symbol_close_special             : ">>",
+
+      # general
+      comment                          : "[Comment]",
+      identifier                       : "[Identifier]",
+
+      # control
+      symbol_forEach                   : "forEach",
+      symbol_if                        : "if",
+      symbol_loop                      : "loop",
+      symbol_return                    : "return",
+      symbol_throw                     : "throw",
+      symbol_trace                     : "trace",
+      symbol_tron                      : "tron",
+      symbol_troff                     : "troff",
+      symbol_while                     : "while",
+
+      # expressions
+      literal_Real                     : "[Real]",
+      literal_Real_pi                  : "[pi]",
+      literal_Integer                  : "[Integer]",
+      literal_Character                : "[Character]",
+      literal_Logical_true             : "true",
+      literal_Logical_false            : "false",
+      literal_String                   : "[String]",
+      symbol_add_with_assign           : "+=",
+      symbol_ampersand                 : "&",
+      symbol_and                       : "and",
+      symbol_as                        : "as",
+      symbol_at                        : "at",
+      symbol_bitwise_and_with_assign   : "&=",
+      symbol_bitwise_not               : "!",
+      symbol_bitwise_or                : "|",
+      symbol_bitwise_or_with_assign    : "|=",
+      symbol_bitwise_xor               : "~",
+      symbol_bitwise_xor_with_assign   : "~=",
+      symbol_colon                     : ":",
+      symbol_comma                     : ",",
+      symbol_compare                   : "<>",
+      symbol_decrement                 : "--",
+      symbol_divide                    : "/",
+      symbol_divide_with_assign        : "/=",
+      symbol_dollar                    : "$",
+      symbol_downtogreaterthan         : "..>",
+      symbol_empty_braces              : "{}",
+      symbol_empty_brackets            : "[]",
+      symbol_eq                        : "==",
+      symbol_equals                    : "=",
+      symbol_ge                        : ">=",
+      symbol_global                    : "global",
+      symbol_gt                        : ">",
+      symbol_increment                 : "++",
+      symbol_instanceOf                : "instanceOf",
+      symbol_is                        : "is",
+      symbol_le                        : "<=",
+      symbol_lt                        : "<",
+      symbol_local                     : "local",
+      symbol_member_with_assign        : ".=",
+      symbol_minus                     : "-",
+      symbol_mod_with_assign           : "%=",
+      symbol_multiply_with_assign      : "*=",
+      symbol_ne                        : "!=",
+      symbol_noAction                  : "noAction",
+      symbol_not                       : "not",
+      symbol_null                      : "null",
+      symbol_open_brace                : "{",
+      symbol_open_bracket              : "[",
+      symbol_open_paren                : "(",
+      symbol_open_special              : "<<",
+      symbol_or                        : "or",
+      symbol_percent                   : "%",
+      symbol_period                    : ".",
+      symbol_plus                      : "+",
+      symbol_power                     : "^",
+      symbol_power_with_assign         : "^=",
+      symbol_question_mark             : "?",
+      symbol_semicolon                 : ";",
+      symbol_shl                       : ":<<:",
+      symbol_shr                       : ":>>:",
+      symbol_shrx                      : ":>>>:",
+      symbol_subtract_with_assign      : "-=",
+      symbol_this                      : "this",
+      symbol_times                     : "*",
+      symbol_upto                      : "..",
+      symbol_uptolessthan              : "..<",
+      symbol_xor                       : "xor"
+    }
+
+    keywords = {} : Table
+
+  METHODS
+    method init
+      set_up_keywords
+
+    method set_up_keywords
+      local token_list =
+        [
+          symbol_class,
+          symbol_function,
+          symbol_else,
+          symbol_elseIf,
+          symbol_endClass,
+          symbol_endForEach,
+          symbol_endFunction,
+          symbol_endIf,
+          symbol_endLoop,
+          symbol_endObject,
+          symbol_endWhile,
+          symbol_in,
+          symbol_METHODS,
+          symbol_method,
+          symbol_object,
+          symbol_of,
+          symbol_PROPERTIES,
+          symbol_forEach,
+          symbol_if,
+          symbol_loop,
+          symbol_return,
+          symbol_throw,
+          symbol_trace,
+          symbol_tron,
+          symbol_troff,
+          symbol_while,
+          literal_Logical_true,
+          literal_Logical_false,
+          symbol_and,
+          symbol_as,
+          symbol_at,
+          symbol_global,
+          symbol_instanceOf,
+          symbol_is,
+          symbol_local,
+          symbol_noAction,
+          symbol_not,
+          symbol_null,
+          symbol_or,
+          symbol_this,
+          symbol_xor
+        ]
+      forEach (type in token_list)
+        keywords[name_lookup[type]] = type
+      endForEach
+
+endObject
+
+class Token
+  PROPERTIES
+    type     : Integer
+    line     : Integer
+    column   : Integer
+    value    : Real
+    filepath : String
+    content  : String
+
+  METHODS
+    method init( scanner:Scanner, _type:Integer )
+      type = _type
+      line = scanner.line
+      column = scanner.column
+      filepath = scanner.filepath
+
+    method init( scanner:Scanner, _type:Integer, _content:Character[] )
+      init( scanner, _type )
+      content = _content.duplicate
+
+    method init( scanner:Scanner, _type:Integer, _value:Real )
+      init( scanner, _type )
+      value = _value
+
+    method init( _filepath:String, _line:Integer, _column:Integer )
+      filepath = _filepath
+      line = _line
+      column = _column
+
+    method String
+      local t = type
+      if (t == TokenType.identifier)
+        return content
+      elseIf (t == TokenType.eol and (content as Object) != null)
+        return Character[].print("[End Of Line:").print(content).print("]").String
+      elseIf (t == TokenType.literal_String)
+        return content
+      elseIf (t == TokenType.literal_Real)
+        return Character[].print(value)
+      elseIf (t == TokenType.literal_Integer)
+        local digit = value : Integer
+        return Character[].print(digit)
+      elseIf (t == TokenType.literal_Character)
+        local intval = value : Integer
+        local ch = intval : Character
+        return Character[].print( ch )
+      else
+        local result = TokenType.name_lookup[t]
+        if (result.Object != null) return result
+        return "???"
+      endIf
+
+    method error( mesg:String ).String
+      local buffer = Character[]
+      buffer.print( //ERROR in "// ).print(filepath).print(//", line //).print(line).print(", column ").print(column)
+      buffer.print(":  ").print( mesg )
+      return buffer.String
+endClass
+
+object Scanner
+  PROPERTIES
+    filepath : String
+    reader   : ParseReader
+    tokens   : List
+    line     : Integer
+    column   : Integer
+    content  : Character[]
+    comment  : Character[]
+
+  METHODS
+    method init
+      content = Character[]
+      comment = Character[]
+
+    method tokenize( _filepath:String ).List
+      filepath = _filepath
+      reader = ParseReader( filepath )
+      tokens = []
+      while (scan_next) noAction
+      return tokens
+
+    method tokenize( _filepath:String, data:String ).List
+      filepath = _filepath
+      reader = ParseReader( filepath, data )
+      tokens = []
+      while (scan_next) noAction
+      return tokens
+
+    method consume( ch:Character ).Logical
+      if (not reader.has_another) return false
+      if (reader.peek != ch) return false
+      reader.read
+      return true
+
+    method consume( st:String ).Logical
+      local i = 0
+      while (i < st.count)
+        if (reader.peek(i) != st[i]) return false
+        ++i
+      endWhile
+
+      loop st.count
+        reader.read
+      endLoop
+
+      return true
+
+    method consume_eols.Logical
+      if (not consume('\n')) return false
+      while (consume('\n')) noAction
+      return true
+
+    method error( mesg:String ).String
+      local buffer = Character[]
+      buffer.print //Syntax error in "//
+      buffer.print filepath
+      buffer.print //" line //
+      buffer.print line
+      buffer.print ", column "
+      buffer.print column
+      buffer.print ':  '
+      buffer.print mesg
+      return buffer.String
+
+    method scan_next.Logical
+      while (consume(' ')) noAction
+
+      if (not reader.has_another) return false
+
+      line = reader.line
+      column = reader.column
+
+      local ch = reader.peek
+      if (ch == '\n')
+        reader.read
+        if (comment.count?) 
+          if (tokens.count? and tokens.last.Token.type == TokenType.eol and (tokens.last.Token.content as Object) != null)
+            tokens.last.Token.content = Character[].print(tokens.last.Token.content).println.print(comment)
+          else
+            tokens.add( Token(this,TokenType.eol,comment) )
+          endIf
+          comment.clear
+        else
+          tokens.add( Token(this,TokenType.eol) )
+        endIf
+        return true
+
+      elseIf (ch == '#')
+        scan_comment
+        return true
+      endIf
+
+      comment.clear
+
+      if ((ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z') or ch == '_')
+        scan_identifier
+        if (TokenType.keywords.contains(content))
+          tokens.add( Token(this,TokenType.keywords[content]) )
+        else
+          tokens.add( Token(this,TokenType.identifier,content) )
+        endIf
+        return true
+
+      elseIf (ch == '"')
+        scan_String( '"' )
+        return true
+
+      elseIf (ch == "'")
+        scan_String( "'" )
+        return true
+
+      elseIf (ch >= '0' and ch <= '9')
+        scan_number
+        return true
+
+      else
+        local type = scan_symbol
+        if (type != -1)
+          tokens.add( Token(this,type) )
+        endIf
+        return true
+
+      endIf
+
+    method scan_identifier
+      content.clear
+      content.print( reader.read )
+
+      local keep_reading = true
+      while (keep_reading)
+        if (reader.has_another)
+          local ch = reader.peek
+          if ((ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z') or ch == '_' or (ch >= '0' and ch <= '9'))
+            content.print( reader.read )
+          else
+            keep_reading = false
+          endIf
+        else
+          keep_reading = false
+        endIf
+      endWhile
+
+    method scan_String( terminator:Character )
+      reader.read
+      content.clear
+      while (reader.has_another)
+        local ch = reader.peek
+        if (ch == terminator)
+          reader.read
+          add_String_or_Char
+          return
+        else
+          content.print( scan_Character )
+        endIf
+      endWhile
+
+      throw error( "End Of File reached while looking for end of string." )
+
+    method scan_alternate_String
+      content.clear
+
+      while (reader.has_another)
+        if (reader.has_another)
+          local ch = reader.peek
+          if (ch == '/')
+            reader.read
+            ch = reader.peek
+            if (ch == '/')
+              reader.read
+              add_String_or_Char
+              return
+            else
+              content.print( '/' )
+            endIf
+          else
+            content.print( scan_Character )
+          endIf
+        endIf
+      endWhile
+
+      throw error( "End Of File reached while looking for end of string." )
+
+    method scan_Character.Character
+      if (not reader.has_another) throw error( "Character expected." )
+
+      local ch = reader.peek
+      if (ch == '\n') throw error( "Character expected; found End Of Line." )
+
+      if (ch == '\\')
+        reader.read
+        if (not reader.has_another) throw error( "Escaped character expected; found End Of File." )
+        
+        if (consume('b')) return '\b'
+        if (consume('f')) return '\f'
+        if (consume('n')) return '\n'
+        if (consume('r')) return '\r'
+        if (consume('t')) return '\t'
+        if (consume('0')) return '\0'
+        if (consume('/')) return '/'
+        if (consume("'")) return "'"
+        if (consume('\\')) return '\\'
+        if (consume('"')) return '"'
+        if (consume('x')) return scan_hex_value(2)
+        if (consume('u')) return scan_hex_value(4)
+        throw error( "Invalid escape sequence.  Supported: \\n \\r \\t \\0 \\/ \\' \\\\ \\\" \\" + "uXXXX \\" + "xXX." );
+      endIf
+
+      local value = reader.read as Integer
+      if ((value & 0x80) != 0)
+        # Handle UTF8 encoding
+        local ch2 = reader.read as Integer
+
+        if ((value & 0x20) == 0)
+          # %110xxxxx 10xxxxxx
+          value = value & 0x1f;
+          ch2 = value & 0x3f;
+          return ((value:<<:6) | ch2) as Character
+        else
+          # %1110xxxx 10xxxxxx 10xxxxxx
+          local ch3 = reader.read as Integer
+          value = value & 15;
+          ch2 = ch2 & 0x3f;
+          ch3 = ch3 & 0x3f;
+          return ((value:<<:12) | (ch2:<<:6) | ch3) as Character
+        endIf
+      endIf
+      return value as Character
+
+    method scan_hex_value( digits:Integer ).Character
+      local value = 0
+      loop digits
+        if (not reader.has_another) throw error( Character[].print(digits).print("-digit hex value expected; found end of file."))
+        if (not next_is_hex_digit)
+          local ch = reader.peek
+          local buffer = Character[]
+          buffer.print( "Invalid hex digit " )
+          if (ch < ' ' or (ch as Integer) == 127) buffer.print( ch as Integer )
+          else buffer.print("'").print(ch).print("'")
+          buffer.print('.')
+          throw error( buffer )
+        endIf
+        local intval = reader.read : Integer
+        value = (value :<<: 4) + intval
+      endLoop
+      return (value as Character)
+
+    method next_is_hex_digit.Logical
+      local ch = reader.peek
+      return (ch >= '0' and ch <= '9') or (ch >= 'a' and ch <= 'f') or (ch >= 'A' and ch <= 'F')
+
+    method scan_number
+      local is_negative = consume('-')
+      local is_Real = false
+
+      local n = scan_Integer
+      local ch = reader.peek
+      while (ch >= '0' and ch <= '9')
+        local intval = reader.read : Integer
+        n = n * 10.0 + intval
+        ch = reader.peek
+      endWhile
+
+      if (reader.peek == '.')
+        ch = reader.peek(1)
+        if (ch >= '0' and ch <= '9')
+          reader.read
+          is_Real = true
+          local start_pos = reader.position
+          local fraction = scan_Integer
+          n += fraction / 10^(reader.position - start_pos)
+        else
+          if (is_negative) n = -n
+          tokens.add( Token(this, TokenType.literal_Integer, n) )
+          return
+        endIf
+      endIf
+
+      if (consume('E') or consume('e'))
+        is_Real = true
+        local negative_exponent = consume('-')
+        if (not negative_exponent) consume('+')
+        local power = scan_Integer
+        if (negative_exponent) n /= power
+        else                   n *= power
+      endIf
+
+      if (is_negative) n = -n;
+
+      if (is_Real) tokens.add( Token( this, TokenType.literal_Real, n ) )
+      else         tokens.add( Token( this, TokenType.literal_Integer, n ) )
+
+    method scan_Integer.Real
+      local n = 0.0
+      local ch = reader.peek
+      while (ch >= '0' and ch <= '9')
+        local intval = reader.read : Integer
+        n = n * 10.0 + intval
+        ch = reader.peek
+      endWhile
+      return n
+
+    method scan_comment
+      if (comment.count?) comment.println
+      reader.read  # '#'
+      if (consume('{'))
+        local keep_reading = true
+        while (reader.has_another)
+          if (consume('}'))
+            if (consume('#')) return
+            else              comment.print('}')
+          else
+            comment.print( reader.read )
+          endIf
+        endWhile
+      else
+        while (reader.has_another and reader.peek != '\n') comment.print( reader.read )
+      endIf
+
+    method scan_symbol.Integer
+      local ch = reader.read
+      if (ch == '\n')
+        return TokenType.eol
+
+      elseIf (ch == '!')
+        if (consume('=')) return TokenType.symbol_ne
+        else              return TokenType.symbol_bitwise_not
+
+      elseIf (ch == '$' ) 
+        return TokenType.symbol_dollar
+
+      elseIf (ch == '%')
+        if     (consume('=')) return TokenType.symbol_mod_with_assign
+        else                  return TokenType.symbol_percent
+
+      elseIf (ch == '&' )
+        if     (consume('&')) throw error( "Use 'and' instead of '&&'." )
+        elseIf (consume('=')) return TokenType.symbol_bitwise_and_with_assign
+        else                  return TokenType.symbol_ampersand
+
+      elseIf (ch == '(')
+        return TokenType.symbol_open_paren
+
+      elseIf (ch == ')')
+        return TokenType.symbol_close_paren
+
+      elseIf (ch == '*')
+        if     (consume('=')) return TokenType.symbol_multiply_with_assign
+        else                  return TokenType.symbol_times
+
+      elseIf (ch == '+')
+        if     (consume('=')) return TokenType.symbol_add_with_assign
+        elseIf (consume('+')) return TokenType.symbol_increment
+        else                  return TokenType.symbol_plus
+
+      elseIf (ch == ',')
+        return TokenType.symbol_comma
+
+      elseIf (ch == '-')
+        if      (consume('=')) return TokenType.symbol_subtract_with_assign
+        elseIf (consume('-'))  return TokenType.symbol_decrement
+        else                   return TokenType.symbol_minus
+
+      elseIf (ch == '.' )
+          if (consume('.'))
+            if (consume('.')) 
+              # ellipsis
+              while (consume(' ')) noAction
+              if (not consume('\n')) throw error( "End of line expected after '...'." )
+              return -1
+            elseIf (consume('<'))
+              return TokenType.symbol_uptolessthan
+            elseIf (consume('>'))
+              return TokenType.symbol_downtogreaterthan
+            else 
+              return TokenType.symbol_upto
+            endIf
+          elseIf (consume('='))
+            return TokenType.symbol_member_with_assign
+          else
+            return TokenType.symbol_period
+          endIf
+
+      elseIf (ch == '/')
+          if (consume('/'))
+            scan_alternate_String
+            return -1
+          elseIf (consume('='))
+            return TokenType.symbol_divide_with_assign
+          else
+            return TokenType.symbol_divide
+          endIf
+
+      elseIf (ch == ':')
+        if (consume("<<:"))      return TokenType.symbol_shl
+        elseIf (consume(">>:"))  return TokenType.symbol_shr
+        elseIf (consume(">>>:")) return TokenType.symbol_shrx
+        return TokenType.symbol_colon
+
+      elseIf (ch == ';')
+        return TokenType.symbol_semicolon
+
+      elseIf (ch == '<' )
+        if     (consume('<')) return TokenType.symbol_open_special
+        elseIf (consume('=')) return TokenType.symbol_le
+        elseIf (consume('>')) return TokenType.symbol_compare
+        else                  return TokenType.symbol_lt
+
+      elseIf (ch == '=' )
+        if (consume('=')) return TokenType.symbol_eq
+        else              return TokenType.symbol_equals
+
+      elseIf (ch == '>' )
+        if      (consume('=')) return TokenType.symbol_ge
+        elseIf  (consume('>')) return TokenType.symbol_close_special
+        else                   return TokenType.symbol_gt
+
+      elseIf (ch == '?')
+        return TokenType.symbol_question_mark
+
+      elseIf (ch == '@' )
+        #if (consume('|'))
+        #  return scan_actual_string()
+        #endIf
+        return TokenType.symbol_at
+
+      elseIf (ch == '[')
+        if (consume(']')) return TokenType.symbol_empty_brackets
+        return TokenType.symbol_open_bracket
+
+      elseIf (ch == ']')
+        return TokenType.symbol_close_bracket
+
+      elseIf (ch == '^')
+        if     (consume('=')) return TokenType.symbol_power_with_assign
+        else                  return TokenType.symbol_power
+
+      elseIf (ch == '{') 
+        if (consume('}')) return TokenType.symbol_empty_braces
+        return TokenType.symbol_open_brace
+
+      elseIf (ch == '|' )
+        if     (consume('=')) return TokenType.symbol_bitwise_or_with_assign
+        elseIf (consume('|')) return TokenType.eol
+        else                  return TokenType.symbol_bitwise_or
+
+      elseIf (ch == '}' )
+        if     (consume('#')) return TokenType.symbol_close_comment # used for error reporting
+        else                  return TokenType.symbol_close_brace
+
+      elseIf (ch == '~')
+        if     (consume('=')) return TokenType.symbol_bitwise_xor_with_assign
+        else                  return TokenType.symbol_bitwise_xor
+
+      else
+        throw error( Character[].print(//Unexpected input '//).print(ch).print(//'.//).String )
+      endIf
+
+    method add_String_or_Char
+      # We have a String already; convert it to a Character if it's count 1.
+      if (content.count == 1)
+        local code = (content[0] as Integer) : Real
+        tokens.add( Token(this,TokenType.literal_Character,code) )
+      else
+        tokens.add( Token(this,TokenType.literal_String,content) )
+      endIf
+
+endObject
+
+class TokenReader
+  PROPERTIES
+    tokens   : List
+    position : Integer
+    count    : Integer
+
+  METHODS
+    method init( _tokens:List )
+      tokens = _tokens
+      count = tokens.count
+      position = 0
+
+    method init( filepath:String )
+      tokens = Scanner.tokenize( filepath )
+      count = tokens.count
+      position = 0
+
+    method init( filepath:String, data:String )
+      tokens = Scanner.tokenize( filepath, data )
+      count = tokens.count
+      position = 0
+
+    method rewind
+      position = 0
+
+    method has_another.Logical
+      return (position < count)
+
+    method peek.Token
+      return tokens[position].Token
+
+    method peek( num_ahead:Integer ).Token
+      return tokens[position+num_ahead].Token
+
+    method read.Token
+      local result = tokens[position].Token
+      ++position
+      return result
+endClass
+
+class Parser
+  PROPERTIES
+    filepath    : String
+    reader      : TokenReader
+    this_type   : TypeDef
+    this_method : Method
+
+    property_list = []
+    local_declarations = []   # work list
+
+    #writer : ParseWriter
+
+  METHODS
+    method parse( _filepath:String )
+      filepath = _filepath
+      reader = TokenReader( filepath )
+
+      parse_types
+
+    method parse( temp:Template, type:TypeDef, t:Token )
+      local type_has_specialization = type.name.contains('<')
+      local mappings = {}
+      local tokens = temp.tokens : List
+
+      if (temp.placeholder_names.count?)
+        if (not type_has_specialization)
+          if (temp.placeholder_names.count == 1) throw t.error( "Type specialization expected for type " + type.name +"." )
+          else                                   throw t.error( "Type specializations expected for type " + type.name + "." )
+        endIf
+
+        # parse the replacement types
+        reader = TokenReader( type.name, type.name.substring(type.name.index_of('<')) )
+        must_consume( TokenType.symbol_open_special )
+        local pos = 0
+        while (pos < temp.placeholder_names.count)
+          if (pos > 0)
+            if (not consume(TokenType.symbol_comma))
+              throw t.error( "Not enough type specializers." )
+            endIf
+          endIf
+          tokens = []
+          while (not (next_is(TokenType.symbol_comma) or next_is(TokenType.symbol_close_special)))
+            tokens.add( read )
+          endWhile
+          mappings[ temp.placeholder_names[pos] ] = tokens
+          ++pos
+        endWhile
+        must_consume( TokenType.symbol_close_special )
+
+        # Remap tokens
+        tokens = []
+        local count = temp.tokens.count
+        local i = 0
+        while (i < count)
+          local t = temp.tokens[i].Token
+          if (t.type == TokenType.symbol_dollar)
+            ++i
+            if (i == count or temp.tokens[i].Token.type != TokenType.identifier)
+              throw temp.tokens[i].Token.error( "Identifier expected after '$'." )
+            endIf
+            local replacement_name = temp.tokens[i].Token.content
+            local replacement_tokens = mappings[ replacement_name ].List
+            if (replacement_tokens?)
+              forEach (rt in replacement_tokens)
+                tokens.add( rt.Token )
+              endForEach
+            else
+              throw t.error( "No such placeholder $" + replacement_name + "." )
+            endIf
+          else
+            tokens.add( t )
+          endIf
+          ++i
+        endWhile
+
+      else
+        if (type.name.contains('<'))
+          throw t.error( "Illegal specialization for type " + type.name + "." )
+        endIf
+      endIf
+
+      reader = TokenReader( tokens )
+      this_type = type
+      parse_type_definition
+
+    method error( mesg:String ).String
+      local t : Token
+      if (reader.has_another or reader.count?)
+        if (reader.has_another) t = reader.peek
+        else                    t = reader.tokens.last
+      else
+        t = Token( filepath, 1, 1 )
+      endIf
+
+      return t.error( mesg );
+
+    method peek.Token
+      return reader.peek
+
+    method peek( num_ahead:Integer ).Token
+      return reader.peek(num_ahead)
+
+    method next_is( type:Integer ).Logical
+      return (reader.has_another and reader.peek.type == type)
+
+    method read.Token
+      return reader.read
+
+    method consume( type:Integer ).Logical
+      if (not reader.has_another) return false
+      if (peek.type != type) return false
+      reader.read
+      return true
+
+    method must_consume( type:Integer )
+      if (consume(type)) return
+      local t = reader.peek
+      throw t.error( "'" + TokenType.name_lookup[type] + "' expected." )
+
+    method consume( text:String ).Logical
+      if (not reader.has_another) return false
+      if (peek.type != TokenType.identifier) return false
+      if (not (peek.content == text)) return false
+      reader.read
+      return true
+
+    method consume_eols.Logical
+      if (not consume(TokenType.eol)) return false
+      while (consume(TokenType.eol)) noAction
+      return true
+
+    method next_is_end_command.Logical
+      return (next_is(TokenType.eol) or next_is(TokenType.symbol_semicolon))
+
+    method discard_end_commands
+      while (consume(TokenType.eol) or consume(TokenType.symbol_semicolon)) noAction
+
+    method must_consume_end_command
+      if (not (consume(TokenType.eol) or consume(TokenType.symbol_semicolon)))
+        throw error( Character[].print("Syntax error: unexpected '").print(peek.String).print("'; [End Of Line] or ';' expected." ) )
+      endIf
+
+    method read_identifier.String
+      if (not next_is(TokenType.identifier)) throw error( "Identifier expected instead of '" + peek.String + "'." )
+      return read.content
+
+    method parse_types
+      consume_eols
+
+      while (reader.has_another)
+        if (next_is(TokenType.symbol_class))
+          parse_template( TokenType.symbol_endClass )
+        else
+          throw error( Character[].print("Syntax error: unexpected '").print(peek.String).print("'." ) )
+        endIf
+
+        consume_eols
+      endWhile
+
+    method parse_template( end_symbol:Integer )
+      local t        = read
+      local name     = read_identifier
+      local template = Template( t, name )
+
+      if (consume(TokenType.symbol_open_special))
+        local first = true
+        while (first or consume(TokenType.symbol_comma))
+          first = false
+          must_consume( TokenType.symbol_dollar )
+          template.placeholder_names.add( read_identifier )
+        endWhile
+        must_consume( TokenType.symbol_close_special )
+      endIf
+
+      Templates.add( template )
+
+      while (t.type != end_symbol)
+        t = read
+        template.tokens.add( t )
+      endWhile
+
+    method parse_type_definition
+      if (consume(TokenType.symbol_colon))
+        local first = true
+        while (first or consume(TokenType.symbol_comma))
+          first = false
+          this_type.base_types.add( parse_type.def )
+        endWhile
+      endIf
+
+      must_consume_end_command
+
+      discard_end_commands
+      while (not consume(TokenType.symbol_endClass))
+        if (consume(TokenType.symbol_PROPERTIES))
+          must_consume_end_command
+          while (parse_property_list) noAction
+
+        elseIf (consume(TokenType.symbol_METHODS))
+          must_consume_end_command
+          while (parse_method) noAction
+
+        else
+          throw error( Character[].print("Syntax error: unexpected '").print(peek.String).print("'." ) )
+        endIf
+
+        discard_end_commands
+      endWhile
+
+    method parse_property_list.Logical
+      if (not next_is(TokenType.identifier)) return false
+
+      property_list.clear
+      while (next_is(TokenType.identifier))
+        local t = peek
+        local name = read_identifier
+        local property = Property( t, this_type, name )
+        this_type.add_property( property )
+        property_list.add( property )
+        if (consume(TokenType.symbol_equals))
+          property.initial_value = parse_expression
+        endIf
+      endWhile
+
+      if (consume(TokenType.symbol_colon))
+        local type = parse_type
+        forEach (property in property_list)
+          property.Property.type = type
+        endForEach
+      endIf
+
+    method parse_attributes( list:Attributes )
+      if (not consume(TokenType.symbol_open_bracket)) return
+      while (next_is(TokenType.identifier) or consume(TokenType.symbol_comma))
+        local name = read_identifier
+        list.add( name )
+      endWhile
+      must_consume( TokenType.symbol_close_bracket )
+
+    method parse_specialization_string.String
+      local buffer = Character[]
+      consume( TokenType.symbol_open_special )
+      buffer.print( "<<" )
+      while (not consume(TokenType.symbol_close_special)) buffer.print( read.String )
+      buffer.print( ">>" )
+      return buffer
+
+    method parse_type.Type
+      local t = peek
+      local name = read_identifier
+
+      if (next_is(TokenType.symbol_open_special)) name += parse_specialization_string
+
+      local type = TypeDefs.get( t, name )
+      if (consume(TokenType.symbol_question_mark)) return type.unchecked_type
+      return type.checked_type
+
+    method parse_method.Logical
+      local t = peek
+      if (not consume(TokenType.symbol_method)) return false
+
+      local name = read_identifier
+
+      this_method = Method( t, this_type, name, 0 )
+
+      if (consume(TokenType.symbol_open_paren))
+        # Parse parameters
+        if (next_is(TokenType.identifier))
+          local first = true
+          while (first or consume(TokenType.symbol_comma))
+            first = false
+            t = peek
+            local param_name = read_identifier
+            must_consume( TokenType.symbol_colon )   # for now
+            local param_type = parse_type
+            this_method.add_parameter( Local(t,param_name,param_type) )
+          endWhile
+        endIf
+        must_consume( TokenType.symbol_close_paren )
+      endIf
+
+      if (consume(TokenType.symbol_period))
+        this_method.return_type = parse_type
+      endIf
+
+      parse_attributes( this_method.attributes )
+
+      if (this_method.attributes.contains("native")) this_method.qualifiers = this_method.qualifiers | Qualifiers.is_native
+
+      consume( TokenType.symbol_colon )
+
+      this_type.add_method( this_method )
+
+      parse_multi_line_statements( this_method.body )
+
+      return true
+
+    method parse_multi_line_statements( statements:CmdStatementList )
+      discard_end_commands
+      while (next_is_statement)
+        parse_statement( statements, true )
+        while (consume(TokenType.eol) or consume(TokenType.symbol_semicolon)) noAction
+        discard_end_commands
+      endWhile
+
+    method parse_single_line_statements( statements:CmdStatementList )
+      while (next_is_statement)
+        parse_statement( statements, false )
+        if (not consume(TokenType.symbol_semicolon)) return
+        while (consume(TokenType.symbol_semicolon)) noAction
+      endWhile
+      must_consume( TokenType.eol )
+
+    method next_is_statement.Logical
+      if (not reader.has_another) return false
+      return peek.type > TokenType.symbol_last_non_statement
+
+    method parse_statement( statements:CmdStatementList, allow_control_structures:Logical )
+      local t = peek
+
+      if (allow_control_structures)
+        if (next_is(TokenType.symbol_if))
+          statements.add( parse_if )
+          return
+        endIf
+      else
+        local err = false
+        if (next_is(TokenType.symbol_if)) err = true
+        if (err) throw t.error( "Control structures must begin on a separate line." )
+      endIf
+
+      if (next_is(TokenType.symbol_local))
+        parse_local_declaration( statements )
+        return
+
+      elseIf (consume(TokenType.symbol_return))
+        if (next_is_end_command)
+          statements.add( CmdReturnNil(t) )
+        else
+          statements.add( CmdReturnValue(t,parse_expression) )
+        endIf
+        return
+
+      elseIf (consume(TokenType.symbol_tron))
+        statements.add( CmdTron(t) )
+        return
+
+      elseIf (consume(TokenType.symbol_troff))
+        statements.add( CmdTroff(t) )
+        return
+      endIf
+
+      if (consume("println"))
+        statements.add( CmdPrintln(t, parse_expression) )
+        return
+      endIf
+
+      local expression = parse_expression
+
+      t = peek
+      if (consume(TokenType.symbol_equals))
+        statements.add( CmdAssign(t,expression,parse_expression) )
+        return
+      endIf
+
+      statements.add( expression )
+
+    method parse_if.CmdIf
+      local t = read
+      local cmd_if = CmdIf( t, parse_expression )
+
+      if (consume_eols)
+        # multi-line if
+        parse_multi_line_statements( cmd_if.body )
+
+        if (next_is(TokenType.symbol_else) and peek(1).type == TokenType.eol)
+          cmd_if.else_body = CmdStatementList( read )
+          parse_multi_line_statements( cmd_if.else_body )
+        endIf
+
+        must_consume( TokenType.symbol_endIf )
+      else
+        # single-line if
+        parse_single_line_statements( cmd_if.body )
+        consume_eols
+        if (next_is(TokenType.symbol_else) and peek(1).type != TokenType.eol)
+          cmd_if.else_body = CmdStatementList( read )
+          parse_single_line_statements( cmd_if.else_body )
+        endIf
+      endIf
+
+      return cmd_if
+
+    method parse_local_declaration( statements:CmdStatementList )
+      local_declarations.clear
+      local t = read   # "local"
+
+      local first = true
+      while (first or consume(TokenType.symbol_comma))
+        first = false
+        t = peek
+        local name = read_identifier
+        local v = Local( t, name )
+        if (consume(TokenType.symbol_equals))
+          v.initial_value = parse_expression
+        endIf
+        local_declarations.add( v )
+        this_method.add_local( v )
+      endWhile
+
+      if (consume(TokenType.symbol_colon))
+        local type = parse_type
+        forEach (v in local_declarations) v.Local.type = type
+      else
+        forEach (vv in local_declarations)
+          local v = vv.Local
+          if (v.type is null and v.initial_value?) v.type = v.initial_value.implicit_type
+        endForEach
+      endIf
+
+      forEach (e in local_declarations)
+        local v = e.Local
+        statements.add( CmdLocalDeclaration(v.t, v) )
+        if (v.initial_value?)
+          statements.add( CmdWriteLocal(v.t,v,v.initial_value) )
+        else
+          statements.add( CmdWriteLocalDefault(v.t,v) )
+        endIf
+      endForEach
+
+    method parse_expression.Cmd
+      return parse_logical_xor
+
+    method parse_logical_xor.Cmd
+      return parse_logical_xor( parse_logical_or )
+
+    method parse_logical_xor( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_xor))
+        return parse_logical_xor( CmdLogicalXor(t, lhs, parse_logical_or) )
+      endIf
+      return lhs
+
+    method parse_logical_or.Cmd
+      return parse_logical_or( parse_logical_and )
+
+    method parse_logical_or( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_or))
+        return parse_logical_or( CmdLogicalOr(t, lhs, parse_logical_and) )
+      endIf
+      return lhs
+
+    method parse_logical_and.Cmd
+      return parse_logical_and( parse_comparison )
+
+    method parse_logical_and( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_and))
+        return parse_logical_and( CmdLogicalAnd(t, lhs, parse_comparison) )
+      endIf
+      return lhs
+
+    method parse_comparison.Cmd
+      return parse_comparison( parse_bitwise_xor )
+
+    method parse_comparison( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_eq))
+        return parse_comparison( CmdCompareEQ(t, lhs, parse_bitwise_xor) )
+      elseIf (consume(TokenType.symbol_ne))
+        return parse_comparison( CmdCompareNE(t, lhs, parse_bitwise_xor) )
+      elseIf (consume(TokenType.symbol_lt))
+        return parse_comparison( CmdCompareLT(t, lhs, parse_bitwise_xor) )
+      elseIf (consume(TokenType.symbol_gt))
+        return parse_comparison( CmdCompareGT(t, lhs, parse_bitwise_xor) )
+      elseIf (consume(TokenType.symbol_le))
+        return parse_comparison( CmdCompareLE(t, lhs, parse_bitwise_xor) )
+      elseIf (consume(TokenType.symbol_ge))
+        return parse_comparison( CmdCompareGE(t, lhs, parse_bitwise_xor) )
+      elseIf (consume(TokenType.symbol_instanceOf))
+        return CmdInstanceOf( t, lhs, parse_type )
+      endIf
+      return lhs
+
+    method parse_bitwise_xor.Cmd
+      return parse_bitwise_xor( parse_bitwise_or )
+
+    method parse_bitwise_xor( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_bitwise_xor))
+        return parse_bitwise_xor( CmdBitwiseXor(t,lhs,parse_bitwise_or) )
+      endIf
+      return lhs
+
+    method parse_bitwise_or.Cmd
+      return parse_bitwise_or( parse_bitwise_and )
+
+    method parse_bitwise_or( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_bitwise_or))
+        return parse_bitwise_or( CmdBitwiseOr(t,lhs,parse_bitwise_and) )
+      endIf
+      return lhs
+
+    method parse_bitwise_and.Cmd
+      return parse_bitwise_and( parse_bitwise_shift )
+
+    method parse_bitwise_and( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_ampersand))
+        return parse_bitwise_and( CmdBitwiseAnd(t,lhs,parse_bitwise_shift) )
+      endIf
+      return lhs
+
+    method parse_bitwise_shift.Cmd
+      return parse_bitwise_shift( parse_add_subtract )
+
+    method parse_bitwise_shift( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_shl))
+        return parse_add_subtract( CmdBitwiseSHL(t,lhs,parse_add_subtract) )
+      elseIf (consume(TokenType.symbol_shr))
+        return parse_add_subtract( CmdBitwiseSHR(t,lhs,parse_add_subtract) )
+      elseIf (consume(TokenType.symbol_shrx))
+        return parse_add_subtract( CmdBitwiseSHRX(t,lhs,parse_add_subtract) )
+      endIf
+      return lhs
+
+    method parse_add_subtract.Cmd
+      return parse_add_subtract( parse_multiply_divide_mod )
+
+    method parse_add_subtract( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_plus))
+        return parse_add_subtract( CmdAdd(t,lhs,parse_multiply_divide_mod) )
+      elseIf (consume(TokenType.symbol_minus))
+        return parse_add_subtract( CmdSubtract(t,lhs,parse_multiply_divide_mod) )
+      endIf
+      return lhs
+
+    method parse_multiply_divide_mod.Cmd
+      return parse_multiply_divide_mod( parse_power )
+
+    method parse_multiply_divide_mod( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_times))
+        return parse_multiply_divide_mod( CmdMultiply(t,lhs,parse_power) )
+      elseIf (consume(TokenType.symbol_divide))
+        return parse_multiply_divide_mod( CmdDivide(t,lhs,parse_power) )
+      elseIf (consume(TokenType.symbol_percent))
+        return parse_multiply_divide_mod( CmdMod(t,lhs,parse_power) )
+      endIf
+      return lhs
+
+    method parse_power.Cmd
+      return parse_power( parse_pre_unary )
+
+    method parse_power( lhs:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_power))
+        return parse_power( CmdPower(t,lhs,parse_pre_unary) )
+      endIf
+      return lhs
+
+    method parse_pre_unary.Cmd
+      local t = peek
+      if (consume(TokenType.symbol_not))
+        return CmdLogicalNot( t, parse_pre_unary )
+      elseIf (consume(TokenType.symbol_minus))
+        return CmdNegate( t, parse_pre_unary )
+      elseIf (consume(TokenType.symbol_bitwise_not))
+        return CmdBitwiseNot( t, parse_pre_unary )
+      endIf
+      return parse_post_unary
+
+    method parse_post_unary.Cmd
+      return parse_post_unary( parse_access )
+
+    method parse_post_unary( operand:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_question_mark))
+        return parse_post_unary( CmdLogicalize(t,operand) )
+      endIf
+      return operand
+
+    method parse_access.Cmd
+      return parse_access( parse_term )
+
+    method parse_access( operand:Cmd ).Cmd
+      local t = peek
+      if (consume(TokenType.symbol_period))
+        local access = parse_access_command( t )
+        access.operand = operand
+        return parse_access( access )
+      endIf
+
+      return operand
+
+    method parse_access_command( t:Token ).CmdAccess
+      consume_eols
+
+      local name = read_identifier
+      if (next_is(TokenType.symbol_open_special)) name += parse_specialization_string
+
+      local access = CmdAccess( t, name )
+      if (consume(TokenType.symbol_open_paren))
+        local args = CmdArgs()
+        access.args = args
+        if (not consume(TokenType.symbol_close_paren))
+          local first = true
+          while (first or consume(TokenType.symbol_comma))
+            first = false
+            args.add( parse_expression )
+          endWhile
+          must_consume( TokenType.symbol_close_paren )
+        endIf
+      endIf
+      return access
+
+    method parse_term.Cmd
+      local t = peek
+      if (consume(TokenType.symbol_open_paren))
+        local result = parse_expression
+        must_consume( TokenType.symbol_close_paren )
+        return result
+
+      elseIf (next_is(TokenType.identifier))
+        return parse_access_command( t )
+
+      elseIf (consume(TokenType.literal_String))
+        return CmdLiteralString( t, t.content )
+      elseIf (consume(TokenType.symbol_null))
+        return CmdLiteralNull(t)
+      elseIf (consume(TokenType.literal_Real))
+        return CmdLiteralReal( t, t.value )
+      elseIf (consume(TokenType.literal_Integer))
+        local value = t.value : Integer
+        return CmdLiteralInteger( t, value )
+      elseIf (consume(TokenType.literal_Character))
+        local value = t.value : Integer
+        return CmdLiteralCharacter( t, value as Character )
+      elseIf (consume(TokenType.literal_Logical_true))
+        return CmdLiteralLogical( t, true )
+      elseIf (consume(TokenType.literal_Logical_false))
+        return CmdLiteralLogical( t, false )
+      else
+        throw error( Character[].print("Syntax error: unexpected '").print(peek.String).print("'." ) )
+      endIf
+endClass
+
+class Template
+  PROPERTIES
+    t                 : Token
+    name              : String
+    placeholder_names : List
+    tokens            : List
+
+  METHODS
+    method init( _t:Token, _name:String )
+      t = _t
+      name = _name
+      placeholder_names = []
+      tokens = []
+endClass
+
+class Templates
+  PROPERTIES
+    lookup = {}
+
+  METHODS
+    method add( t:Template )
+      lookup[ t.name ] = t
+
+    method find( name:String ).Template
+      local i = name.index_of( '<' )
+      if (i >= 0) return lookup[ name.substring(0,i-1) ]
+      else        return lookup[ name ]
+
+    method instantiate( type:TypeDef, t:Token )
+      local temp = find( type.name )
+      if (temp is null) throw t.error( "Reference to undefined type '" + type.name + "'." )
+      Parser.parse( temp, type, t )
+endClass
+
+class Types
+  METHODS
+    method find( name:String, unchecked:Logical ).Type
+      local def = TypeDefs.find( name )
+      if (def?)
+        if (unchecked) return def.unchecked_type
+        else           return def.checked_type
+      else
+        return null
+      endIf
+
+    method must_find( t:Token, name:String, unchecked:Logical ).Type
+      local def = TypeDefs.must_find( t, name )
+
+      if (unchecked) return def.unchecked_type
+      else           return def.checked_type
+endClass
+
+object TypeDefs
+  PROPERTIES
+    type_table = {} : Table
+
+    type_Object    : TypeDef
+    type_String    : TypeDef
+    type_Real      : TypeDef
+    type_Integer   : TypeDef
+    type_Character : TypeDef
+    type_Logical   : TypeDef
+
+    type_RealObject      : TypeDef
+    type_IntegerObject   : TypeDef
+    type_CharacterObject : TypeDef
+    type_LogicalObject   : TypeDef
+
+    type_Variant       : TypeDef
+    type_NullObject    : TypeDef
+
+    type_String        : TypeDef
+    type_IntegerList   : TypeDef
+    type_CharacterList : TypeDef
+    type_ByteList      : TypeDef
+    type_Value         : TypeDef
+    type_Global        : TypeDef
+    type_Collection    : TypeDef
+    type_List          : TypeDef
+    type_Table         : TypeDef
+
+  METHODS
+    method init
+      local t = Token( "[Internal]", 1, 1 )
+      type_Object    = define( t, "Object", Qualifiers.is_builtIn )
+      type_String    = define( t, "String", Qualifiers.is_builtIn )
+      type_Real      = define( t, "Real",      Qualifiers.is_primitive|Qualifiers.is_builtIn )
+      type_Integer   = define( t, "Integer",   Qualifiers.is_primitive|Qualifiers.is_builtIn )
+      type_Character = define( t, "Character", Qualifiers.is_primitive|Qualifiers.is_builtIn )
+      type_Logical   = define( t, "Logical",   Qualifiers.is_primitive|Qualifiers.is_builtIn )
+
+      # Kludge
+      define( t, "RealProperty", 0 )
+      define( t, "IntegerProperty", 0 )
+      define( t, "CharacterProperty", 0 )
+      define( t, "LogicalProperty", 0 )
+
+      type_Variant         = define( t, "Variant", 0 )
+      type_NullObject      = define( t, "null", 0 )
+      type_RealObject      = define( t, "RealObject", 0 )
+      type_IntegerObject   = define( t, "IntegerObject", 0 )
+      type_CharacterObject = define( t, "CharacterObject", 0 )
+      type_LogicalObject   = define( t, "LogicalObject", 0 )
+
+      type_String        = define( t, "String", 0 )
+      type_IntegerList   = define( t, "Integer[]", 0 )
+      type_CharacterList = define( t, "Character[]", 0 )
+      type_ByteList      = define( t, "Byte[]", 0 )
+      type_Value         = define( t, "Value", 0 )
+      type_Global        = define( t, "Global", 0 )
+      type_Collection    = define( t, "Collection", 0 )
+      type_List          = define( t, "List", 0 )
+      type_Table         = define( t, "Table", 0 )
+
+      type_RealObject = type_Real
+      type_IntegerObject = type_Integer
+      type_CharacterObject = type_Character
+      type_LogicalObject = type_Logical
+
+      # temporary patch
+      local m_to_String = Method( t, type_String, "String", 0 )
+      m_to_String.code.add( Op.push_Object_this )
+      m_to_String.code.add( Op.return_Object )
+      type_String.add_method( m_to_String )
+
+    method define( t:Token, name:String, qualifiers:Integer ).TypeDef
+      local type = get( t, name )
+      type.qualifiers = qualifiers
+      type.defined = true
+      return type
+
+    method resolve
+      must_find( null, "Main" )
+
+      local index = 0
+      while (index < type_table.count)
+        this[index].resolve
+        ++index
+      endWhile
+
+      index = 0
+      forEach (type in this)
+        type.index = index
+        ++index
+      endForEach
+
+    method compile( writer:JavaVMWriter )
+      collect_ids
+      forEach (type in this)
+        type.compile( writer )
+      endForEach
+
+    method count.Integer
+      return type_table.count
+
+    method get( index:Integer ).TypeDef
+      return type_table.at(index)
+
+    method get( t:Token, name:String ).TypeDef
+      local type = find( name )
+      if (type?) return type
+
+      local type_def = TypeDef( t, name, 0 )
+      type_table[name] = type_def
+      return type_def
+
+    method find( name:String ).TypeDef
+      local result = type_table[ name ].TypeDef
+      if (result?) return result
+
+      local temp = Templates.find( name )
+      if (temp?)
+        local type_def = TypeDef( temp.t, name, 0 )
+        type_table[name] = type_def
+        return type_def
+      endIf
+
+      return null
+
+    method must_find( t:Token, name:String ).TypeDef
+      local type = find( name )
+      if (type != null) return type
+      if (t?) throw t.error( "No such type: " + name )
+      else    throw "Can not find main type " + name + "."
+
+    method collect_ids
+      local i = 0
+      while (i <type_table.count)
+        local type = type_table.at(i).TypeDef
+
+        IDTable.add( type.name )
+
+        forEach (v in type.properties)
+          IDTable.add( v.Property.name )
+        endForEach
+
+        #{
+        forEach (v in type.methods)
+          IDTable.add( v.Method.name )
+          IDTable.add( v.Method.signature )
+        endForEach
+        }#
+
+        ++i
+      endWhile
+endObject
+
+#{
+class AllMethods
+  PROPERTIES
+    table = {}
+    list  = []
+
+  METHODS
+    method add( name:String ).Integer
+      if (data.contains(name)) return data[name].Integer
+
+      local id = data.count
+      data[name] = id
+      list.add( name )
+      return id
+endClass
+}#
+
+object IDTable
+  PROPERTIES
+    data = {}
+    list = []
+
+  METHODS
+    method add( name:String ).Integer
+      if (data.contains(name)) return data[name].Integer
+
+      local id = data.count
+      data[name] = id
+      list.add( name )
+      return id
+
+    method get_id( name:String ).Integer
+      return add( name )
+
+    method List
+      return list
+
+endObject
+
+class Qualifiers
+  PROPERTIES
+    is_primitive = 1
+    is_builtIn   = 2
+    is_native    = 4
+    is_singleton = 8
+endClass
+
+class Attributes
+  PROPERTIES
+    data = {}
+
+  METHODS
+    method add( key:String )
+      add( key, key )
+
+    method add( key:String, value:String )
+      data[key] = value
+
+    method contains( key:String ).Logical
+      return data.contains(key)
+
+    method count.Integer
+      return data.count
+
+    method get( index:Integer ).String
+      return data.key(index)
+
+    method get( key:String ).String
+      return data[key]
+endClass
+
+class Type
+  PROPERTIES
+    def           : TypeDef
+    possibly_null : Logical
+
+  METHODS
+    method init( _def:TypeDef, _possibly_null:Logical )
+      def = _def
+      possibly_null = _possibly_null
+
+    method name.String
+      return def.name
+
+    method is_primitive.Logical
+      return (def.qualifiers & Qualifiers.is_primitive) != 0
+
+    method is_reference.Logical
+      return not is_primitive
+
+    method is_Real.Logical
+      return def is TypeDefs.type_Real
+
+    method is_Integer.Logical
+      return def is TypeDefs.type_Integer
+
+    method is_Character.Logical
+      return def is TypeDefs.type_Character
+
+    method is_Logical.Logical
+      return def is TypeDefs.type_Logical
+
+    method is_Object.Logical
+      return def is TypeDefs.type_Object
+
+    method is_String.Logical
+      return def is TypeDefs.type_String
+
+    method instance_of( ancestor:Type ).Logical
+      # Note: ignores null-checked qualifier
+      return def.instance_of( ancestor.def )
+
+    method organize
+      def.organize
+
+    method resolve( _t:Token )
+      def.resolve(_t)
+endClass
+
+class TypeDef
+  PROPERTIES
+    t          : Token
+    name       : String
+    qualifiers : Integer
+    index      : Integer
+
+    attributes = Attributes() : Attributes
+
+    base_types : List
+    methods    : List
+    properties : List
+
+    defined   = false
+    organized = false
+    resolved  = false
+
+    unchecked_type : Type
+    checked_type   : Type
+
+  METHODS
+    method init( _t:Token, _name:String, _qualifiers:Integer )
+      t          = _t
+      name       = _name
+      qualifiers = _qualifiers
+      base_types = []
+      methods    = []
+      properties = []
+
+      unchecked_type = Type( this, true )
+      checked_type = Type( this, false )
+
+    method String
+      return name
+
+    method is_primitive.Logical
+      return (qualifiers & Qualifiers.is_primitive) != 0
+
+    method is_reference.Logical
+      return not is_primitive
+      
+    method instance_of( ancestor:TypeDef ).Logical
+      if (this is ancestor) return true
+      if (this.is_primitive or ancestor.is_primitive) return false
+
+      forEach (base_type in base_types)
+        if (base_type.TypeDef.instance_of(ancestor)) return true
+      endForEach
+
+      return false
+
+    method add_property( property:Property )
+      property.index = properties.count
+      properties.add( property )
+
+    method add_method( m:Method )
+      methods.add( m )
+
+    method find_property( name:String ).Property
+      forEach (p in properties)
+        if (p.Property.name == name) return p
+      endForEach
+      return null
+
+    method find_method( signature:String ).Method
+      forEach (mv in methods)
+        local m = mv.Method
+        if (m.signature == signature) return m
+      endForEach
+      return null
+
+    method organize.TypeDef
+      return organize( t )
+
+    method organize( _t:Token ).TypeDef
+      if (organized) return this
+      organized = true
+
+      Analyzer.this_type = this
+      if (not defined) Templates.instantiate( this, _t )
+
+      if (is_reference)
+        if (base_types.count == 0 and not (this is TypeDefs.type_Object))
+          base_types.add( TypeDefs.type_Object )
+        endIf
+      endIf
+
+      forEach (base_type in base_types)
+        base_type.TypeDef.organize
+      endForEach
+
+      forEach (m in methods) m.Method.organize
+
+      # Inherit properties
+      local original_properties = Analyzer.property_work_list
+      original_properties.clear
+      original_properties.add_all( properties )
+      properties.clear
+      forEach (base_type in base_types)
+        collect_properties( base_type.TypeDef.properties )
+      endForEach
+      collect_properties( original_properties )
+
+      # Create signatures
+      forEach (m in methods) m.Method.create_signature
+
+      # Inherit methods
+      local original_methods = Analyzer.candidate_methods
+      original_methods.clear
+      original_methods.add_all( methods )
+      methods.clear
+      forEach (base_type in base_types)
+        collect_methods( base_type.TypeDef.methods )
+      endForEach
+      collect_methods( original_methods )
+
+      local m = find_method( "init_object()" )
+      if (m is null or m.type_context != this)
+        m = Method( t, this, "init_object", 0 )
+        m.organize
+        collect_method( m )
+      endIf
+
+      local list = Analyzer.command_work_list
+      list.clear
+      forEach (pv in properties)
+        local p = pv.Property
+        if (p.type is null)
+          if (p.initial_value?) p.type = p.initial_value.implicit_type
+          if (p.type is null) p.type = TypeDefs.type_Object
+        endIf
+        if (p.initial_value?) list.add( CmdWriteProperty(p.t,null,p,p.initial_value) )
+      endForEach
+
+      local m_init_object = find_method( "init_object()" )
+      while (list.count?)
+        m_init_object.body.insert( list.remove_last )
+      endWhile
+      
+      return this
+
+    method collect_properties( from_list:List )
+      forEach (p in from_list) collect_property( p.Property )
+
+    method collect_property( p:Property )
+      local i = 0
+      while (i < properties.count)
+        local existing_p = properties[i].Property
+        if (existing_p.name == p.name)
+          properties[i] = p  # replace existing property
+          p.index = i
+          return
+        endIf
+        ++i
+      endWhile
+      properties.add( p.duplicate(Analyzer.this_type,properties.count) )
+
+    method collect_methods( from_list:List )
+      forEach (m in from_list) collect_method( m.Method )
+
+    method collect_method( m:Method )
+      local i = 0
+      while (i < methods.count)
+        local existing_m = methods[i].Method
+        if (existing_m.signature == m.signature and (existing_m.return_type is m.return_type or not (existing_m.type_context is m.type_context)))
+          methods[i] = m  # replace existing method
+          return
+        endIf
+        ++i
+      endWhile
+      methods.add( m )
+
+    method resolve
+      resolve( t )
+
+    method resolve( _t:Token )
+      if (resolved) return
+      resolved = true
+
+      organize(_t)
+
+      Analyzer.this_type = this
+
+      forEach (m in methods) m.Method.resolve
+
+    method compile( writer:JavaVMWriter )
+      writer.this_type = this
+      forEach (mv in methods) 
+        local m = mv.Method
+        if (m.type_context is this) m.compile( writer )
+      endForEach
+
+endClass
+
+class Property
+  PROPERTIES
+    t                  : Token
+    type_context       : TypeDef
+    type               : Type
+    name               : String
+    qualifiers         : Integer
+    index              : Integer
+    initial_value      : Cmd
+
+  METHODS
+    method init( _t:Token, _type_context:TypeDef, _name:String )
+      t = _t
+      type_context = _type_context
+      name = _name
+
+    method organize
+      type_context.organize
+      type.organize
+
+    method resolve
+      type_context.resolve
+      type.resolve(t)
+
+    method duplicate( _type_context:TypeDef, _index:Integer ).Property
+      local result = Property( t, _type_context, name )
+      result.type = type
+      result.qualifiers = qualifiers
+      result.index = _index
+      result.initial_value = initial_value  # TODO: duplicate initial value
+      return result
+
+endClass
+
+class Method
+  PROPERTIES
+    t                  : Token
+    type_context       : TypeDef
+    name               : String
+    signature          : String
+    qualifiers         : Integer
+    return_type        : Type
+
+    method_id          : Integer
+    ip                 : Integer
+
+    attributes = Attributes() : Attributes
+
+    body               : CmdStatementList
+    code = Integer[]   : Integer[]
+    literal_String_values=[] : List
+    literal_Real_values=[]   : List
+    parameters=[]
+    locals=[]
+
+    organized = false
+    resolved  = false
+
+  METHODS
+    method init( _t:Token, _type_context:TypeDef, _name:String, _qualifiers:Integer )
+      t = _t
+      type_context = _type_context
+      name = _name
+      qualifiers = _qualifiers
+      body = CmdStatementList( t )
+
+    method create_signature
+      #if (signature?) return
+
+      local buffer = Character[]
+      buffer.print name
+      buffer.print "("
+      local first = true
+      forEach (p in parameters)
+        if (first) first = false
+        else       buffer.print(',')
+        buffer.print( p.Local.type.name )
+      endForEach
+      buffer.print ")"
+      signature = buffer
+
+    method full_signature.String
+      if (return_type is null) return signature
+      return signature + "." + return_type.name
+
+    method add_parameter( v:Local )
+      add_local( v )
+      parameters.add( v )
+
+    method add_local( v:Local )
+      v.index = locals.count
+      locals.add( v )
+
+    method organize
+      if (organized) return
+      organized = true
+
+      forEach (v in locals) v.Local.organize
+
+      if (return_type is null)
+        # Possibly convert e.g. "method Integer" to "method Integer.Integer"
+        local as_type = Types.find( name, false )
+        if (as_type?)
+          return_type = as_type
+        endIf
+      endIf
+
+      create_signature
+
+      local is_init = (name == "init" or name == "init_object")
+
+      local add_return_guard = true
+      if (is_init)
+        return_type = type_context.checked_type
+      elseIf (return_type is null)
+        Analyzer.push_method_context( this )
+        local visitor = ImplicitReturnTypeVisitor()
+        body.dispatch( visitor )
+        if (return_type is null) 
+          if (not visitor.found_return) add_return_guard = false  # No return commands, no return type spec'd
+        endIf
+        Analyzer.pop_method_context
+      endIf
+
+      # Add default return
+      if (add_return_guard)
+        if (return_type?)
+          if (is_init)
+            body.add( CmdReturnThis(t,type_context) )
+          else
+            body.add( CmdThrowMissingReturn(t) )
+          endIf
+        else
+          body.add( CmdReturnNil(t) )
+        endIf
+      endIf
+
+      if (return_type?) 
+        return_type.resolve(t)
+        local buffer = Character[]
+        buffer.print( signature )
+        buffer.print( '.' )
+        buffer.print( return_type.name )
+        method_id = IDTable.get_id( buffer )
+      else
+        method_id = IDTable.get_id( signature )
+      endIf
+
+    method resolve
+      if (resolved) return
+      resolved = true
+
+      forEach (v in locals) v.Local.resolve
+      if (return_type?) return_type.resolve(t)
+
+      Analyzer.push_method_context( this )
+      body.resolve
+      Analyzer.pop_method_context
+
+    method compile( writer:JavaVMWriter )
+      writer.on_method_started( this )
+      body.compile( writer )
+      writer.on_method_finished
+endClass
+
+class Local
+  PROPERTIES
+    t             : Token
+    name          : String
+    type          : Type
+    initial_value : Cmd
+    index         : Integer
+
+  METHODS
+    method init( _t:Token, _name:String )
+      t = _t
+      name = _name
+
+    method init( _t:Token, _name:String, _type:Type )
+      t = _t
+      name = _name
+      type = _type
+
+    method organize
+      type.organize
+
+    method resolve
+      type.resolve(t)
+
+    method offset.Integer
+      return -(index + 1)
+
+    method String
+      return name + ":" + Type.name
+endClass
+
+class Analyzer
+  PROPERTIES
+    this_type   : TypeDef
+    this_method : Method
+    locals = []
+    local_scope_stack = []
+    property_work_list = []
+    candidate_methods = []
+    compatible_methods  = []
+    command_work_list = []
+    empty_args = CmdArgs() : CmdArgs
+    context_stack = []
+
+  METHODS
+    method push_method_context( m:Method )
+      context_stack.add( this_method )
+      context_stack.add( locals )
+      context_stack.add( local_scope_stack )
+
+      this_method = m
+      locals = []
+      local_scope_stack = []
+
+      forEach (v in this_method.parameters)
+        locals.add( v )
+      endForEach
+
+    method pop_method_context
+      local_scope_stack = context_stack.remove_last.List
+      locals = context_stack.remove_last.List
+      this_method = context_stack.remove_last.Method
+
+    method push_local_scope
+      local_scope_stack.add( locals.count )
+
+    method pop_local_scope
+      if (local_scope_stack.count == 0) 
+        local x = null
+        x.y
+        throw "[Internal Error] No local scope to pop in Analyzer."
+      endIf
+
+      local target_count = local_scope_stack.remove_last.Integer
+      while (locals.count > target_count) locals.remove_last
+
+    method find_local( name:String ).Local
+      local i = locals.count - 1
+      while (i >= 0)
+        local v = locals[i].Local
+        if (v.name == name) return v
+        --i
+      endWhile
+      return null
+
+    method apply_implicit_return_type( implicit_type:Type )
+      # Sets the return type or combines it with the existing one
+      if (implicit_type is null) return
+
+      if (this_method.return_type is null)
+        this_method.return_type = implicit_type
+      else
+        if (not implicit_type.instance_of(this_method.return_type))
+          if (this_method.return_type.instance_of(implicit_type))
+            this_method.return_type = implicit_type      # set to the more general type
+          else
+            this_method.return_type = TypeDefs.type_Object.unchecked_type  # can hold any other type
+          endIf
+        endIf
+      endIf
+
+    method resolve_call( t:Token, type_context:Type, context:Cmd, name:String, args:CmdArgs, return_type_hint:Type, error_on_fail:Logical ).Cmd
+      local m = find_method( t, type_context, name, args, return_type_hint, error_on_fail )
+      if (m is null) return null
+
+      # Cast each argument its corresponding method parameter type
+      if (args?)
+        args.cast_to( m.parameters )
+      endIf
+      return CmdDynamicCall( t, context, m, args ).resolve
+
+    method find_method( t:Token, type_context:Type, name:String, args:CmdArgs, return_type_hint:Type, error_on_fail:Logical ).Method
+      local original_args = args
+      if (args is null) args = empty_args
+
+      candidate_methods.clear
+      compatible_methods.clear
+
+      forEach (mv in type_context.def.methods)
+        local m = mv.Method
+        if (m.name == name)
+          if (m.parameters.count == args.count)
+            candidate_methods.add( m )
+          endIf
+        endIf
+      endForEach
+
+      args.resolve
+
+      # Try the return type hint
+      if (return_type_hint?)
+        forEach (mv in candidate_methods)
+          local m = mv.Method
+          if (m.return_type? and return_type_hint.instance_of(m.return_type)) 
+            if (return_type_hint is m.return_type) return m  # exact match
+            compatible_methods.add( m )  # compatible match
+          endIf
+        endForEach
+        if (compatible_methods.count?)
+          candidate_methods.clear
+          candidate_methods.add_all( compatible_methods )
+        endIf
+      endIf
+
+      # If candidates differ only by return type, automatically choose Object return type
+      # if it exists.
+      if (candidate_methods.count > 1)
+        local all_match = true
+        local m_returning_Object = null : Method
+        local sig = candidate_methods.first.Method.signature
+        forEach (mv in candidate_methods)
+          local m = mv.Method
+          if (m.signature == sig)
+            if (m.return_type? and m.return_type.def == TypeDefs.type_Object) m_returning_Object = m
+          else
+            all_match = false
+          endIf
+        endForEach
+        if (all_match and m_returning_Object?) return m_returning_Object
+      endIf
+
+      if (candidate_methods.count == 1)
+        return candidate_methods.first.Method
+      endIf
+
+      if (not error_on_fail) 
+        return null
+      endIf
+
+      local buffer = Character[]
+
+      if (candidate_methods.count?)
+        buffer.print "Multiple matches for call to "
+      else
+        buffer.print "No such "
+        if (original_args?) buffer.print "method "
+        else                buffer.print "property or method "
+        args = original_args
+      endIf
+
+      buffer.print name
+      if (args?)
+        buffer.print '('
+        local first = true
+        forEach (arg in args)
+          if (first) first = false
+          else       buffer.print ','
+          buffer.print arg.type.name
+        endForEach
+        buffer.print ')'
+      endIf
+
+      buffer.print " in type "
+      buffer.print type_context.name
+      buffer.print "."
+
+      throw t.error( buffer )
+
+
+endClass
+
+class Visitor
+  METHODS
+    method visit( cmd:Cmd )
+      noAction
+endClass
+
+class ImplicitReturnTypeVisitor : Visitor
+  PROPERTIES
+    found_return = false
+
+  METHODS
+    method visit( cmd:Cmd )
+      if (cmd instanceOf CmdReturnValue)
+        found_return = true
+        cmd.determine_implicit_return_type
+      endIf
+endClass
+
+class Cmd
+  PROPERTIES
+    t : Token
+
+  METHODS
+    method init( _t:Token )
+      t = _t
+
+    method implicit_type.Type
+      return null
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+
+    method determine_implicit_return_type
+      noAction
+
+    method type.Type
+      return null
+
+    method variable_name.String
+      return null
+
+    method resolve.Cmd
+      throw error( "resolve() not defined for extended Cmd." )
+
+    method resolve_with_type_hint( as_type:Type ).Cmd
+      return resolve  # ignore the type hint by default
+
+    method require_Logical.Cmd
+      if (type? and type.is_Logical) return this
+      throw error( "Logical true or false value expected." )
+
+    method require_value.Cmd
+      if (type is null)
+        throw error( "Value expected." )
+      endIf
+      return this
+
+    method require_value( allow_unchecked:Logical ).Cmd
+      local _type = type
+      if (type is null) throw error( "Value expected." )
+      if (type.possibly_null and not allow_unchecked)
+        throw t.error( "Null-checked value required." )
+      endIf
+      return this
+
+    method cast_to( cast_t:Token, to_type:Type ).Cmd
+      if (type is to_type) return this
+      return CmdCastToType( cast_t, this, to_type )
+
+    method common_type( lhs:Cmd, rhs:Cmd ).Type
+      local lhs_type = lhs.type
+      local rhs_type = rhs.type
+      if (lhs_type is rhs_type) return lhs_type
+
+      if (lhs_type.is_primitive and rhs_type.is_primitive)
+        if (lhs_type.is_Character or rhs_type.is_Character) return TypeDefs.type_String.checked_type
+        if (lhs_type.is_Logical or rhs_type.is_Logical)
+          throw error( "Invalid mix of Logical and non-Logical types." )
+        endIf
+        if (lhs_type.is_Real or rhs_type.is_Real) return TypeDefs.type_Real.checked_type
+        return TypeDefs.type_Integer.checked_type
+      else
+        if (lhs_type.def is rhs_type.def)
+          # Mix of checked and unchecked values
+          return lhs_type.def.unchecked_type
+        endIf
+        if (lhs_type.instance_of(rhs_type)) return rhs_type
+        if (rhs_type.instance_of(lhs_type)) return lhs_type
+        return TypeDefs.type_Object.unchecked_type
+      endIf
+
+    method resolve_assignment( new_value:Cmd ).Cmd
+      throw error( "resolve_assignment() is not defined for an extended Cmd." )
+
+    method compile( writer:JavaVMWriter )
+      throw error( "compile() not defined for extended Cmd." )
+
+    method error( message:String ).String
+      return t.error(message)
+
+      #method compile( writer:JavaVMWriter )
+      #throw t.error( "Cmd without 'compile()'." )
+
+endClass
+
+class CmdStatementList : Cmd
+  PROPERTIES
+    statements = []
+
+  METHODS
+    method dispatch( v:Visitor )
+      v.visit( this )
+      Analyzer.push_local_scope
+      forEach (statement in this) statement.dispatch( v )
+      Analyzer.pop_local_scope
+
+    method count.Integer
+      return statements.count
+
+    method get( index:Integer ).Cmd
+      return statements[index].Cmd
+
+    method add( cmd:Cmd ).CmdStatementList
+      statements.add( cmd )
+      return this
+
+    method insert( cmd:Cmd ).CmdStatementList
+      statements.insert( cmd )
+      return this
+
+    method resolve.Cmd
+      Analyzer.push_local_scope
+      local i = 0
+      loop statements.count
+        statements[i] = statements[i].Cmd.resolve
+        ++i
+      endLoop
+      Analyzer.pop_local_scope
+
+    method compile( writer:JavaVMWriter )
+      forEach (cmd in this)
+        cmd.compile( writer )
+        local result_type = cmd.type
+        if (not (result_type is null))
+          writer.write( Op.pop_discard )
+        endIf
+      endForEach
+endClass
+
+class CmdArgs
+  PROPERTIES
+    data = []
+
+  METHODS
+    method init
+
+    method init( cmd:Cmd )
+      data.add( cmd )
+
+    method init( cmd1:Cmd, cmd2:Cmd )
+      data.add( cmd1 )
+      data.add( cmd2 )
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      forEach (arg in this) arg.dispatch( v )
+
+    method count.Integer
+      return data.count
+
+    method get( index:Integer ).Cmd
+      return data[index].Cmd
+
+    method add( cmd:Cmd ).CmdArgs
+      data.add( cmd )
+      return this
+
+    method resolve.Cmd
+      local i = 0
+      loop data.count
+        data[i] = data[i].Cmd.resolve.require_value
+        ++i
+      endLoop
+
+    method cast_to( parameters:List )
+      # Cast each argument its corresponding method parameter type
+      local i = 0
+      forEach (arg in this)
+        data[i] = arg.cast_to( arg.t, parameters[i].Local.type )
+        ++i
+      endForEach
+
+    method compile( writer:JavaVMWriter )
+      forEach (cmd in this)
+        cmd.compile( writer )
+      endForEach
+endClass
+
+class CmdLiteral : Cmd
+  METHODS
+    method implicit_type.Type
+      return type
+
+    method resolve.Cmd
+      return this
+
+endClass
+
+class CmdLiteralReal : CmdLiteral
+  PROPERTIES
+    value : Real
+
+  METHODS
+    method init( _t:Token, _value:Real )
+      t = _t
+      value = _value
+
+    method type.Type
+      return TypeDefs.type_Real.checked_type
+
+    method String
+      return Character[].print( value )
+
+    method cast_to( cast_t:Token, to_type:Type ).Cmd
+      if (to_type.is_Real) return this
+
+      if (to_type.is_Integer)
+        local new_value = value : Integer
+        return CmdLiteralInteger( t, new_value )
+
+      elseIf (to_type.is_Character)
+        throw error( //Invalid conversion from Real to Character.// )
+
+      elseIf (to_type.is_Logical)
+        throw error( //Invalid conversion from Real to Logical.  Use "value?" instead.// )
+
+      elseIf (to_type.is_String)
+        return CmdLiteralString( t, ""+value )
+
+        #{
+      elseIf (to_type is TypeDefs.type_Object)
+        return CmdBoxReal( t, value )
+        }#
+
+      else
+        throw error( "TODO: CmdLiteralReal::cast_to()." )
+      endIf
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.push_literal_Real )
+      writer.write( writer.this_method.literal_Real_values.count )
+      writer.this_method.literal_Real_values.add( value )
+endClass
+
+class CmdLiteralInteger : CmdLiteral
+  PROPERTIES
+    value : Integer
+
+  METHODS
+    method init( _t:Token, _value:Integer )
+      t = _t
+      value = _value
+
+    method type.Type
+      return TypeDefs.type_Integer.checked_type
+
+    method String
+      return Character[].print( value )
+
+    method cast_to( cast_t:Token, to_type:Type ).Cmd
+      if (to_type.is_Integer) return this
+
+      if (to_type.is_Real)
+        return CmdLiteralReal( t, value )
+
+      elseIf (to_type.is_Character)
+        return CmdLiteralCharacter( t, value as Character )
+
+      elseIf (to_type.is_Logical)
+        throw error( //Invalid conversion from Integer to Logical.  Use "value?" instead.// )
+
+      elseIf (to_type.is_String)
+        return CmdLiteralString( t, ""+value )
+
+      elseIf (to_type.def is TypeDefs.type_IntegerObject or to_type.is_Object)
+        return CmdAccess( t, "IntegerObject", CmdArgs(this) ).resolve
+
+      else
+        throw error( "Invalid cast from Integer to " + to_type.name + "." )
+      endIf
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.push_literal_Integer )
+      writer.write( value )
+endClass
+
+class CmdLiteralCharacter : CmdLiteral
+  PROPERTIES
+    value : Character
+
+  METHODS
+    method init( _t:Token, _value:Character )
+      t = _t
+      value = _value
+
+    method type.Type
+      return TypeDefs.type_Character.checked_type
+
+    method String
+      return Character[].print( value )
+
+    method cast_to( cast_t:Token, to_type:Type ).Cmd
+      if (to_type.is_Character) return this
+
+      if (to_type.is_Real)
+        throw error( //Invalid conversion from Character to Real.// )
+
+      elseIf (to_type.is_Integer)
+        return CmdLiteralInteger( t, value as Integer )
+
+      elseIf (to_type.is_Logical)
+        throw error( //Invalid conversion from Character to Logical.  Use "ch?" instead.// )
+
+      elseIf (to_type.is_String)
+        return CmdLiteralString( t, ""+value )
+
+      else
+        throw error( "TODO: CmdLiteralCharacter::cast_to()." )
+      endIf
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.push_literal_Integer )
+      writer.write( value as Integer )
+endClass
+
+class CmdLiteralLogical : CmdLiteral
+  PROPERTIES
+    value : Logical
+
+  METHODS
+    method init( _t:Token, _value:Logical )
+      t = _t
+      value = _value
+
+    method type.Type
+      return TypeDefs.type_Logical.checked_type
+
+    method String
+      if (value) return "true"
+      else       return "false"
+
+    method cast_to( cast_t:Token, to_type:Type ).Cmd
+      if (to_type.is_Logical) return this
+
+      if (to_type.is_Real)
+        throw error( //Invalid conversion from Logical to Real.// )
+
+      elseIf (to_type.is_Integer)
+        throw error( //Invalid conversion from Logical to Integer.// )
+
+      elseIf (to_type.is_Character)
+        throw error( //Invalid conversion from Logical to Character.// )
+
+      elseIf (to_type.is_String)
+        if (value) return CmdLiteralString( t, "true" )
+        else       return CmdLiteralString( t, "false" )
+
+      else
+        throw error( "TODO: CmdLiteralLogical::cast_to()." )
+      endIf
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.push_literal_Integer )
+      if (value) writer.write( 1 )
+      else       writer.write( 0 )
+endClass
+
+class CmdLiteralString : CmdLiteral
+  PROPERTIES
+    value : String
+
+  METHODS
+    method init( _t:Token, _value:String )
+      t = _t
+      value = _value
+
+    method type.Type
+      return TypeDefs.type_String.checked_type
+
+    method String
+      return Character[].print( //"// ).print( value ).print( //"// )
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.push_literal_String )
+      writer.write( writer.this_method.literal_String_values.count )
+      writer.this_method.literal_String_values.add( value )
+endClass
+
+class CmdLiteralNull : CmdLiteral
+  PROPERTIES
+    of_type : Type
+
+  METHODS
+    method init( _t:Token )
+      t = _t
+      of_type = TypeDefs.type_Object.unchecked_type
+
+    method type.Type
+      return of_type
+
+    method String
+      return "null"
+
+    method require_value( allow_unchecked:Logical ).Cmd
+      local _type = type
+      if (type is null) throw error( "Value expected." )
+      if (not allow_unchecked)
+        throw t.error( "Non-null value required for method with a null-checked return type." )
+      endIf
+      return this
+
+    method resolve.Cmd
+      of_type.resolve(t)
+      return this
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.push_literal_Object_null )
+endClass
+
+class CmdUnary : Cmd
+  PROPERTIES
+    operand     : Cmd
+    opcode = -1 : Integer
+
+  METHODS
+    method init( _t:Token, _operand:Cmd )
+      t = _t
+      operand = _operand
+
+    method type.Type
+      return operand.type
+
+    method name.String
+      return "[unnamed unary op]"
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      operand.dispatch( v )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local operand_type = operand.type
+
+      if (operand instanceOf CmdLiteral)
+        if (operand_type.is_Real)
+          local result = resolve_for_literal_Real_operand( (operand as CmdLiteralReal).value )
+          if (result?) return result
+        elseIf (operand_type.is_Integer)
+          local result = resolve_for_literal_Integer_operand( (operand as CmdLiteralInteger).value )
+          if (result?) return result
+        elseIf (operand_type.is_Logical)
+          local result = resolve_for_literal_Logical_operand( (operand as CmdLiteralLogical).value )
+          if (result?) return result
+        else
+          local result = resolve_for_literal_operand
+          if (result?) return result
+        endIf
+      endIf
+
+      if (operand_type.is_Real)
+        local result = resolve_for_Real_operand
+        if (result?) return result
+      elseIf (operand_type.is_Integer)
+        local result = resolve_for_Integer_operand
+        if (result?) return result
+      elseIf (operand_type.is_Logical)
+        local result = resolve_for_Logical_operand
+        if (result?) return result
+      else
+        local result = resolve_for_miscellaneous_operand
+        if (result?) return result
+      endIf
+
+      throw error( "Unsupported operand type " + operand_type.name + " for '" + name + "' operation." )
+
+    method resolve_for_literal_Real_operand( operand_value:Real ).Cmd
+      return null
+
+    method resolve_for_literal_Integer_operand( operand_value:Integer ).Cmd
+      return null
+
+    method resolve_for_literal_Logical_operand( operand_value:Logical ).Cmd
+      return null
+
+    method resolve_for_literal_operand.Cmd
+      return null
+
+    method resolve_for_Real_operand.Cmd
+      return null
+
+    method resolve_for_Integer_operand.Cmd
+      return null
+
+    method resolve_for_Logical_operand.Cmd
+      return null
+
+    method resolve_for_miscellaneous_operand.Cmd
+      return null
+
+    method compile( writer:JavaVMWriter )
+      operand.compile( writer )
+      writer.write( opcode )
+endClass
+
+class CmdLogicalNot : CmdUnary
+  METHODS
+    method name.String
+      return "not"
+
+    method implicit_type.Type
+      return TypeDefs.type_Logical.checked_type
+
+    method resolve_for_literal_Real_operand( operand_value:Real ).Cmd
+      # TODO
+      return null
+
+    method resolve_for_literal_Integer_operand( operand_value:Integer ).Cmd
+      # TODO
+      return null
+
+    method resolve_for_literal_Logical_operand( operand_value:Logical ).Cmd
+      return CmdLiteralLogical( t, (not operand_value) )
+
+    method resolve_for_Real_operand.Cmd
+      # TODO
+      return null
+
+    method resolve_for_Integer_operand.Cmd
+      # TODO
+      return null
+
+    method resolve_for_Logical_operand.Cmd
+      opcode = Op.logical_not
+      return this
+
+endClass
+
+class CmdNegate : CmdUnary
+  METHODS
+    method name.String
+      return ""+"-"
+
+    method implicit_type.Type
+      return operand.implicit_type
+
+    method resolve_for_literal_Real_operand( operand_value:Real ).Cmd
+      return CmdLiteralReal( t, -operand_value )
+
+    method resolve_for_literal_Integer_operand( operand_value:Integer ).Cmd
+      return CmdLiteralInteger( t, -operand_value )
+
+    method resolve_for_literal_Logical_operand( operand_value:Logical ).Cmd
+      return CmdLiteralLogical( t, (not operand_value) )
+
+    method resolve_for_Real_operand.Cmd
+      opcode = Op.negate_Real
+      return this
+
+    method resolve_for_Integer_operand.Cmd
+      opcode = Op.negate_Integer
+      return this
+
+    method resolve_for_Logical_operand.Cmd
+      opcode = Op.logical_not
+      return this
+endClass
+
+class CmdBitwiseNot : CmdUnary
+  METHODS
+    method name.String
+      return ""+"!"
+
+    method implicit_type.Type
+      return operand.implicit_type
+
+    method resolve_for_literal_Integer_operand( operand_value:Integer ).Cmd
+      # TODO
+      # return CmdLiteralInteger( t, !operand_value )
+      return null
+
+    method resolve_for_literal_Logical_operand( operand_value:Logical ).Cmd
+      return CmdLiteralLogical( t, (not operand_value) )
+
+    method resolve_for_Integer_operand.Cmd
+      opcode = Op.bitwise_not_Integer
+      return this
+
+    method resolve_for_Logical_operand.Cmd
+      opcode = Op.logical_not
+      return this
+endClass
+
+class CmdLogicalize : CmdUnary
+  METHODS
+    method name.String
+      return ""+"?"
+
+    method implicit_type.Type
+      return TypeDefs.type_Logical.checked_type
+
+    method type.Type
+      return TypeDefs.type_Logical.checked_type
+
+    method resolve_for_literal_Real_operand( operand_value:Real ).Cmd
+      return CmdLiteralLogical( t, operand_value? )
+
+    method resolve_for_literal_Integer_operand( operand_value:Integer ).Cmd
+      return CmdLiteralLogical( t, operand_value? )
+
+    method resolve_for_Real_operand.Cmd
+      opcode = Op.logicalize_Real
+      return this
+
+    method resolve_for_Integer_operand.Cmd
+      opcode = Op.logicalize_Integer
+      return this
+
+    method resolve_for_Logical_operand.Cmd
+      return operand
+
+    method resolve_for_miscellaneous_operand.Cmd
+      local operand_type = operand.type
+      if (operand_type.is_reference)
+        if (not operand_type.possibly_null) return CmdLiteralLogical( t, true )
+        opcode = Op.logicalize_Object
+        return this
+      else
+        return null
+      endIf
+endClass
+
+
+class CmdAccess : Cmd
+  PROPERTIES
+    operand     : Cmd
+    name        : String
+    args        : CmdArgs
+
+  METHODS
+    method init( _t:Token, _name:String )
+      t = _t
+      name = _name
+
+    method init( _t:Token, _name:String, _args:CmdArgs )
+      t = _t
+      name = _name
+      args = _args
+
+    method init( _t:Token, _operand:Cmd, _name:String, _args:CmdArgs )
+      t = _t
+      name = _name
+      operand = _operand
+      args = _args
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      if (operand?)     operand.dispatch( v )
+      if (args?)        args.dispatch( v )
+
+    method implicit_type.Type
+      local as_type = Types.find( name, false )
+      if (as_type?)
+        return as_type
+      else
+        if (operand is null and args is null)
+          local v = Analyzer.find_local( name )
+          if (v?) return v.type
+        endIf
+      endIf
+      return null
+
+    method resolve.Cmd
+      if (operand?)
+        operand = operand.resolve_with_type_hint( Types.find(name,false) ).require_value
+      endIf
+
+      local no_hint : Type
+      return resolve_with_type_hint( no_hint )
+
+    method resolve_with_type_hint( type_hint:Type ).Cmd
+      local as_type = Types.find( name, false )
+
+      if (operand?)
+        # Explicit context
+        operand = operand.resolve_with_type_hint( as_type ).require_value
+
+        local operand_type = operand.type
+        if (operand_type.is_primitive)
+          # Primitive context
+          if (as_type? and args is null)
+            return operand.cast_to(t,as_type).resolve
+          endIf
+          throw error( "TODO: CmdAccess::resolve with primitive context" )
+        else
+          # Object context
+
+          # An object is calling to-type for its own type (e.g. "ABC".String).
+          # Strip the call.
+          if (operand_type is type_hint) return operand
+
+          # Check for methods first
+          local result = Analyzer.resolve_call( t, operand_type, operand, name, args, type_hint, false )
+          if (result?) return result
+
+          # Then check for property access
+          local p = operand_type.def.find_property( name )
+          if (p?) return CmdReadProperty(t,operand,p).resolve
+
+          println "TODO: check for Object::[TypeName]."
+
+          # Throw an error while allowing possible candidate methods to print out
+          local result = Analyzer.resolve_call( t, operand_type, operand, name, args, type_hint, true )
+          return null  # never happens
+
+        endIf
+
+      else
+        # Implicit/'this' context
+        local v = Analyzer.find_local( name )
+        if (v?)
+          return CmdReadLocal( t, v )
+        endIf
+
+        if (as_type?)
+          if (args?)
+            # New object
+            return CmdNewObject( t, as_type, args ).resolve
+          else
+            # Singleton access
+            return CmdReadSingleton( t, as_type )
+          endIf
+        endIf
+
+        # Check for a method call with an optional return type hint
+        local result = Analyzer.resolve_call( t, Analyzer.this_type.checked_type, null, name, args, type_hint, false )
+        if (result?) return result
+
+        # Check for property access
+        local p = Analyzer.this_type.find_property( name )
+        if (p?) return CmdReadProperty( t, null, p ).resolve
+
+        Analyzer.resolve_call( t, Analyzer.this_type.checked_type, null, name, args, type_hint, true )  # will generate an error
+      endIf
+
+      throw error( "TODO: CmdAccess::resolve()" )
+
+    method resolve_assignment( new_value:Cmd ).Cmd
+      if (operand?)
+        operand = operand.resolve.require_value
+        local operand_type = operand.type
+        if (args is null)
+          local p = operand_type.def.find_property( name )
+          if (p?)
+            return CmdWriteProperty( t, operand, p, new_value ).resolve
+          endIf
+        endIf
+        throw error( "Cannot find property in CmdAccess::resolve_assignment().  TODO: add check for implicit write method." )
+      endIf
+
+      local v = Analyzer.find_local( name )
+      if (v?)
+        return CmdWriteLocal(t,v,new_value).resolve
+      endIf
+
+      local p = Analyzer.this_type.find_property( name )
+      if (p?)
+        return CmdWriteProperty( t, null, p, new_value ).resolve
+      endIf
+
+      throw error( "TODO: CmdAccess" )
+
+endClass
+
+class CmdReadSingleton : Cmd
+  PROPERTIES
+    of_type     : Type
+
+  METHODS
+    method init( _t:Token, _of_type:Type )
+      t = _t
+      of_type = _of_type
+
+    method type.Type
+      return of_type
+
+    method implicit_type.Type
+      return of_type
+
+    method resolve.Cmd
+      of_type.resolve(t)
+      return this
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.read_singleton )
+      writer.write( of_type.def.index )
+
+endClass
+
+class CmdReadProperty : Cmd
+  PROPERTIES
+    context  : Cmd
+    property : Property
+
+  METHODS
+    method init( _t:Token, _context:Cmd, _property:Property )
+      t = _t
+      context = _context
+      property = _property
+
+    method type.Type
+      return property.type
+
+    method variable_name.String
+      return property.name
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      if (context?) context.dispatch( v )
+
+    method resolve.Cmd
+      if (context?) 
+        context = context.resolve
+        if (context.type.possibly_null) throw t.error( "Unchecked reference access." )
+      endIf
+      return this
+
+    method compile( writer:JavaVMWriter )
+      if (context?) context.compile( writer )
+      else          writer.write( Op.push_Object_this )
+
+      local property_type = property.type
+      local opcode = 0
+      if (property_type.is_Real)          opcode = Op.read_property_Real
+      elseIf (property_type.is_Integer)   opcode = Op.read_property_Integer
+      elseIf (property_type.is_Character) opcode = Op.read_property_Character
+      elseIf (property_type.is_Logical)   opcode = Op.read_property_Logical
+      else                                opcode = Op.read_property_Object
+
+      writer.write( opcode )
+      writer.write( property.index )
+
+endClass
+
+class CmdWriteProperty : Cmd
+  PROPERTIES
+    context   : Cmd
+    property  : Property
+    new_value : Cmd
+
+  METHODS
+    method init( _t:Token, _context:Cmd, _property:Property, _new_value:Cmd )
+      t = _t
+      context = _context
+      property = _property
+      new_value = _new_value
+
+    method type.Type
+      return null
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      if (context?)   context.dispatch( v )
+      if (new_value?) new_value.dispatch( v )
+
+    method resolve.Cmd
+      new_value = new_value.resolve.require_value
+
+      if (new_value.type.possibly_null and not property.type.possibly_null)
+        throw t.error( "'" + property.name + "' can only store null-checked references." )
+      endIf
+
+      if (context?) context = context.resolve
+      new_value = new_value.resolve.cast_to(t,property.type).resolve
+      return this
+
+    method compile( writer:JavaVMWriter )
+      if (context?) context.compile( writer )
+      else          writer.write( Op.push_Object_this )
+
+      new_value.compile( writer )
+
+      local property_type = property.type
+      local opcode = 0
+      if (property_type.is_Real)          opcode = Op.write_property_Real
+      elseIf (property_type.is_Integer)   opcode = Op.write_property_Integer
+      elseIf (property_type.is_Character) opcode = Op.write_property_Character
+      elseIf (property_type.is_Logical)   opcode = Op.write_property_Logical
+      else                                opcode = Op.write_property_Object
+
+      writer.write( opcode )
+      writer.write( property.index )
+
+endClass
+
+class CmdNewObject : Cmd
+  PROPERTIES
+    of_type     : Type
+    init_method : Method
+    args        : CmdArgs
+
+  METHODS
+    method init( _t:Token, _of_type:Type, _args:CmdArgs )
+      t = _t
+      of_type = _of_type
+      args = _args
+
+    method type.Type
+      return of_type
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      if (args?) args.dispatch( v )
+
+    method resolve.Cmd
+      of_type.resolve(t)
+      if (args?) args.resolve
+      init_method = Analyzer.find_method( t, of_type, "init", args, null, false )
+      if (init_method? and args?) args.cast_to( init_method.parameters )
+      return this
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.create_object )
+      writer.write( of_type.def.index )
+      if (args?)
+        forEach (arg in args) arg.compile( writer )
+      endIf
+      if (init_method?)
+        writer.write( Op.dynamic_call )
+        if (args?) writer.write( args.count )
+        else       writer.write( 0 )
+        writer.write( init_method.method_id )
+      endIf
+
+endClass
+
+class CmdDynamicCall : Cmd
+  PROPERTIES
+    context     : Cmd
+    method_info : Method
+    args        : CmdArgs
+
+  METHODS
+    method init( _t:Token, _content:Cmd, m:Method, _args:CmdArgs )
+      t = _t
+      context = _content
+      method_info = m
+      args = _args
+      if (args is null) args = Analyzer.empty_args
+
+    method type.Type
+      return method_info.return_type
+
+    method variable_name.String
+      return method_info.name
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      if (context?) context.dispatch( v )
+      if (args?)    args.dispatch( v )
+
+    method resolve.Cmd
+      if (context?) 
+        context = context.resolve.require_value
+        local context_type = context.type
+        if (context_type.possibly_null) throw t.error( "Unchecked reference access." )
+      endIf
+      args.resolve
+      return this
+
+    method compile( writer:JavaVMWriter )
+      if (context?)
+        context.compile( writer )
+      else
+        writer.write( Op.push_Object_this )
+      endIf
+
+      forEach (arg in args) arg.compile( writer )
+
+      writer.write( Op.dynamic_call )
+      writer.write( args.count )
+      writer.write( method_info.method_id )
+
+endClass
+
+class CmdBox : CmdUnary
+endClass
+
+
+class CmdStatement : Cmd
+  METHODS
+    method type.Type
+      return null
+
+    method resolve.Cmd
+      return this
+endClass
+
+class CmdControlStructure : CmdStatement
+  PROPERTIES
+endClass
+
+class CmdIf : CmdControlStructure
+  PROPERTIES
+    condition : Cmd
+    body      : CmdStatementList
+    else_body : CmdStatementList
+
+  METHODS
+    method init( _t:Token, _condition:Cmd )
+      t = _t
+      condition = _condition
+      body = CmdStatementList( t )
+
+    method resolve.Cmd
+      condition = condition.resolve.require_value
+      local condition_type = condition.type
+      if (condition_type.is_reference)
+        return CmdIfNonNull( t, condition, body, else_body ).resolve
+      endIf
+
+      condition.require_Logical
+      body.resolve
+      if (else_body?) else_body.resolve
+      return this
+
+    method compile( writer:JavaVMWriter )
+      local control_id = writer.next_control_id
+      local next_check = 1
+      local end_label = "end_" + control_id
+      local has_else = (else_body? and else_body.count?)
+      local else_count = 0
+      if (has_else) ++else_count
+
+      condition.compile( writer )
+      writer.write( Op.jump_if_false )
+      if (else_count?)
+        writer.write_address( "check_" + control_id + "_" + next_check )
+      else
+        writer.write_address( end_label )
+      endIf
+
+      body.compile( writer )
+      if (else_count?)
+        writer.write( Op.jump )
+        writer.write_address( end_label )
+      endIf
+
+      if (has_else)
+        writer.define_label( "check_" + control_id + "_" + next_check )
+        else_body.compile( writer )
+      endIf
+
+      writer.define_label( end_label )
+endClass
+
+class CmdElseIf : Cmd
+endClass
+
+class CmdIfNonNull : CmdControlStructure
+  PROPERTIES
+    condition     : Cmd
+    body          : CmdStatementList
+    else_body     : CmdStatementList
+    checked_local : Local
+
+  METHODS
+    method init( _t:Token, _condition:Cmd, _body:CmdStatementList, _else_body:CmdStatementList )
+      t = _t
+      condition = _condition
+      body = _body
+      else_body = _else_body
+
+      local local_var_name = condition.variable_name
+      if (local_var_name is null)
+        throw t.error( "A single variable or method name is required for a checked if." )
+      endIf
+      checked_local = Local( t, local_var_name, condition.type.def.checked_type )
+
+    method resolve.Cmd
+      # condition already resolved
+      Analyzer.push_local_scope
+      Analyzer.locals.add( checked_local )
+      body.resolve
+      Analyzer.pop_local_scope
+
+      if (else_body?) else_body.resolve
+      return this
+
+    method compile( writer:JavaVMWriter )
+      local label = writer.next_control_id + ""
+
+      condition.compile( writer )
+      writer.write( Op.jump_if_null )
+      if (else_body?) writer.write_address( "else_" + label )
+      else            writer.write_address( "end_" + label )
+
+      writer.write( Op.write_local_Object )
+      writer.write( checked_local.offset )
+      body.compile( writer )
+
+      if (else_body?)
+        writer.write( Op.jump )
+        writer.write_address( "end_" + label )
+        writer.define_label( "else_" + label )
+        else_body.compile( writer )
+      endIf
+
+      writer.define_label( "end_" + label )
+endClass
+
+
+class CmdStatementWithOperand : CmdStatement
+  PROPERTIES
+    operand : Cmd
+
+  METHODS
+    method init( _t:Token, _operand:Cmd )
+      t = _t
+      operand = _operand
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      operand.dispatch( v )
+
+    method type.Type
+      return null
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      return this
+endClass
+
+class CmdPrintln : CmdStatementWithOperand
+  METHODS
+    method String
+      return "println " + operand.String
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      return this
+
+    method compile( writer:JavaVMWriter )
+      operand.compile( writer )
+
+      local operand_type = operand.type
+      local opcode : Integer
+      if (operand_type.def.instance_of(TypeDefs.type_String)) opcode = Op.print_String
+      elseIf (operand_type.is_Real)                    opcode = Op.print_Real
+      elseIf (operand_type.is_Integer)                 opcode = Op.print_Integer
+      elseIf (operand_type.is_Character)               opcode = Op.print_Character
+      elseIf (operand_type.is_Logical)                 opcode = Op.print_Logical
+      else                                             opcode = Op.print_Object
+      writer.write( opcode );
+      writer.write( Op.println_nil )
+endClass
+
+class CmdThrowMissingReturn : CmdStatement
+  METHODS
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.throw_missing_return )
+endClass
+
+class CmdTron : CmdStatement
+  METHODS
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.trace_on )
+endClass
+
+class CmdTroff : CmdStatement
+  METHODS
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.trace_off )
+endClass
+
+class CmdReturn : CmdStatement
+endClass
+
+class CmdReturnNil : CmdReturn
+  METHODS
+    method String
+      return "return"
+
+    method resolve.Cmd
+      if (Analyzer.this_method.name == "init")
+        return CmdReturnThis( t, Analyzer.this_method.type_context ).resolve
+      endIf
+      return this
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.return_nil )
+endClass
+
+class CmdReturnNull : CmdReturn
+  METHODS
+    method String
+      return "return null"
+
+    method resolve.Cmd
+      local return_type = Analyzer.this_method.return_type
+      if (return_type is null)
+        throw error( "Method is not declared as returning a value." )
+      endIf
+      if (not return_type.possibly_null) throw t.error( "Non-null return value required." )
+      return this
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.push_literal_Object_null )
+      writer.write( Op.return_Object )
+endClass
+
+class CmdReturnThis : CmdReturn
+  PROPERTIES
+    return_type : Type
+
+  METHODS
+    method init( _t:Token, _return_type:TypeDef )
+      t = _t
+      return_type = _return_type.checked_type
+      return_type.resolve(t)
+
+    method String
+      return "return this"
+
+    method resolve.Cmd
+      return_type.resolve(t)
+      if (Analyzer.this_method.return_type is null)
+        throw error( "Method is not declared as returning a value." )
+      endIf
+      return this
+
+    method compile( writer:JavaVMWriter )
+      writer.write( Op.push_Object_this )
+      writer.write( Op.return_Object )
+endClass
+
+class CmdReturnValue : CmdReturn, CmdStatementWithOperand
+  METHODS
+    method String
+      return "return " + operand.String
+
+    method determine_implicit_return_type
+      Analyzer.apply_implicit_return_type( operand.implicit_type )
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local return_type = Analyzer.this_method.return_type
+      if (return_type is null)
+        throw error( "Method is not declared as returning a value." )
+      endIf
+      operand.require_value( return_type.possibly_null )
+      operand = operand.cast_to( t, Analyzer.this_method.return_type ).resolve
+      return this
+
+    method compile( writer:JavaVMWriter )
+      operand.compile( writer )
+      local return_type = operand.type
+      if (return_type.is_Real)
+        writer.write( Op.return_Real )
+      elseIf (return_type.is_Integer or return_type.is_Character or return_type.is_Logical)
+        writer.write( Op.return_Integer )
+      else
+        writer.write( Op.return_Object )
+      endIf
+endClass
+
+class CmdCast : CmdUnary
+endClass
+
+class CmdCastToType : CmdCast
+  PROPERTIES
+    to_type : Type
+
+  METHODS
+    method init( _t:Token, _operand:Cmd, _to_type:Type )
+      t = _t
+      operand = _operand
+      to_type = _to_type
+
+    method type.Type
+      return to_type
+
+    method implicit_type.Type
+      return to_type
+
+    method resolve.Cmd
+      to_type.resolve(t)
+
+      operand = operand.resolve.require_value
+      local from_type = operand.type
+      if (from_type is to_type) return operand
+
+      if (from_type.def is to_type.def)
+        if (to_type.possibly_null) return CmdGeneralizeReference( t, operand, to_type )
+        throw error( "Cannot cast a possibly null reference to a non-null reference type." )
+      endIf
+
+      if (from_type.is_reference and to_type.is_reference)
+        if (from_type.instance_of(to_type)) return CmdGeneralizeReference( t, operand, to_type )
+        else                                return CmdSpecializeReference( t, operand, to_type )
+      endIf
+
+      if (from_type.is_primitive and to_type.is_reference)
+        if (to_type.def is TypeDefs.type_IntegerObject or to_type.is_Object)
+          return CmdAccess( t, "IntegerObject", CmdArgs(operand) ).resolve
+        endIf
+      endIf
+
+      if (from_type.is_reference and to_type.is_primitive)
+        if (to_type.is_Integer) return CmdAccess( t, operand, "Integer", null ).resolve
+      endIf
+
+      if (to_type.is_Real)
+        if (from_type.is_Integer) return CmdCastIntegerToReal( t, operand ).resolve
+      elseIf (to_type.is_Integer)
+        if (from_type.is_Real) return CmdCastRealToInteger( t, operand ).resolve
+      endIf
+
+      throw error( "Unhandled cast: " + from_type.name + "->" + to_type.name )
+endClass
+
+class CmdGeneralizeReference : CmdCastToType
+  METHODS
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      return this
+
+    method compile( writer:JavaVMWriter )
+      operand.compile( writer )
+      # no type check required
+endClass
+
+class CmdSpecializeReference : CmdCastToType
+  METHODS
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      return this
+
+    method compile( writer:JavaVMWriter )
+      operand.compile( writer )
+      writer.write( Op.type_check )
+      writer.write( to_type.def.index )
+endClass
+
+class CmdCastIntegerToReal : CmdCast
+  METHODS
+    method type.Type
+      return TypeDefs.type_Real.checked_type
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      return this
+
+    method compile( writer:JavaVMWriter )
+      operand.compile( writer )
+      writer.write( Op.cast_Integer_to_Real )
+endClass
+
+class CmdCastRealToInteger : CmdCast
+  METHODS
+    method type.Type
+      return TypeDefs.type_Integer.checked_type
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      return this
+
+    method compile( writer:JavaVMWriter )
+      operand.compile( writer )
+      writer.write( Op.cast_Real_to_Integer )
+endClass
+
+class CmdTypeManipulation : Cmd
+  PROPERTIES
+    operand : Cmd
+    target_type : Type
+
+  METHODS
+    method init( _t:Token, _operand:Cmd, _target_type:Type )
+      t = _t
+      operand = _operand
+      target_type = _target_type
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      operand.dispatch( v )
+
+    method resolve.Cmd
+      target_type.resolve(t)
+      return this
+
+endClass
+
+class CmdInstanceOf : CmdTypeManipulation
+  METHODS
+    method type.Type
+      return TypeDefs.type_Logical.checked_type
+
+    method implicit_type.Type
+      return TypeDefs.type_Logical.checked_type
+
+    method resolve.Cmd
+      operand = operand.resolve.require_value
+      local operand_type = operand.type
+
+      if (operand_type.instance_of(target_type)) return CmdLiteralLogical( t, true )
+
+      if (operand_type.is_primitive) return CmdLiteralLogical( t, false )
+
+      if (target_type.is_primitive)
+        return CmdLiteralLogical( t, false )
+      endIf
+
+      return this
+
+    method compile( writer:JavaVMWriter )
+      operand.compile( writer )
+      writer.write( Op.Fixed_instanceOf )
+      writer.write( target_type.def.index )
+endClass
+
+class CmdBinary : Cmd
+  PROPERTIES
+    lhs, rhs    : Cmd
+    opcode = -1 : Integer
+
+  METHODS
+    method init( _t:Token, _lhs:Cmd, _rhs:Cmd )
+      t = _t
+      lhs = _lhs
+      rhs = _rhs
+
+    method implicit_type.Type
+      local lhs_type = lhs.implicit_type
+      local rhs_type = rhs.implicit_type
+      if (lhs_type is null or rhs_type is null) return null
+      return common_type( lhs, rhs )
+
+    method type.Type
+      return lhs.type
+
+    method name.String
+      return "[unnamed binary op]"
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      lhs.dispatch( v )
+      rhs.dispatch( v )
+
+    method resolve.Cmd
+      return resolve_for_common_type( resolve_operands_and_cast_to_common_type )
+
+    method resolve_for_common_type( common_type:Type ).Cmd
+      local common_type = resolve_operands_and_cast_to_common_type
+      if (lhs instanceOf CmdLiteral and rhs instanceOf CmdLiteral)
+        if (common_type.is_Real)
+          local result = combine_literal_Real_operands( (lhs as CmdLiteralReal).value, (rhs as CmdLiteralReal).value )
+          if (result?) return result
+        elseIf (common_type.is_Integer)
+          local result = combine_literal_Integer_operands( (lhs as CmdLiteralInteger).value, (rhs as CmdLiteralInteger).value )
+          if (result?) return result
+        elseIf (common_type.is_Logical)
+          local result = combine_literal_Logical_operands( (lhs as CmdLiteralLogical).value, (rhs as CmdLiteralLogical).value )
+          if (result?) return result
+        else
+          local result = combine_literal_operands( common_type )
+          if (result?) return result
+        endIf
+      endIf
+
+      if (common_type.is_Real)
+        local result = resolve_for_Real_operands
+        if (result?) return result
+      elseIf (common_type.is_Integer)
+        local result = resolve_for_Integer_operands
+        if (result?) return result
+      elseIf (common_type.is_Logical)
+        local result = resolve_for_Logical_operands
+        if (result?) return result
+      else
+        local result = resolve_for_miscellaneous_operands( common_type )
+        if (result?) return result
+      endIf
+
+      throw error( "Unsupported operand type " + common_type.name + " for '" + name + "' operation." )
+
+    method resolve_operands.Type
+      lhs = lhs.resolve.require_value
+      rhs = rhs.resolve.require_value
+      local lhs_type = lhs.type
+      local rhs_type = rhs.type
+      return common_type( lhs, rhs )
+
+    method cast_to_common_type( common_type:Type )
+      lhs = lhs.cast_to( lhs.t, common_type ).resolve
+      rhs = rhs.cast_to( rhs.t, common_type ).resolve
+
+    method resolve_operands_and_cast_to_common_type.Type
+      local common_type = resolve_operands
+      cast_to_common_type( common_type )
+      return common_type
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return null
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return null
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return null
+
+    method combine_literal_operands( common_type:Type ).Cmd
+      return null
+
+    method resolve_for_Real_operands.Cmd
+      return null
+
+    method resolve_for_Integer_operands.Cmd
+      return null
+
+    method resolve_for_Logical_operands.Cmd
+      return null
+
+    method resolve_for_miscellaneous_operands( common_type:Type ).Cmd
+      return null
+
+    method compile( writer:JavaVMWriter )
+      lhs.compile( writer )
+      rhs.compile( writer )
+      writer.write( opcode )
+endClass
+
+class CmdAdd : CmdBinary
+  METHODS
+    method name.String
+      return "" + "+"
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralReal( t, lhs_value + rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value + rhs_value )
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return CmdLiteralLogical( t, lhs_value or rhs_value )
+
+    method combine_literal_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralString( t, (lhs as CmdLiteralCharacter).value + (rhs as CmdLiteralCharacter).value )
+
+      elseIf (common_type.is_String)
+        return CmdLiteralString( t, (lhs as CmdLiteralString).value + (rhs as CmdLiteralString).value )
+
+      else
+        return null
+      endIf
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.add_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.add_Integer
+      return this
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.bitwise_or_Integer
+      return this
+
+endClass
+
+class CmdSubtract : CmdBinary
+  METHODS
+    method name.String
+      return "" + "-"
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralReal( t, lhs_value - rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value - rhs_value )
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.subtract_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.subtract_Integer
+      return this
+endClass
+
+class CmdMultiply : CmdBinary
+  METHODS
+    method name.String
+      return "" + "*"
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralReal( t, lhs_value * rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value * rhs_value )
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return CmdLiteralLogical( t, lhs_value and rhs_value )
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.multiply_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.multiply_Integer
+      return this
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.bitwise_and_Integer
+      return this
+endClass
+
+class CmdDivide : CmdBinary
+  METHODS
+    method name.String
+      return "" + "/"
+
+    method implicit_type.Type
+      local lhs_type = lhs.implicit_type
+      local rhs_type = rhs.implicit_type
+      if (lhs_type is null or rhs_type is null) return null
+      local result = common_type( lhs, rhs )
+      if (result.is_Integer) return TypeDefs.type_Real.checked_type
+      return result
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralReal( t, lhs_value / rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralReal( t, lhs_value / rhs_value )
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.divide_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      lhs = lhs.cast_to( t, TypeDefs.type_Real.checked_type )
+      rhs = rhs.cast_to( t, TypeDefs.type_Real.checked_type )
+      return resolve
+
+endClass
+
+class CmdMod : CmdBinary
+  METHODS
+    method name.String
+      return "" + "%"
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralReal( t, lhs_value % rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value % rhs_value )
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.mod_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.mod_Integer
+      return this
+
+endClass
+
+class CmdPower : CmdBinary
+  METHODS
+    method name.String
+      return "" + "^"
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralReal( t, lhs_value ^ rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value ^ rhs_value )
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.power_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.power_Integer
+      return this
+endClass
+
+class CmdBitwiseAnd : CmdBinary
+  METHODS
+    method name.String
+      return "" + "&"
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value & rhs_value )
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return CmdLiteralLogical( t, lhs_value and rhs_value )
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.bitwise_and_Integer
+      return this
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.bitwise_and_Integer
+      return this
+endClass
+
+class CmdBitwiseOr : CmdBinary
+  METHODS
+    method name.String
+      return "" + "|"
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value | rhs_value )
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return CmdLiteralLogical( t, lhs_value or rhs_value )
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.bitwise_or_Integer
+      return this
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.bitwise_or_Integer
+      return this
+endClass
+
+class CmdBitwiseXor : CmdBinary
+  METHODS
+    method name.String
+      return "" + "~"
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value ~ rhs_value )
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return CmdLiteralLogical( t, (lhs_value and not rhs_value) or (not lhs_value and rhs_value) )
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.bitwise_xor_Integer
+      return this
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.bitwise_xor_Integer
+      return this
+endClass
+
+class CmdBitwiseSHL : CmdBinary
+  METHODS
+    method name.String
+      return ":<<:"
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value :<<: rhs_value )
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.shl_Integer
+      return this
+endClass
+
+class CmdBitwiseSHR : CmdBinary
+  METHODS
+    method name.String
+      return ":>>:"
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value :>>: rhs_value )
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.shr_Integer
+      return this
+endClass
+
+class CmdBitwiseSHRX : CmdBinary
+  METHODS
+    method name.String
+      return ":>>>:"
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralInteger( t, lhs_value :>>>: rhs_value )
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.shrx_Integer
+      return this
+endClass
+
+class CmdLogicalAnd : CmdBinary
+  METHODS
+    method name.String
+      return "and"
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return CmdLiteralLogical( t, lhs_value and rhs_value )
+
+    method resolve_for_Logical_operands.Cmd
+      return this
+
+    method compile( writer:JavaVMWriter )
+      local label = writer.next_control_id + ""
+      lhs.compile( writer )
+      writer.write( Op.if_false_push_false_and_jump )
+      writer.write_address( label )
+      rhs.compile( writer )
+      writer.define_label( label )
+endClass
+
+class CmdLogicalOr : CmdBinary
+  METHODS
+    method name.String
+      return "or"
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return CmdLiteralLogical( t, lhs_value or rhs_value )
+
+    method resolve.Cmd
+      local common_type = resolve_operands
+
+      if (common_type.is_reference)
+        local lhs_type = lhs.type
+        local rhs_type = rhs.type
+        if (lhs_type.is_reference and rhs_type.is_reference)
+          if (not lhs_type.possibly_null) return lhs
+          if (not rhs_type.possibly_null and common_type.possibly_null) common_type = common_type.def.checked_type
+          return CmdEitherOr( t, lhs, rhs, common_type ).resolve
+        endIf
+      endIf
+
+      return resolve_for_common_type( resolve_operands_and_cast_to_common_type )
+
+    method resolve_for_Logical_operands.Cmd
+      return this
+
+    method compile( writer:JavaVMWriter )
+      local label = writer.next_control_id + ""
+      lhs.compile( writer )
+      writer.write( Op.if_true_push_true_and_jump )
+      writer.write_address( label )
+      rhs.compile( writer )
+      writer.define_label( label )
+endClass
+
+class CmdEitherOr : CmdBinary
+  PROPERTIES
+    common_type : Type
+
+  METHODS
+    method init( _t:Token, _lhs:Cmd, _rhs:Cmd, _common_type:Type )
+      t = _t
+      lhs = _lhs
+      rhs = _rhs
+      common_type = _common_type
+
+    method name.String
+      return "or"
+
+    method type.Type
+      return common_type
+
+    method resolve.Cmd
+      # lhs and rhs have already been individually resolved
+      if (lhs instanceOf CmdLiteralNull) return rhs
+      if (rhs instanceOf CmdLiteralNull) return lhs
+      return this
+
+    method compile( writer:JavaVMWriter )
+      local label = writer.next_control_id + ""
+      lhs.compile( writer )
+      writer.write( Op.jump_if_not_null )
+      writer.write_address( label )
+      rhs.compile( writer )
+      writer.define_label( label )
+endClass
+
+class CmdLogicalXor : CmdBinary
+  METHODS
+    method name.String
+      return "xor"
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return CmdLiteralLogical( t, (lhs_value and not rhs_value) or (not lhs_value and rhs_value) )
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.bitwise_xor_Integer
+      return this
+endClass
+
+class CmdComparison : CmdBinary
+  METHODS
+    method type.Type
+      return TypeDefs.type_Logical.checked_type
+
+    method implicit_type.Type
+      return TypeDefs.type_Logical.checked_type
+endClass
+
+class CmdCompareEQ : CmdComparison
+  METHODS
+    method name.String
+      return "=="
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralLogical( t, lhs_value == rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralLogical( t, lhs_value == rhs_value )
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return CmdLiteralLogical( t, lhs_value == rhs_value )
+
+    method combine_literal_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value == (rhs as CmdLiteralCharacter).value )
+
+      elseIf (common_type.is_String)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralString).value == (rhs as CmdLiteralString).value )
+
+      else
+        return null
+      endIf
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.eq_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.eq_Integer
+      return this
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.eq_Integer
+      return this
+
+    method resolve_for_miscellaneous_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        opcode = Op.eq_Integer
+      else
+        opcode = Op.eq_Object
+      endIf
+      return this
+endClass
+
+class CmdCompareNE : CmdComparison
+  METHODS
+    method name.String
+      return "!="
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralLogical( t, lhs_value != rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralLogical( t, lhs_value != rhs_value )
+
+    method combine_literal_Logical_operands( lhs_value:Logical, rhs_value:Logical ).Cmd
+      return CmdLiteralLogical( t, lhs_value != rhs_value )
+
+    method combine_literal_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value != (rhs as CmdLiteralCharacter).value )
+
+      elseIf (common_type.is_String)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralString).value != (rhs as CmdLiteralString).value )
+
+      else
+        return null
+      endIf
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.ne_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.ne_Integer
+      return this
+
+    method resolve_for_Logical_operands.Cmd
+      opcode = Op.ne_Integer
+      return this
+
+    method resolve_for_miscellaneous_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        opcode = Op.ne_Integer
+      else
+        opcode = Op.ne_Object
+      endIf
+      return this
+endClass
+
+class CmdCompareLT : CmdComparison
+  METHODS
+    method name.String
+      return ""+"<"
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralLogical( t, lhs_value < rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralLogical( t, lhs_value < rhs_value )
+
+    method combine_literal_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value < (rhs as CmdLiteralCharacter).value )
+      endIf
+      return null
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.lt_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.lt_Integer
+      return this
+
+    method resolve_for_miscellaneous_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        opcode = Op.lt_Integer
+        return this
+      endIf
+      return null
+endClass
+
+class CmdCompareGT : CmdComparison
+  METHODS
+    method name.String
+      return ""+">"
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralLogical( t, lhs_value > rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralLogical( t, lhs_value > rhs_value )
+
+    method combine_literal_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value > (rhs as CmdLiteralCharacter).value )
+      endIf
+      return null
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.gt_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.gt_Integer
+      return this
+
+    method resolve_for_miscellaneous_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        opcode = Op.gt_Integer
+        return this
+      endIf
+      return null
+endClass
+
+class CmdCompareLE : CmdComparison
+  METHODS
+    method name.String
+      return "<="
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralLogical( t, lhs_value <= rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralLogical( t, lhs_value <= rhs_value )
+
+    method combine_literal_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value <= (rhs as CmdLiteralCharacter).value )
+      endIf
+      return null
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.le_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.le_Integer
+      return this
+
+    method resolve_for_miscellaneous_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        opcode = Op.le_Integer
+        return this
+      endIf
+      return null
+endClass
+
+class CmdCompareGE : CmdComparison
+  METHODS
+    method name.String
+      return ">="
+
+    method combine_literal_Real_operands( lhs_value:Real, rhs_value:Real ).Cmd
+      return CmdLiteralLogical( t, lhs_value >= rhs_value )
+
+    method combine_literal_Integer_operands( lhs_value:Integer, rhs_value:Integer ).Cmd
+      return CmdLiteralLogical( t, lhs_value >= rhs_value )
+
+    method combine_literal_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        return CmdLiteralLogical( t, (lhs as CmdLiteralCharacter).value >= (rhs as CmdLiteralCharacter).value )
+      endIf
+      return null
+
+    method resolve_for_Real_operands.Cmd
+      opcode = Op.ge_Real
+      return this
+
+    method resolve_for_Integer_operands.Cmd
+      opcode = Op.ge_Integer
+      return this
+
+    method resolve_for_miscellaneous_operands( common_type:Type ).Cmd
+      if (common_type.is_Character)
+        opcode = Op.ge_Integer
+        return this
+      endIf
+      return null
+endClass
+
+class CmdLocalDeclaration : CmdStatement
+  PROPERTIES
+    t          : Token
+    local_info : Local
+
+  METHODS
+    method init( _t:Token, _v:Local )
+      t = _t
+      local_info = _v
+
+    method dispatch( v:Visitor )
+      Analyzer.locals.add( local_info )
+      v.visit( this )
+
+    method resolve.Cmd
+      Analyzer.locals.add( local_info )
+      return this
+
+    method compile( writer:JavaVMWriter )
+      noAction
+endClass
+
+class CmdAssign : CmdStatementWithOperand
+  PROPERTIES
+    new_value : Cmd
+
+  METHODS
+    method init( _t:Token, _operand:Cmd, _new_value:Cmd )
+      t = _t
+      operand = _operand
+      new_value = _new_value
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      operand.dispatch( v )
+      new_value.dispatch( v )
+
+    method resolve.Cmd
+      return operand.resolve_assignment( new_value )
+endClass
+
+class CmdWriteLocal : CmdStatement
+  PROPERTIES
+    t         : Token
+    v         : Local
+    new_value : Cmd
+
+  METHODS
+    method init( _t:Token, _v:Local, _new_value:Cmd )
+      t = _t
+      v = _v
+      new_value = _new_value
+
+    method dispatch( v:Visitor )
+      v.visit( this )
+      new_value.dispatch( v )
+
+    method resolve.Cmd
+      new_value = new_value.resolve.require_value
+      local new_value_type = new_value.type
+
+      if (v.type is null) v.type = new_value_type
+
+      if (new_value_type.possibly_null and not v.type.possibly_null)
+        throw t.error( "'" + v.name + "' can only store null-checked references." )
+      endIf
+
+      new_value = new_value.cast_to(t,v.type).resolve
+
+      return this
+
+    method compile( writer:JavaVMWriter )
+      new_value.compile( writer )
+      local type = v.type
+
+      if (type.is_Real)          writer.write( Op.write_local_Real )
+      elseIf (type.is_primitive) writer.write( Op.write_local_Integer )
+      else                       writer.write( Op.write_local_Object )
+      writer.write( v.offset )
+
+endClass
+
+class CmdWriteLocalDefault : CmdStatement
+  PROPERTIES
+    t         : Token
+    v         : Local
+
+  METHODS
+    method init( _t:Token, _v:Local )
+      t = _t
+      v = _v
+      if (v.type is null) v.type = TypeDefs.type_Object.unchecked_type
+
+    method resolve.Cmd
+      return this
+
+    method compile( writer:JavaVMWriter )
+      if (v.type.is_Real)
+        writer.write( Op.push_literal_Real_0 )
+        writer.write( Op.write_local_Real )
+      elseIf (v.type.is_primitive)
+        writer.write( Op.push_literal_Integer_0 )
+        writer.write( Op.write_local_Integer )
+      else
+        writer.write( Op.push_literal_Object_null )
+        writer.write( Op.write_local_Object )
+      endIf
+      writer.write( v.offset )
+endClass
+
+class CmdReadLocal : Cmd
+  PROPERTIES
+    t : Token
+    v : Local
+
+  METHODS
+    method init( _t:Token, _v:Local )
+      t = _t
+      v = _v
+
+    method type.Type
+      return v.type
+
+    method variable_name.String
+      return v.name
+
+    method resolve.Cmd
+      return this
+
+    method compile( writer:JavaVMWriter )
+      local type = v.type
+
+      if (type.is_Real)          writer.write( Op.read_local_Real )
+      elseIf (type.is_primitive) writer.write( Op.read_local_Integer )
+      else                       writer.write( Op.read_local_Object )
+
+      writer.write( v.offset )
+
+endClass
+
+class Op
+  PROPERTIES
+    halt                             =   0
+    jump                             =   1
+    jump_if_false                    =   2
+    jump_if_true                     =   3
+    if_false_push_false_and_jump     =   4
+    if_true_push_true_and_jump       =   5
+    jump_if_null                     =   6
+    jump_if_not_null                 =   7
+    pop_discard                      =   8
+    return_nil                       =   9
+    return_Variant                   =   10
+    return_Object                    =  11
+    return_Real                      =  12
+    return_Integer                   =  13
+    return_Native                    =  14
+    throw_Exception                  =  15
+    println_nil                      =  16
+    println_Variant                  =  17
+    finite_loop                      =  18
+    unbox_Real                       =  19
+    unbox_Integer                    =  20
+    unbox_Character                  =  21
+    unbox_Logical                    =  22
+    box_Real                         =  23
+    box_Integer                      =  24
+    box_Character                    =  25
+    box_Logical                      =  26
+    type_check                       =  27
+    Variant_instanceOf               =  28
+    Fixed_instanceOf                 =  29
+    cast_Object_to_Variant           =  30
+    cast_Real_to_Variant             =  31
+    cast_Integer_to_Variant          =  32
+    cast_Character_to_Variant        =  33
+    cast_Logical_to_Variant          =  34
+    cast_Variant_to_Object           =  35
+    cast_Variant_to_Real             =  36
+    cast_Variant_to_Integer          =  37
+    cast_Variant_to_Character        =  38
+
+    cast_Integer_to_Real             =  40
+    cast_Real_to_Integer             =  41
+    cast_Character_to_Integer        =  42
+    push_Object_this                 =  43
+    push_literal_Object_null         =  44
+    push_literal_String              =  45
+    push_literal_Native_null         =  46
+    push_literal_Real                =  47
+    push_literal_Real_negative_1     =  48
+    push_literal_Real_0              =  49
+    push_literal_Real_1              =  50
+    push_literal_Integer             =  51
+    push_literal_Integer_negative_1  =  52
+    push_literal_Integer_0           =  53
+    push_literal_Integer_1           =  54
+    negate_Real                      =  55
+    negate_Integer                   =  56
+    negate_Logical                   =  57
+    logicalize_Object                =  58
+    logicalize_Real                  =  59
+    logicalize_Integer               =  60
+    eq_Object                        =  61
+    eq_Real                          =  62
+    eq_Integer                       =  63
+    ne_Object                        =  64
+    ne_Real                          =  65
+    ne_Integer                       =  66
+    le_Real                          =  67
+    le_Integer                       =  68
+    ge_Real                          =  69
+    ge_Integer                       =  70
+    lt_Real                          =  71
+    lt_Integer                       =  72
+    gt_Real                          =  73
+    gt_Integer                       =  74
+    is_Variant                       =  75
+    is_Object                        =  76
+    add_Object                       =  77
+    add_Real                         =  78
+    add_Integer                      =  79
+    subtract_Real                    =  80
+    subtract_Integer                 =  81
+    multiply_Real                    =  82
+    multiply_Integer                 =  83
+    divide_Real                      =  84
+    mod_Real                         =  85
+    mod_Integer                      =  86
+    power_Real                       =  87
+    power_Integer                    =  88
+    bitwise_and_Integer              =  89
+    bitwise_or_Integer               =  90
+    bitwise_xor_Integer              =  91
+    shl_Integer                      =  92
+    shr_Integer                      =  93
+    shrx_Integer                     =  94
+    logical_not                      =  95
+    read_local_Variant               =  96
+    read_local_Object                =  97
+    read_local_Real                  =  98
+    read_local_Integer               =  99
+    read_local_Native                =  100
+    write_local_Variant              = 101
+    write_local_Object               = 102
+    write_local_Real                 = 103
+    write_local_Integer              = 104
+    write_local_Native               = 105
+    increment_local_Object           = 106
+    increment_local_Real             = 107
+    increment_local_Integer          = 108
+    decrement_local_Object           = 109
+    decrement_local_Real             = 110
+    decrement_local_Integer          = 111
+    read_property_Object             = 112
+    read_property_Real               = 113
+    read_property_Integer            = 114
+    read_property_Character          = 115
+    read_property_Logical            = 116
+    read_property_Native             = 117
+    write_property_Object            = 118
+    write_property_Real              = 119
+    write_property_Integer           = 120
+    write_property_Character         = 121
+    write_property_Logical           = 122
+    write_property_Native            = 123
+    read_this_property_Object        = 124
+    read_this_property_Real          = 125
+    read_this_property_Integer       = 126
+    write_this_property_Object       = 127
+    write_this_property_Real         = 128
+    write_this_property_Integer      = 129
+    create_object                    = 130
+    read_singleton                   = 131
+
+    dynamic_call                     = 132
+
+    List_create                      = 133
+    List_count                       = 134
+    List_get                         = 135
+    List_set                         = 136
+    List_add                         = 137
+    List_insert                      = 138
+    List_remove_at                   = 139
+    List_clear                       = 140
+
+    Table_create                     = 141
+    Table_count                      = 142
+    Table_set                        = 143
+    Table_get_key                    = 144
+
+    trace_on                         = 145
+    trace_off                        = 146
+
+    # new ops
+    print_Object                     = 147
+    print_String                     = 148
+    print_Real                       = 149
+    print_Integer                    = 150
+    print_Character                  = 151
+    print_Logical                    = 152
+
+    throw_missing_return             = 153
+    bitwise_not_Integer              = 154
+
+    last_op                          = 350  # //143,
+endClass
+
+class BackpatchInfo
+  PROPERTIES
+    position : Integer
+    label    : String
+
+  METHODS
+    method init( _label:String, _position:Integer )
+      label = _label
+      position = _position
+endClass
+
+class JavaVMWriter
+  PROPERTIES
+    writer : TextWriter
+    code_string_char_lookup = []
+    this_type   : Type
+    this_method : Method
+
+    current_control_id : Integer
+    backpatch_locations = []
+    label_definitions = []
+
+  METHODS
+    method init
+
+    method on_method_started( m:Method )
+      this_method = m
+      current_control_id = 0
+
+    method next_control_id.Integer
+      ++current_control_id
+      return current_control_id
+
+    method write_address( label:String )
+      backpatch_locations.add( BackpatchInfo(label,this_method.code.count) )
+      write( 0 )  # placeholder
+
+    method define_label( label:String )
+      label_definitions.add( BackpatchInfo(label,this_method.code.count) )
+
+    method on_method_finished
+      # Backpatch
+      while (backpatch_locations.count?)
+        backpatch( backpatch_locations.remove_last.BackpatchInfo )
+      endWhile
+      label_definitions.clear
+
+    method backpatch( info:BackpatchInfo )
+      local label = info.label
+      forEach (def in label_definitions)
+        if (def.BackpatchInfo.label == label)
+          this_method.code[ info.position ] = (def.BackpatchInfo.position - info.position) - 1
+          return
+        endIf
+      endForEach
+      throw "Unresolved backpatch: " + label
+
+    method write( n:Integer )
+      this_method.code.add( n )
+
+    method save( program_name:String )
+      local i = 0
+      while (i < 256)
+        code_string_char_lookup.add( to_octal_String(i) )
+        ++i
+      endWhile
+
+      local code_buffer = Integer[]
+      forEach (type in TypeDefs)
+        forEach (m_v in type.methods)
+          local m = m_v.Method
+          m.ip = code_buffer.count
+          code_buffer.add( m.code )
+        endForEach
+      endForEach
+
+      writer = File(program_name+".java").Writer
+      writer.println //import vm.*;//
+      writer.println
+      writer.println //public class // + program_name + // extends BardProgram//
+      writer.println //{//
+
+      writer.println @|  static public void main( String[] args )
+                      |  {
+
+      writer.println  "    new " + program_name + "().launch();"
+      writer.println @|  }
+                      |
+
+      writer.println  "  public " + program_name + "()"
+      writer.println @|  {
+                      |    init();
+                      |  }
+                      |  
+                      |  public void define_id_table()
+                      |  {
+                      |    vm.id_table.configure(
+                      |      new String[]
+                      |      {
+
+      local first = true
+      forEach (name in IDTable.list)
+        if (first) first = false; writer.print(//        "//)
+        else writer.print //,\n        "//
+        writer.print name + //"//
+      endForEach
+      writer.println
+      writer.println "      }"
+      writer.println "    );"
+      writer.println "  }"
+      writer.println
+      writer.println "  public void define_types()"
+      writer.println "  {"
+      forEach (type in TypeDefs)
+        writer.println //    define_type( "// + type.name + //", // + type.qualifiers + ", " + type.properties.count + " );"
+      endForEach
+      writer.println
+
+      forEach (type in TypeDefs)
+        forEach (base_type_v in type.base_types)
+        local base_type = base_type_v.TypeDef
+          writer.println //    add_base_type( "// + type.name + //", "// + base_type.name + //" );//
+        endForEach
+        forEach (property_v in type.properties)
+          local property = property_v.Property
+          writer.println //    add_property( "// + type.name + //", // + property.index + //, "// + property.name + //", "// + property.type.name + //" );//
+        endForEach
+      endForEach
+      writer.println "  }"
+      writer.println
+      writer.println "  public void define_methods()"
+      writer.println "  {"
+      writer.println //    vm.type_String = vm.must_find_type( "String" );//
+      forEach (type in TypeDefs)
+        forEach (m_v in type.methods)
+          local m = m_v.Method
+          if (m.type_context is type)
+            writer.print //    add_method( "// + m.type_context.name + //", "// + m.name + //", // + m.qualifiers + ", " + m.parameters.count + ", " + m.locals.count + ", "
+            if (m.return_type?) writer.print //"// + m.return_type.name + //",//
+            else                writer.print "null," 
+            writer.print " code, " + m.ip + ", "
+            writer.print m.literal_String_values.count
+            writer.println " );"
+
+            local i = 0
+            forEach (e in m.locals)
+              local v = e.Local
+              if (i < m.parameters.count)
+                writer.println //    add_parameter( // + i + //, "// + v.name + //", "// + v.type.name + //" );//
+              else
+                writer.println //    add_local( // + i + //, "// + v.name + //", "// + v.type.name + //" );//
+              endIf
+              ++i
+            endForEach
+
+            i = 0
+            forEach (st_v in m.literal_String_values)
+              writer.print //    add_String_literal( // + i + //, vm.create_String("//
+              writer.print st_v.String
+              writer.println //") );//
+              ++i
+            endForEach
+
+            if (m.literal_Real_values.count?)
+              writer.print "    working_method.Real_literals = to_double_array( new long[]{ "
+              local first = true
+              forEach (v in m.literal_Real_values)
+                if (first) first = false
+                else       writer.print ", "
+                writer.print "0x"
+                local high = System.Real_to_Integer_high_bits( v.Real )
+                local low  = System.Real_to_Integer_low_bits( v.Real )
+                if (high?)
+                  print_hex( high, 1 )
+                  print_hex( low,  8 )
+                else
+                  print_hex( low, 1 )
+                endIf
+                writer.print "L"
+              endForEach
+              writer.println " } );"
+            endIf
+          endIf
+        endForEach
+      endForEach
+      writer.println "  }"
+      writer.println
+      writer.println "  public " + program_name + " init()"
+      writer.println "  {"
+      writer.println "    BardMethod.use_return_types_in_method_signatures = true;"
+      writer.println "    vm = create_vm();"
+      # TODO: collect all code from methods, generate literal strings
+      writer.println "    set_up_code( code_strings, " + code_buffer.count + " );"
+      writer.println "    define_id_table();"
+      writer.println "    define_types();"
+      writer.println "    define_methods();"
+      writer.println "    return this;"
+      writer.println "  }"
+      writer.println
+
+      writer.println "  public String[] code_strings = new String[]"
+      writer.println "  {"
+      local code_index = 0
+      local first = true
+      while (code_index < code_buffer.count)
+        if (first) first = false
+        else writer.println ","
+        writer.print //    "//
+        local i = 0
+        while (i < 1024 and code_index < code_buffer.count)
+          print_byte_string( code_buffer[code_index] )
+          ++code_index
+          ++i
+        endWhile
+        writer.print //"//
+      endWhile
+      writer.println
+      writer.println "  };"
+
+      writer.println "}"
+      writer.close
+
+    method print_hex( n:Integer, min_digits:Integer )
+      if (n == 0 and min_digits <= 0) return
+
+      print_hex( n:>>:4, min_digits-1 )
+      writer.print "0123456789abcdef"[ n&15 ]
+
+    method to_octal_String( n:Integer ).String
+      if (n == 9) return "\\t"
+      if (n == 10) return "\\n"
+      if (n == 13) return "\\r"
+      if (n == ('\\' as Integer)) return "\\\\";
+      if (n == ('"' as Integer)) return "\\\"";
+      if (n >= 32 and n <= 126) return "" + (n as Character);
+      return "\\" + (n:>>:6) + "" + ((n:>>:3)&7) + "" + (n&7);
+
+    method print_byte_string( n:Integer )
+      if (n >= -64 and n <= 127)
+        # %01111111 or %11xxxxxx
+        print_octal_encoding( n )
+      elseIf (n >= 128 and n <= 0xfff)
+        # %1000xxxx yyyyyyyy
+        print_octal_encoding 0x80 | (n:>>:8)
+        print_octal_encoding n
+      elseIf (n >= 0x1000 and n <= 0xfFFFF)
+        # %1001xxxx yyyyyyyy zzzzzzzz
+        print_octal_encoding 0x90 | (n:>>:16)
+        print_octal_encoding n:>>:8
+        print_octal_encoding n
+      elseIf (n >= 0x100000 and n <= 0xfFFFFff)
+        # %1010xxxx yyyyyyyy zzzzzzzz aaaaaaaa
+        print_octal_encoding 0xa0 | (n:>>:24)
+        print_octal_encoding n:>>:16
+        print_octal_encoding n:>>:8 
+        print_octal_encoding n
+      else
+        # %10110000 xxxxxxxx yyyyyyyy zzzzzzzz aaaaaaaa
+        print_octal_encoding 0xb0 
+        print_octal_encoding n:>>:24 
+        print_octal_encoding n:>>:16 
+        print_octal_encoding n:>>:8 
+        print_octal_encoding n
+      endIf
+
+    method print_octal_encoding( n:Integer )
+      writer.print( code_string_char_lookup[n&255].String )
+endClass
+

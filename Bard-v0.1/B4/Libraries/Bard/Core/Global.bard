@@ -1,0 +1,58 @@
+class Global [singleton]
+  SETTINGS
+    global_string_buffer = StringBuilder()
+
+  METHODS
+    method print( value:String )->Console
+      return Console.print( value )
+
+    method print( value:Real )->Console
+      return Console.print( value )
+
+    method print( value:Real, decimal_places:Integer )->Console
+      return Console.print( value, decimal_places )
+
+    method print( value:Integer )->Console
+      return Console.print( value )
+
+    method print( value:Character )->Console
+      return Console.print( value )
+
+    method print( value:Object )->Console
+      return Console.print( value )
+
+    method print( value:Byte )->Console
+      return Console.print( value )
+
+    method print( value:Logical )->Console
+      return Console.print( value )
+
+    method println( value:Object )->Console
+      return Console.println( value )
+
+    method println( value:String )->Console
+      return Console.println( value )
+
+    method println( value:Real )->Console
+      return Console.println( value )
+
+    method println( value:Real, decimal_places:Integer )->Console
+      return Console.println( value, decimal_places )
+
+    method println( value:Integer )->Console
+      return Console.println( value )
+
+    method println( value:Character )->Console
+      return Console.println( value )
+
+    method println( value:Byte )->Console
+      return Console.println( value )
+
+    method println( value:Logical )->Console
+      return Console.println( value )
+
+    method println->Console
+      return Console.println
+
+endClass
+

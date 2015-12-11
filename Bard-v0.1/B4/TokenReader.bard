@@ -1,0 +1,37 @@
+class TokenReader
+  PROPERTIES
+    tokens   : Token[]
+    position : Integer
+    count    : Integer
+
+  METHODS
+    method init( tokens )
+      count = tokens.count
+
+    method has_another.Logical
+      return position < count
+
+    method peek.Token
+      if (position == count) return tokens.last
+      return tokens[ position ]
+
+    method peek( Integer num_ahead ).Token
+      if (position+num_ahead >= count) return tokens.last
+      return tokens[ position + num_ahead ]
+
+    method read.Token
+      ++position
+      return tokens[ position - 1 ]
+
+    method source_string( Integer i1, Integer i2 ).String
+      local StringBuilder buffer()
+      forEach (i in i1..i2)
+        local var lhs_is_letter = buffer.count? and buffer.last.is_letter
+        local var token_as_string = tokens[i].to_source_string
+        local var rhs_is_letter = token_as_string.count? and token_as_string.first.is_letter
+        if (lhs_is_letter and rhs_is_letter) buffer.print(' ')
+        buffer.print( tokens[i].to_source_string )
+      endForEach
+      return buffer.to_String
+endClass
+

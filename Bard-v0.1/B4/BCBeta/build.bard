@@ -1,0 +1,35 @@
+class Main : GoGo
+  METHODS
+    method build( String cmd )
+      which (cmd)
+        case "runtest"
+          pushd( "../VM" )
+          execute( "make" )
+          popd
+
+          execute( "../VM/b4 Test.bc" )
+
+        others
+          local var source_files = FileSet( "../BCAlpha", "*.bard" )
+          local var compiler_files = FileSet( "..", "*.bard" )
+          local var library_files = FileSet( "../Libraries/Bard/Core", "*.bard" )
+          local var etc = "../BCAlpha/BCA.etc"
+          if (source_files.newer_than(etc) or compiler_files.newer_than(etc))
+            pushd( "../BCAlpha" )
+            execute( "bardic -src_path .. BCA.bard" )
+            popd
+          endIf
+
+          if (FileSet(".","*.bard").newer_than("BCB.bc") or library_files.newer_than("BCB.bc") or compiler_files.newer_than("BCB.bc"))
+            execute( "bard ../BCAlpha/BCA.etc" )
+          endIf
+
+          pushd( "../VM" )
+          execute( "make" )
+          popd
+
+          execute( "../VM/b4 BCB.bc" )
+
+          execute( "../VM/b4 Test.bc" )
+      endWhich
+endClass

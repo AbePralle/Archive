@@ -1,0 +1,352 @@
+class DataStack [singleton]
+  PROPERTIES
+    objects  = Object[]  : Object[]
+    reals    = Real[]    : Real[]
+    integers = Integer[] : Integer[]
+
+    fp          : Integer
+    frame_count : Integer
+
+    # These should be SETTINGS values when that language feature is available.
+    type_object    = 0
+    type_real      = 1
+    type_integer   = 2
+    type_character = 3
+    type_byte      = 4
+    type_logical   = 5
+
+    type_real_ref      = StringBuilder("Real")->String      : String
+    type_integer_ref   = StringBuilder("Integer")->String   : String
+    type_character_ref = StringBuilder("Character")->String : String
+    type_byte_ref      = StringBuilder("Byte")->String      : String
+    type_logical_ref   = StringBuilder("Logical")->String   : String
+
+  METHODS
+    method push_frame->DataStack
+      push( frame_count )
+      push( fp )
+      fp = objects.count
+      frame_count = 0
+      return this
+
+    method pop_frame->DataStack
+      objects.discard_from( fp )
+      reals.discard_from( fp )
+      integers.discard_from( fp )
+
+      if (fp > 0)
+        fp = pop->Integer
+        frame_count = pop->Integer
+      else
+        frame_count = 0
+      endIf
+      return this
+
+    method clear->DataStack
+      objects.clear
+      reals.clear
+      integers.clear
+      fp = 0
+      frame_count = 0
+      return this
+
+    method count->Integer
+      return objects.count
+
+    method has_another->Logical
+      return frame_count?
+
+    method set( index:Integer, value:Object )->DataStack
+      objects[ index ] = value
+      return this
+
+    method set( index:Integer, value:Real )->DataStack
+      objects[ index ] = type_real_ref
+      reals[ index ] = value
+      return this
+
+    method set( index:Integer, value:Integer )->DataStack
+      objects[ index ] = type_integer_ref
+      integers[ index ] = value
+      return this
+
+    method set( index:Integer, value:Character )->DataStack
+      objects[ index ] = type_character_ref
+      integers[ index ] = value
+      return this
+
+    method set( index:Integer, value:Byte )->DataStack
+      objects[ index ] = type_byte_ref
+      integers[ index ] = value
+      return this
+
+    method set( index:Integer, value:Logical )->DataStack
+      objects[ index ] = type_logical_ref
+      if (value) integers[index] = 1
+      else       integers[index] = 0
+      return this
+
+    method type_name( index:Integer )->String
+      local type_ref = objects[ index + fp ]
+      if (type_ref is null)               return "Object"
+      if (type_ref is type_real_ref)      return "Real"
+      if (type_ref is type_integer_ref)   return "Integer"
+      if (type_ref is type_character_ref) return "Character"
+      if (type_ref is type_byte_ref)      return "Byte"
+      if (type_ref is type_logical_ref)   return "Logical"
+      return "Object"
+
+    method type( index:Integer )->Integer
+      local type_ref = objects[ index + fp ]
+      if (type_ref is null)               return type_object
+      if (type_ref is type_real_ref)      return type_real
+      if (type_ref is type_integer_ref)   return type_integer
+      if (type_ref is type_character_ref) return type_character
+      if (type_ref is type_byte_ref)      return type_byte
+      if (type_ref is type_logical_ref)   return type_logical
+      return type_object
+
+    method get( index:Integer )->Object
+      return objects[ index ]
+
+    method get( index:Integer )->String
+      local type_ref = objects[ index ]
+      if (type_ref is null)               return "null"
+      if (type_ref is type_real_ref)      return StringBuilder().print( reals[index]->Real )->String
+      if (type_ref is type_integer_ref)   return StringBuilder().print( integers[index]->Integer )->String
+      if (type_ref is type_character_ref) return StringBuilder().print( integers[index]->Character )->String
+      if (type_ref is type_byte_ref)      return StringBuilder().print( integers[index]->Byte )->String
+      if (type_ref is type_logical_ref)   return StringBuilder().print( integers[index]? )->String
+      return type_ref->String
+
+    method get( index:Integer )->Real
+      local type_ref = objects[ index ]
+
+      if (type_ref is null)               return 0.0
+      if (type_ref is type_real_ref)      return reals[index]
+      if (type_ref is type_integer_ref)   return integers[index]->Real
+      if (type_ref is type_character_ref) return integers[index]->Real
+      if (type_ref is type_byte_ref)      return integers[index]->Real
+      if (type_ref is type_logical_ref)   return integers[index]->Real
+
+      return type_ref->Real
+
+    method get( index:Integer )->Integer
+      local type_ref = objects[ index ]
+
+      if (type_ref is null)               return 0
+      if (type_ref is type_real_ref)      return reals[index]->Integer
+      if (type_ref is type_integer_ref)   return integers[index]
+      if (type_ref is type_character_ref) return integers[index]
+      if (type_ref is type_byte_ref)      return integers[index]
+      if (type_ref is type_logical_ref)   return integers[index]
+
+      return type_ref->Integer
+
+    method get( index:Integer )->Character
+      local type_ref = objects[ index ]
+
+      if (type_ref is null)               return 0->Character
+      if (type_ref is type_real_ref)      return reals[index]->Integer->Character
+      if (type_ref is type_integer_ref)   return integers[index]->Character
+      if (type_ref is type_character_ref) return integers[index]->Character
+      if (type_ref is type_byte_ref)      return integers[index]->Character
+      if (type_ref is type_logical_ref)   return integers[index]->Character
+
+      return type_ref->Character
+
+    method get( index:Integer )->Byte
+      local type_ref = objects[ index ]
+
+      if (type_ref is null)               return 0->Byte
+      if (type_ref is type_real_ref)      return reals[index]->Integer->Byte
+      if (type_ref is type_integer_ref)   return integers[index]->Byte
+      if (type_ref is type_character_ref) return integers[index]->Byte
+      if (type_ref is type_byte_ref)      return integers[index]->Byte
+      if (type_ref is type_logical_ref)   return integers[index]->Byte
+
+      return type_ref->Byte
+
+    method get( index:Integer )->Logical
+      local type_ref = objects[ index ]
+
+      if (type_ref is null)               return false
+      if (type_ref is type_real_ref)      return reals[index]?
+      if (type_ref is type_integer_ref)   return integers[index]?
+      if (type_ref is type_character_ref) return integers[index]?
+      if (type_ref is type_byte_ref)      return integers[index]?
+      if (type_ref is type_logical_ref)   return integers[index]?
+
+      return type_ref->Logical
+
+    method push_default->DataStack
+      ++frame_count
+      objects.add( null )
+      reals.add( 0.0 )
+      integers.add( 0 )
+      return this
+
+    method push( value:Object )->DataStack
+      local sp = objects.count
+      return push_default.set( sp, value )
+
+    method push( value:Real )->DataStack
+      local sp = objects.count
+      return push_default.set( sp, value )
+
+    method push( value:Integer )->DataStack
+      local sp = objects.count
+      return push_default.set( sp, value )
+
+    method push( value:Character )->DataStack
+      local sp = objects.count
+      return push_default.set( sp, value )
+
+    method push( value:Byte )->DataStack
+      local sp = objects.count
+      return push_default.set( sp, value )
+
+    method push( value:Logical )->DataStack
+      local sp = objects.count
+      return push_default.set( sp, value )
+
+    method pop_discard->DataStack
+      --frame_count
+      objects.remove_last
+      reals.remove_last
+      integers.remove_last
+      return this
+
+    method pop->Object
+      --frame_count
+      integers.remove_last
+      reals.remove_last
+      return objects.remove_last
+
+    method pop->String
+      local type_ref = objects.last
+      if (type_ref is null)               return "null"
+      if (type_ref is type_real_ref)      return StringBuilder().print( pop->Real )->String
+      if (type_ref is type_integer_ref)   return StringBuilder().print( pop->Integer )->String
+      if (type_ref is type_character_ref) return StringBuilder().print( pop->Character )->String
+      if (type_ref is type_byte_ref)      return StringBuilder().print( pop->Byte )->String
+      if (type_ref is type_logical_ref)   return StringBuilder().print( pop->Logical )->String
+      return pop->Object->String
+
+    method pop->Real
+      --frame_count
+      local type_ref = objects.remove_last
+      local real_value = reals.remove_last
+      local integer_value = integers.remove_last
+
+      if (type_ref is null)               return 0.0
+      if (type_ref is type_real_ref)      return real_value
+      if (type_ref is type_integer_ref)   return integer_value->Real
+      if (type_ref is type_character_ref) return integer_value->Real
+      if (type_ref is type_byte_ref)      return integer_value->Real
+      if (type_ref is type_logical_ref)   return integer_value->Real
+
+      return type_ref->Real
+
+    method pop->Integer
+      --frame_count
+      local type_ref = objects.remove_last
+      local real_value = reals.remove_last
+      local integer_value = integers.remove_last
+
+      if (type_ref is null)               return 0
+      if (type_ref is type_real_ref)      return real_value->Integer
+      if (type_ref is type_integer_ref)   return integer_value
+      if (type_ref is type_character_ref) return integer_value
+      if (type_ref is type_byte_ref)      return integer_value
+      if (type_ref is type_logical_ref)   return integer_value
+
+      return type_ref->Integer
+
+    method pop->Character
+      --frame_count
+      local type_ref = objects.remove_last
+      local real_value = reals.remove_last
+      local integer_value = integers.remove_last
+
+      if (type_ref is null)               return 0->Character
+      if (type_ref is type_real_ref)      return real_value->Integer->Character
+      if (type_ref is type_integer_ref)   return integer_value->Character
+      if (type_ref is type_character_ref) return integer_value->Character
+      if (type_ref is type_byte_ref)      return integer_value->Byte
+      if (type_ref is type_logical_ref)   return integer_value->Character
+
+      return type_ref->Character
+
+    method pop->Byte
+      --frame_count
+      local type_ref = objects.remove_last
+      local real_value = reals.remove_last
+      local integer_value = integers.remove_last
+
+      if (type_ref is null)               return 0->Byte
+      if (type_ref is type_real_ref)      return real_value->Integer->Byte
+      if (type_ref is type_integer_ref)   return integer_value->Byte
+      if (type_ref is type_character_ref) return integer_value->Byte
+      if (type_ref is type_byte_ref)      return integer_value->Byte
+      if (type_ref is type_logical_ref)   return integer_value->Byte
+
+      return type_ref->Byte
+
+    method pop->Logical
+      --frame_count
+      local type_ref = objects.remove_last
+      local real_value = reals.remove_last
+      local integer_value = integers.remove_last
+
+      if (type_ref is null)               return false
+      if (type_ref is type_real_ref)      return real_value?
+      if (type_ref is type_integer_ref)   return integer_value?
+      if (type_ref is type_character_ref) return integer_value?
+      if (type_ref is type_byte_ref)      return integer_value?
+      if (type_ref is type_logical_ref)   return integer_value?
+
+      return type_ref->Logical
+
+    method peek_type->Integer
+      local type_ref = objects.last
+      if (type_ref is null)               return type_object
+      if (type_ref is type_real_ref)      return type_real
+      if (type_ref is type_integer_ref)   return type_integer
+      if (type_ref is type_character_ref) return type_character
+      if (type_ref is type_byte_ref)      return type_byte
+      if (type_ref is type_logical_ref)   return type_logical
+      return type_object
+
+    method to->String
+      return print_to( StringBuilder() )->String
+
+    method print_to( printer:Printer )->Printer
+      printer.print('[')
+
+      local first = true
+      local i = 0
+      while (i < frame_count)
+        if (first) first = false
+        else       printer.print(',')
+
+        print_to( printer, i )
+
+        ++i
+      endWhile
+
+      return printer.print( ']' )
+
+    method print_to( printer:Printer, i:Integer )->Printer
+      local index = i + fp
+      local type_ref = objects[ index ]
+      if (type_ref is null)                   printer.print( "null" )
+      elseIf (type_ref is type_real_ref)      printer.print( reals[index] )
+      elseIf (type_ref is type_integer_ref)   printer.print( integers[index] )
+      elseIf (type_ref is type_character_ref) printer.print( integers[index]->Character )
+      elseIf (type_ref is type_byte_ref)      printer.print( integers[index] )
+      elseIf (type_ref is type_logical_ref)   printer.print( integers[index]? )
+      else                                    printer.print( "!" + type_ref->String + "!" )
+      return printer
+endClass
+
