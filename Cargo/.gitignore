@@ -1,0 +1,42 @@
+# Vim
+*.swp
+
+# Sample program output
+Samples/Simple/People.json
+Samples/*/*.exe
+
+# Local Test folder
+Test
+
+# Xcode test project
+Projects
+.DS_Store
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
