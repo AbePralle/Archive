@@ -1,0 +1,10 @@
+Bard supports both 32-bit and 64-bit architectures.
+
+You may need to install additional gcc libraries for a 32-bit compile.  On
+Ubuntu:
+
+  sudo apt-get install libc6-dev-i386
+  sudo apt-get install g++-multilib
+
+--Abe Pralle (2011.01.10)
+
