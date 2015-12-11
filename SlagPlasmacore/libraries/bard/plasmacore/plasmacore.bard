@@ -1,0 +1,1503 @@
+#==============================================================================
+# plasmacore.bard
+#
+# $(PLASMACORE_VERSION) $(DATE)
+#
+# -----------------------------------------------------------------------------
+#
+# $(COPYRIGHT)
+#
+#   http://plasmaworks.com/plasmacore
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); 
+# you may not use this file except in compliance with the License. 
+# You may obtain a copy of the License at 
+#
+#   http://www.apache.org/licenses/LICENSE-2.0 
+#
+# Unless required by applicable law or agreed to in writing, 
+# software distributed under the License is distributed on an 
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, 
+# either express or implied. See the License for the specific 
+# language governing permissions and limitations under the License.
+#
+#==============================================================================
+
+[include "font.bard"]
+[include "image.bard"]
+[include "sound.bard"]
+[include "input.bard"]
+[include "resource.bard"]
+[include "media.bard"]
+[include "3d.bard"]
+
+#==============================================================================
+#  WrongPlasmacoreFile
+#==============================================================================
+class WrongPlasmacoreFile : Screen
+  METHODS
+    method init
+      println( "plasmacore.bard should not be the main project file." )
+endClass
+
+#==============================================================================
+# Component
+#==============================================================================
+class Component
+  PROPERTIES
+    components(0)        : Component[]
+    active_components(0) : Component[]
+
+  METHODS
+    method update
+      # Called 60 times a second to update game state.  A convenience method
+      # called from the default implementation of on(ScreenEvent).  Call
+      # prior.update to allow child components to update.
+      if (components?)
+        forEach (component in active_components.copy_from(components))
+          component.update
+        endForEach
+      endIf
+
+
+    method draw
+      # Called up to 60 times a second to draw the current game state.
+      # A convenience method called from the default implementation of 
+      # on(ScreenEvent).  Call prior.draw to allow child components to
+      # draw.
+      if (components?)
+        forEach (component in active_components.copy_from(components))
+          component.draw
+        endForEach
+      endIf
+
+    method on( MouseEvent e )
+      # Override to handle mouse and touch events.
+      #
+      # Call prior.on(e) to allow child components to receive the event.
+      if (components?)
+        forEach (component in active_components.copy_from(components))
+          component.on(e)
+        endForEach
+      endIf
+
+    method on( KeyEvent e )
+      # Override to handle key events.
+      #
+      # Call prior.on(e) to allow child components to receive the event.
+      if (components?)
+        forEach (component in active_components.copy_from(components))
+          component.on(e)
+        endForEach
+      endIf
+
+    method on( AccelerationEvent e )
+      # Override to handle accelerometer events.
+      #
+      # Call prior.on(e) to allow child components to receive the event.
+      if (components?)
+        forEach (component in active_components.copy_from(components))
+          component.on(e)
+        endForEach
+      endIf
+
+    method add( Component component ).Component
+      # Adds a child component that will be updated and drawn (etc.)
+      # when this screen is updated and drawn.  Child components are
+      # drawn before this screen but receive other events after this
+      # screen - you can change that order by overriding 
+      # on_enter(MouseEvent), on_leave(MouseEvent), etc.
+      #
+      # Returns 'this' for call chaining.
+      components.add( component )
+      return this
+
+    method remove( Component component ).Component
+      # Returns 'this' for call chaining.
+      components.remove( component )
+      return this
+
+    method on_activate
+      # Called just before this component is first displayed as a Screen or
+      # as a child component of a Screen.
+      #
+      # This event is automatically dispatched to all child components.
+
+    method on_resume
+      # Called after this component's Screen has been activated, displayed,
+      # and suspended by pushing another screen.
+      #
+      # This event is automatically dispatched to all child components.
+
+    method on_suspend
+      # Called when another screen is about to be pushed on top of this 
+      # component's Screen.  This is also called before on_deactivate() 
+      # when this screen is about to be popped or replaced with another.
+      #
+      # This event is automatically dispatched to all child components.
+
+    method on_deactivate
+      # Called when this component's Screen is about to be popped or replaced 
+      # with another.
+      #
+      # This event is automatically dispatched to all child components.
+
+    method on_images_lost
+      # Override this method to recreate any dynamically created images
+      # owned by this screen.  For a global solution you can register
+      # a SignalHandler that handles the "images_lost" signal.
+      #
+      # This event is automatically dispatched to all child components.
+
+    method on( ScreenEvent e )
+      # Calls update(), draw(), on_activate(), etc. based
+      # on the event type.
+      which (e.type)
+        case ScreenEvent.update:      update
+        case ScreenEvent.draw:        draw
+        case ScreenEvent.activate:    on_activate
+        case ScreenEvent.suspend:     on_suspend
+        case ScreenEvent.resume:      on_resume
+        case ScreenEvent.deactivate:  on_deactivate
+        case ScreenEvent.images_lost: on_images_lost
+      endWhich
+
+    method dispatch( ScreenEvent e )
+      on( e )
+
+      if (not (e.is_update or e.is_draw))
+        if (components?)
+          forEach (component in active_components.copy_from(components))
+            component.dispatch( e )
+          endForEach
+        endIf
+      endIf
+
+    method dispatch( MouseEvent e )
+      on( e )
+
+    method dispatch( KeyEvent e )
+      on( e )
+
+    method dispatch( AccelerationEvent e )
+      on( e )
+endClass
+
+
+#==============================================================================
+# Screen
+#==============================================================================
+singleton class ScreenFade
+  # Fade characteristics applied to all fade operations.  Can be changed from 
+  # defaults as desired.
+  PROPERTIES
+    fade_time=0.5     : Real64
+      # In seconds.
+
+    fade_color(0,0,0) : Color
+
+  METHODS
+    method init( fade_time, fade_color=Color.black )
+endClass
+
+class ScreenState
+  # Manages per-screen sequencing and fade info.
+  PROPERTIES
+    pending_screen  : Screen
+      # Internal use.
+
+    pending_action  : Int32
+      # Internal use.
+    
+    pending_fade : Int32
+      # Internal use.
+
+    active : Int32
+      # Internal use.
+
+    fade_state : Int32
+      # Internal use.
+
+    fade_progress=0.0 : Real64
+      # Internal use.
+endClass
+
+class Screen : Component
+  CLASS_PROPERTIES
+    PUSH=0, REPLACE=1, POP=2 : Int32
+      # Internal use.
+
+    fade_none=0, fade_in=1, fade_out=2, fade_between=3 : Int32
+
+  CLASS_METHODS
+    method current.Screen
+      # Returns the currently active screen (Application.screen).
+      return Application.screen
+
+  PROPERTIES
+    previous_screen : Screen
+      # When a push()ed screen becomes active, its ''previous_screen'' is the
+      # one it will return to when it's pop()ed.
+
+    transparent : Logical
+      # Set to "true" to have the default update() and draw() methods 
+      # automatically update() and draw() the previous screen as well.
+
+    next_screen     : Screen
+      # The next screen to advance() to.  If "null", this screen will be
+      # popped on a call to advance().
+
+    screen_state()  : ScreenState
+      # Internal use.
+
+  METHODS
+    method init
+      # Called when this screen created.  Note that on_activate is a better
+      # place to put code that is called right before a screen is first
+      # displayed.
+
+    method resolve_pending_action.Logical
+      # Internal use.
+      which (screen_state.fade_state)
+        case fade_in, fade_out:
+          if (screen_state.fade_progress == 1.0)
+            screen_state.fade_state = fade_none
+          else
+            screen_state.fade_progress += 1.0 / (ScreenFade.fade_time * 60.0)
+            if (screen_state.fade_progress >= 1.0) screen_state.fade_progress = 1.0
+            return false
+          endIf
+      endWhich
+
+      if (screen_state.pending_screen is null) return false
+
+      which (screen_state.pending_fade)
+        case fade_in:
+          screen_state.pending_screen.screen_state.fade_state = fade_in
+          screen_state.pending_fade = fade_none
+          screen_state.pending_screen.screen_state.fade_progress = 0.0
+        case fade_out:
+          screen_state.fade_state = fade_out
+          screen_state.pending_fade = fade_none
+          screen_state.fade_progress = 0.0
+          return true
+        case fade_between:
+          screen_state.pending_screen.screen_state.fade_state = fade_in
+          screen_state.fade_state = fade_out
+          screen_state.pending_fade = fade_none
+          screen_state.fade_progress = 0.0
+          screen_state.pending_screen.screen_state.fade_progress = 0.0
+          return true
+      endWhich
+
+      if (Application.&screen is this) Application.screen = screen_state.pending_screen
+      else throw Error( "Action on inactive screen." )
+
+      local var was_active = this.screen_state.active
+
+      which (screen_state.pending_action)
+        case PUSH:
+          if (screen_state.active == 1) screen_state.active = -1
+          screen_state.pending_screen.previous_screen = this
+        case REPLACE:
+          if (screen_state.active == 1) screen_state.active = 0
+          screen_state.pending_screen.previous_screen = this.previous_screen
+        case POP:
+          if (screen_state.active == 1) screen_state.active = 0
+      endWhich
+
+      if (was_active == 1)
+        this.dispatch( ScreenEvent(suspend) )
+        if (this isNot screen_state.pending_screen.previous_screen) 
+          this.dispatch( ScreenEvent(deactivate) )
+        endIf
+      endIf
+
+      screen_state.pending_screen = null
+      return true
+
+    method replace_with( Screen pending_screen, Int32 pending_fade=fade_none ).Screen
+      # Replaces this screen with the given other screen, calling
+      # on_suspend() and then on_deactivate() on this screen, then on_activate()
+      # on the new screen just before it's displayed.
+      screen_state.pending_screen = pending_screen
+      screen_state.pending_screen = pending_screen
+      screen_state.pending_fade = pending_fade
+      return this
+
+    method push( Screen pending_screen, Int32 pending_fade=fade_none ).Screen
+      # Pushes another screen on top of this one, calling
+      # on_suspend() on this screen, on_activate() on the new screen
+      # just before it's displayed, and finally on_resume() on this
+      # screen once the new screen is popped (or on_activate() if
+      # this screen never displayed before).
+      screen_state.pending_screen = pending_screen
+      screen_state.pending_action = PUSH
+      screen_state.pending_fade = pending_fade
+      return this
+
+    method pop( Int32 pending_fade=fade_none ).Screen
+      # Removes this screen from the screen stack, calling on_activate()
+      # or on_resume() on the previous screen.
+      screen_state.pending_fade = pending_fade
+      if (previous_screen?)
+        screen_state.pending_screen = previous_screen
+        screen_state.pending_action = POP
+      else
+        if (Application.&screen is this)
+          Application.screen = null
+          screen_state.active = 0
+          dispatch( ScreenEvent(suspend) )
+          dispatch( ScreenEvent(deactivate) )
+          System.exit
+        endIf
+      endIf
+      return previous_screen
+
+    method next( Int32 pending_fade=fade_none ).Screen
+      # Deprecated
+      screen_state.pending_fade = pending_fade
+      return advance( pending_fade )
+
+    method advance( Int32 pending_fade=fade_none ).Screen
+      # Either replaces this screen with the next chained screen (if it exists)
+      # or else pops this screen.  Either way, on_suspend() and then on_deactivate()
+      # are called on this screen and either on_activate() or on_resume() are
+      # called on the next screen.
+      screen_state.pending_fade = pending_fade
+      if (next_screen?)
+        screen_state.pending_screen = next_screen
+        screen_state.pending_action = REPLACE;
+        return next_screen
+      else
+        return pop(pending_fade)
+      endIf
+
+    method chain( Screen other ).Screen
+      # Designates the next screen to become active after advance() is
+      # called on this is screen.
+      local var cur = this
+      while (cur.next_screen?) cur .= next_screen
+      cur.next_screen = other
+      return this
+
+    method update
+      if (transparent? and previous_screen?) previous_screen.update
+      prior.update
+
+    method draw
+      if (transparent? and previous_screen?) previous_screen.draw
+      prior.draw
+
+endClass
+
+
+#==============================================================================
+# Application
+#==============================================================================
+singleton class Application : InputListener
+  PROPERTIES
+    screen  : Screen
+
+    exit_request_handler() : ExitRequestHandler
+      # Example of overriding default behavior to save the game before exiting:
+      #
+      #   Application.exit_request_handler = ExitRequestHandler() with
+      #     method on_exit_request
+      #       save_game
+      #       prior.on_exit_request
+      #   endWith
+
+  METHODS
+    method title( String window_title ): native
+      # Application title property-set for this application.
+      #
+      # Example:
+      #   Application.title = "MadStone"
+
+    method prep( Screen s ).Screen
+      if (s is null) return null
+
+      which (s.screen_state.active)
+        case 0
+          s.screen_state.active = 1
+          s.dispatch( ScreenEvent(activate) )
+
+        case -1
+          s.screen_state.active = 1
+          s.dispatch( ScreenEvent(resume) )
+      endWhich
+
+      return s
+
+    method screen.Screen
+      while (&screen? and &screen.resolve_pending_action) noAction
+      return prep(&screen)
+
+    method update
+      update( screen )
+
+    method update( Screen s )
+      if (s? and s.screen_state.fade_state == 0)
+        s.dispatch( ScreenEvent(update) )
+      endIf
+
+    method draw
+      local Radians angle(0)
+      local var true_size = Display.true_size  # original sizes
+      local var size = Display.size
+      local var x_true_size = true_size  # reoriented sizes
+      local var x_size = size
+      if (Display.orientation == Display.right)
+        angle = Radians(Degrees(90))
+        x_true_size .= transposed
+        x_size .= transposed
+      endIf
+
+      ProjectionTransform.set( Transform.orthographic(Box(x_true_size),0,1000) )
+      ObjectTransform.clear
+      ViewTransform.set( Transform.create(size,size/2,angle,
+          Vector2((x_true_size/x_size).min), x_true_size/2, false, false) )
+
+      InputTransform.current = ViewTransform.current.inverse
+      Display.clipping_region = Display.bounds
+      #if (Display.transform_defined) Display.display_transform.push_camera_transform
+      draw( screen )
+
+      DrawBuffer.render
+
+    method draw( Screen s )
+      if (s is null) return
+      s.dispatch( ScreenEvent(draw) )
+      if (s.screen_state.fade_state?)
+        if (s.screen_state.fade_state == s.fade_in)
+          Display.region.fill( ScreenFade.fade_color.with_alpha(255*(1.0-s.screen_state.fade_progress)) )
+        else
+          Display.region.fill( ScreenFade.fade_color.with_alpha(255*s.screen_state.fade_progress) )
+        endIf
+      endIf
+
+    method on( MouseEvent e )
+      local var s = screen
+      if (s? and s.screen_state.pending_screen is null)
+        #if (Display.transform_defined) e.position = Display.inverse_transform.transform(e.position)
+        s.dispatch(e)
+      endIf
+
+    method on( KeyEvent e )
+      local var s = screen
+      if (s? and s.screen_state.pending_screen is null)
+        s.dispatch(e)
+      endIf
+
+    method on( AccelerationEvent e )
+      local var s = screen
+      if (s? and s.screen_state.pending_screen is null) s.dispatch( e )
+
+    method on( ScreenEvent e )
+      local var s = screen
+      if (s?) s.dispatch( e )
+
+    method on_images_lost
+      if (screen?)  screen.dispatch( ScreenEvent(images_lost) )
+
+[if defined(PLASMACORE)]
+    method log( String mesg ): native
+      # Prints the given message to stdout and "save/log.txt".
+[endIf]
+
+    requisite method on_exit_request
+      try
+        exit_request_handler.on_exit_request()
+      catch (Exception err)
+        println( err.to_String )
+      endTry
+
+endClass
+
+class ExitRequestHandler()
+  METHODS
+    method on_exit_request
+      if (System.os != "ios" and System.os != "android") System.exit
+endClass
+
+
+#=====================================================================
+# Display
+#=====================================================================
+requisite singleton class Display
+  ENUMERATE
+    up, right  # Returned by orientation()
+
+  PROPERTIES
+    size            : readOnly Vector2
+      # The logical size of the display in pixels.
+
+    true_size       : readOnly Vector2
+      # The original size of the display in actual pixels - only differs from
+      # ''size'' if Display.scale_to_fit() has been called.
+
+    #scaled_size     : readOnly Vector2
+      # Display.size in actual pixels.  Only differs from ''size'' if
+      # Display.scale_to_fit() has been called.
+
+    center          : readOnly Vector2
+      # Convenience property equal to size/2.
+
+    clipping_region : Box
+      # The current viewport - parts of graphics that lie outside
+      # this region are clipped and not drawn.
+
+    background_color(0,0,0) : Color
+      # The color the screen is automatically cleared to before each
+      # call to draw().  If you set 'bg_color' to a color with zero
+      # alpha the native layer will not clear the back buffer.
+
+    trace_messages()   : String[]
+      # Internal use - the list of active trace messages.
+
+    last_trace_activity_ms : Int64
+      # Internal use - the time of the last new trace message.
+
+    have_draw_target      : Logical
+      # Internal use.
+
+    original_display_size : Vector2
+      # Internal use.
+
+      #display_transform : Transform
+      #inverse_transform : Transform
+      #transform_defined : Logical
+
+  METHODS
+    method set_up( size )
+      true_size = size
+      #scaled_size = size
+      center = size / 2
+      clipping_region = Box(size)
+
+    method scale_to_fit( Int32 width, Int32 height )
+      # Sets up an internal transform so that you treat the display
+      # size as the given size and Plasmacore scales and centers
+      # the content within the same aspect ratio.
+      #
+      # After this call, Display.size, Display.center, etc., will
+      # reflect the new width and height parameters and Display.true_size
+      # will have the original size.
+      size = Vector2(width,height)
+      center = size / 2
+      clipping_region = Box(size)
+
+    method scale_to_fit( Vector2 new_size )
+      # Sets up an internal transform so that you treat the display
+      # size as the given size and Plasmacore scales and centers
+      # the content within the same aspect ratio.
+      #
+      # After this call, Display.size, Display.center, etc., will
+      # reflect the new size and Display.true_size will have the 
+      # original size.
+      scale_to_fit( new_size.x, new_size.y )
+
+    method scale_to_fill( Int32 width, Int32 height )
+      # Like scale_to_fit but doesn't maintain the same aspect ratio
+      # or use letterbox/heightbox bars.  If you scale_to_fill(1024,768)
+      # then either the width will be 1024 or the height will 768
+      # but the other dimension will be equal to or smaller than the
+      # specified size.
+      if (true_size.x / width > true_size.y / height)
+        scale_to_fit_width( width )
+      else
+        scale_to_fit_height( height )
+      endIf
+
+    method scale_to_fill( Vector2 new_size )
+      # Like scale_to_fit but doesn't maintain the same aspect ratio
+      # or use letterbox/heightbox bars.  If you scale_to_fill(1024,768)
+      # then either the width will be 1024 or the height will 768
+      # but the other dimension will be equal to or smaller than the
+      # specified size.
+      scale_to_fill( new_size.x, new_size.y )
+
+    method scale_to_fit_width( Int32 width )
+      local var factor = true_size.x / width
+      scale_to_fit( width, floor(true_size.y/factor) )
+
+    method scale_to_fit_height( Int32 height )
+      local var factor = true_size.y / height
+      scale_to_fit( floor(true_size.x/factor), height )
+
+    method width.Real64
+      # Returns the width of the display in pixels.
+      return size.x
+
+    method height.Real64
+      # Returns the height of the display in pixels.
+      return size.y
+
+    method bounding_box.Box
+      return Box(size)
+
+    method bounds.Box
+      # Shorthand for bounding_box().
+      return bounding_box
+
+    method at( Real64 x_fraction, Real64 y_fraction ).Vector2
+      # Convenience method equivalent to Display.bounding_box.at(...).
+      return Box(size).at(x_fraction,y_fraction)
+
+    method is_portrait.Logical
+      # Returns true if the display is higher than wide.
+      return Display.size.x <= Display.size.y
+
+    method is_landscape.Logical
+      # Returns true if the display is wider than high.
+      return Display.size.x > Display.size.y
+
+    method fullscreen( Logical setting ): native
+      # Sets the application to fullscreen if setting is "true" or 
+      # windowed mode if it's "false".
+      #
+      # Example:
+      #   Application.fullscreen = true
+
+    method fullscreen.Logical: native
+      # Returns "true" if the application is running in fullscreen 
+      # mode or "false" if it's running in windowed mode.
+      #
+      # Example:
+      #   if (Application.fullscreen) ...
+
+    native method orientation.Int32
+      # Returns this app's orientation relative to the default orientation.
+      # This is based on the project.properties setting and is not affected
+      # by accelerometer data.  The returned value will be either
+      # Display.up or Display.right.
+
+    method on_toggle_fullscreen
+      # Called by the input object when an ALT+ENTER key combination
+      # is detected.  The default behavior is to toggle the fullscreen
+      # property setting.
+      fullscreen = not fullscreen
+
+    method region.Box
+      # Returns the Box that frames the entire display.
+      return Box(size)
+
+    method clipping_region( Box new_clip )
+      # This property-set adjust the clipping region of the screen.
+      # Anything part of any graphics that lie outside the clipping 
+      # region won't be drawn.  The current transform is applied
+      # to the clipping coordinates - a non-orthagonal transform
+      # will not be correctly applied.
+      &clipping_region = new_clip
+      native_set_clipping_region( new_clip )
+
+    method clear_clipping_region
+      # Restores the clipping region to be the entire display.
+      clipping_region = Box(size)
+
+    private method native_set_clipping_region( Box box ): native
+      # Internal use.
+
+    method set_draw_target( OffscreenBuffer buffer, Logical blend_alpha=true )
+      # Selects the given offscreen buffer as the target of various drawing
+      # commands - send "null" to change back to the main display. Send
+      # "true" for 'blend_alpha' to perform normal alpha blending or "false"
+      # to preserve the alpha of the original colors as they're drawn.
+      #
+      # Selects the given OffscreenBuffer to be the target of image-drawing calls.
+      # Pass "null" to use the main display as the draw target.  The draw target
+      # is reset to the main display before each draw event.
+      #
+      # Example:
+      #   status_bar(320,32) : OffscreenBuffer
+      #   ...
+      #   Application.set_draw_target(status_bar)
+      #   tool_icon.draw( 0, 0 )
+      #   ...
+      #   Application.set_draw_target(null)  # select main display
+      #   status_bar.draw( 0, 0 )
+      if (have_draw_target)
+        if (buffer is null)
+          have_draw_target = false
+          Display.scale_to_fit(original_display_size)
+        endIf
+      else
+        if (buffer?)
+          original_display_size = Display.size
+          Display.scale_to_fit(Display.true_size)
+          have_draw_target = true
+        endIf
+      endIf
+
+      native_set_draw_target( buffer, blend_alpha )
+
+    private method native_set_draw_target( OffscreenBuffer buffer, Logical blend_alpha ): native
+
+    method clear( Color color=Color.black )
+      Display.region.fill( color )
+
+    method screen_shot( Bitmap bmp=null ).Bitmap: native
+      # Retrieves the display's image data as a software Bitmap.
+      #
+      # If you pass in a Bitmap, the bitmap's existing pixel data array will 
+      # either be reused if it is already the same size or else it will be 
+      # reallocated - in either case the original bitmap reference will be 
+      # returned.
+      #
+      # If you don't pass in a Bitmap, a Bitmap of the appropriate size
+      # will be created and returned for you.
+
+    method trace( String mesg )
+      # Prints the given trace message to the screen as well as 
+      # logging it to "log.txt".
+      SystemFont  # Get the SystemFont loading if it's not already loaded
+      forEach (line in LineReader(mesg))
+        log( line )
+        trace_messages.add( line )
+      endForEach
+
+      while (trace_messages.count > 15) trace_messages.remove_first
+      last_trace_activity_ms = time_ms
+
+    method flush: native
+      # Flushes an queued drawing commands.  You do not need to call this unless
+      # you are about to call custom native layer functionality to perform custom
+      # rendering
+
+    method last_draw_time_ms.Int32: native
+      # Returns the number of milliseconds that the last draw() cycle took
+      # to execute.  This includes not only the time spent in draw(), but
+      # also the time the system takes to present the final rendered frame
+      # (to finish rendering plus perform screen swap or similar).
+
+    #{
+    method rotate( Degrees angle )
+      transform( Radians(angle), Vector2(0,0), Vector2(1,1) )
+
+    method rotate( Radians angle )
+      transform( angle, Vector2(0,0), Vector2(1,1) )
+
+    method translate( Vector2 offset )
+      transform( Radians(0), offset, Vector2(1,1) )
+
+    method translate( Real64 x, Real64 y )
+      transform( Radians(0), Vector2(x,y), Vector2(1,1) )
+
+    method scale( Vector2 factor )
+      transform( Radians(0), Vector2(0,0), factor )
+
+    method scale( Real64 factor )
+      transform( Radians(0), Vector2(0,0), Vector2(factor,factor) )
+
+    method transform( Degrees angle, Vector2 offset, Real64 scale )
+      transform( Radians(angle), offset, Vector2(scale,scale) )
+
+    method transform( Radians angle, Vector2 offset, Real64 scale )
+      transform( angle, offset, Vector2(scale,scale) )
+
+    method transform( Degrees angle, Vector2 offset, Vector2 scale )
+      transform( Radians(angle), offset, scale )
+
+    method transform( Radians angle, Vector2 offset, Vector2 scale )
+      if (transform_defined) Transform.pop_camera_transform
+      display_transform = Transform( size, size/2, angle, scale, size/2+offset, false, false )
+      Transform.push_camera_transform( display_transform )
+      inverse_transform = display_transform.inverse
+      transform_defined = true
+
+    method clear_transform
+      if (transform_defined) Transform.pop_camera_transform
+      transform_defined = false
+
+    method reverse_transform( Vector2 pos ).Vector2
+      if (not transform_defined) return pos
+      return Transform.current.transform( pos )
+      }#
+
+endClass
+
+overlaying augment Global
+  METHODS
+[if defined(PLASMACORE)]
+    method set_up_stdio
+      stdout = TraceWriter()
+      insertUnderlying
+
+    method read_line.String
+      throw UnsupportedMethodError( "Global::read_line()" )
+
+    method read_Int32.Int32
+      throw UnsupportedMethodError( "Global::read_Int32()" )
+
+    method read_Int64.Int64
+      throw UnsupportedMethodError( "Global::read_Int32()" )
+
+    method trace( String mesg )
+      # Prints the given trace message to the screen as well as 
+      # logging it to "log.txt".
+      Display.trace( mesg )
+
+    method log( String mesg )
+      # Prints the given message to stdout and "save/log.txt".
+      Application.log( mesg )
+[else]
+    method trace( String mesg )
+      println( mesg )
+
+    method log( String mesg )
+      println( mesg )
+[endIf]
+endAugment
+
+#=====================================================================
+# System
+#=====================================================================
+overlaying augment System
+  METHODS
+    #method max_texture_size.Vector2: native
+
+    method force_garbage_collection( Int32 times )
+      insertUnderlying
+
+    method device_id.String: native
+      # Returns a unique device id for iOS and iPod Touch.
+
+    method open_url( String url ): native
+
+    method country_name.String: native
+
+    native method target_fps( Int32 fps )
+      # Set the target frames per second of the native layer.  You
+      # do not typically need to adjust this.
+endAugment
+
+
+#=====================================================================
+#  TraceWriter - used to redirect stdout messages to be a trace
+#=====================================================================
+requisite class TraceWriter : TextWriter
+  PROPERTIES
+    buffer() : StringBuilder
+
+  METHODS
+    method init
+
+    method write( Char ch )
+      if (ch == 10)
+        local var st = buffer.to_String
+        trace( st )
+        buffer.clear
+      else
+        buffer.print( ch )
+      endIf
+endClass
+
+
+#=====================================================================
+# SignalManager
+#=====================================================================
+overlaying augment SignalManager
+  PROPERTIES
+    min_updates_per_draw=1  : Int32
+    max_updates_per_draw=6  : Int32
+    updates_since_last_draw : Int32
+
+    allow_standard_signals = true : Logical
+
+  METHODS
+[if defined(PLASMACORE)]
+    method init
+      which (System.device_type)
+        case "iPhone1,1", "iPhone1,2", "iPod1,1", "iPod2,1":
+          min_updates_per_draw = 2
+        others:
+          min_updates_per_draw = 1
+      endWhich
+      insertUnderlying
+
+    method install_default_signal_handlers
+      SignalHandler("launch") with
+        method on( Signal s )
+          local var arg = s.argument.(SignalObjectArg)
+          try
+            Application.listen_to(Input)
+            local var param_screen = arg.object.(Screen)
+            Display.set_up( Vector2(arg.x,arg.y) )
+            Application.screen = param_screen
+
+            param_screen.init_object
+            param_screen.init
+
+            Signal("resume").raise
+
+          catch (Exception err)
+            trace( err.to_String )
+          endTry
+      endWith
+
+      SignalHandler("update") with
+        method on( Signal e )
+          if (not SignalManager.allow_standard_signals) return
+
+          if (SignalManager.updates_since_last_draw >= SignalManager.max_updates_per_draw) return
+          SignalManager.updates_since_last_draw++
+
+          try
+            Input.update
+            Application.update
+            TaskManager.update
+          catch (Exception err)
+            trace( err.to_String )
+          endTry
+      endWith
+
+      SignalHandler("draw") with
+        method on( Signal e )
+          if (not SignalManager.allow_standard_signals) return
+
+          SignalManager.updates_since_last_draw = 0
+          try
+            Application.draw
+          catch (Exception err)
+            trace( err.to_String )
+          endTry
+          #if (Display.transform_defined) Transform.pop_camera_transform
+          ObjectTransform.clear
+          ViewTransform.clear
+
+          # draw trace messages
+          try
+            if (Display.trace_messages.count > 0)
+              Display.clear_clipping_region
+
+              local Int32 y = 0
+              SystemFont.handle = Handle.top_left
+              SystemFont.color = Color.white
+              SystemFont.scale = 1.0
+              forEach (mesg in Display.trace_messages)
+                SystemFont.draw( mesg, Vector2(0,y) )
+                y += SystemFont.height
+              endForEach
+
+              # 6 seconds until first message disappears
+              # and afterwards another disappears every second
+              if (time_ms - Display.last_trace_activity_ms > 6000)
+                Display.trace_messages.remove_first
+                Display.last_trace_activity_ms = time_ms - 5000
+              endIf
+            endIf
+          catch (Error err)
+            log( err.to_String )
+          endTry
+      endWith
+
+      SignalHandler("key") with
+        method on( Signal s )
+          local var arg = s.argument.(SignalDataArg)
+          local var is_unicode = arg.id?
+          local Int32 code
+          local Char ch
+          if (is_unicode)
+            ch = arg.index
+            code = Key.unicode_to_keycode[ch % Key.unicode_to_keycode.count]
+          else
+            code = arg.index
+            ch = Input.keycode_to_Char(code)
+          endIf
+          if (arg.flag) Input.handle_key_press( ch, code )
+          else          Input.handle_key_release( ch, code )
+      endWith
+
+      SignalHandler("mouse_move") with
+        method on( Signal s )
+          local var arg = s.argument.(SignalDataArg)
+          local var pos = InputTransform.current.transform( Vector2(arg.x,arg.y) )
+          Input.mouse_positions[arg.id] = pos
+          Input.dispatch( MouseEvent(movement,arg.id,pos,0) )
+      endWith
+
+      SignalHandler("mouse_button") with
+        method on( Signal s )
+          local var arg = s.argument.(SignalDataArg)
+          local var index = arg.index
+          local var id = arg.id
+          local var pos = InputTransform.current.transform( Vector2(arg.x,arg.y) )
+          Input.mouse_positions[id] = pos
+          Input.&mouse_button_state[id][index] = arg.flag
+          if (arg.flag) Input.dispatch( MouseEvent(button_press,id,pos,index) )
+          else          Input.dispatch( MouseEvent(button_release,id,pos,index) )
+      endWith
+
+      SignalHandler("mouse_wheel") with
+        method on( Signal s )
+          local var arg = s.argument.(SignalDataArg)
+          local var id = arg.id
+          local var pos = InputTransform.current.transform( Vector2(arg.x,arg.y) )
+          Input.mouse_positions[id] = pos
+          if (arg.index < 0)
+            Input.dispatch( MouseEvent(wheel_up,id,pos,0) )
+          else
+            Input.dispatch( MouseEvent(wheel_down,id,pos,0) )
+          endIf
+      endWith
+
+      SignalHandler("textures_lost") with
+        method on( Signal s )
+          log( "TEXTURES LOST" )
+          TextureManager.on_textures_lost
+
+          # Reload the system font if it was already loaded
+          if (SystemFontManager.singleton_instance?) SystemFont = SystemFont()
+
+          Input.dispatch( ScreenEvent(images_lost) )
+          Signal("images_lost").raise
+      endWith
+
+      SignalHandler("suspend") with
+        method on( Signal s )
+          log( "APP SUSPEND" )
+      endWith
+
+      SignalHandler("resume") with
+        method on( Signal s )
+          log( "APP RESUME" )
+      endWith
+
+      SignalHandler("shut_down") with
+        method on( Signal s )
+          log( "APP SHUT DOWN" )
+      endWith
+
+      SignalHandler("trace") with
+        method on( Signal s )
+          println( ""+s.argument )
+      endWith
+
+      SignalHandler("log") with
+        method on( Signal s )
+          println( ""+s.argument )
+      endWith
+[endIf]
+
+    method throttle_update_cycle( Int32 max_updates_this_cycle )
+      # Make sure there are no more than 'max_updates_this_cycle' updates
+      # before the nxt draw.
+      if (max_updates_this_cycle <= updates_since_last_draw)
+        updates_since_last_draw = max_updates_per_draw
+      else
+        local var remaining = max_updates_this_cycle - updates_since_last_draw
+        updates_since_last_draw = max_updates_per_draw - remaining
+      endIf
+
+endAugment
+
+
+singleton class Timer : Task
+  # You can request the timer to call a delegate method every N ticks.
+  #
+  # Example:
+  #
+  #   class TimeTest
+  #     PROPERTIES
+  #       seconds : Int32
+  #
+  #     METHODS
+  #       method init
+  #         Timer.schedule( delegate(on_interval), 60 )
+  #           # Call on_interval() once every second
+  #       
+  #       method on_interval
+  #         println( "tick" )
+  #         ++seconds
+  #         if (seconds == 5)
+  #           # Cancel after 5 seconds
+  #           Timer.cancel( this )
+  #         endIf
+  #   endClass
+  PROPERTIES
+    intervals()        : TimerInterval[]
+    active_intervals() : TimerInterval[]
+
+  METHODS
+    method schedule( Delegate fn, Int32 ticks )
+      intervals.add( TimerInterval(fn,ticks) )
+
+    method cancel( Object context )
+      forEach (interval in intervals)
+        if (interval.fn.context == context) removeCurrent interval
+      endForEach
+
+    method update
+      # Called automatically since this is a Task
+      forEach (interval in active_intervals.copy_from(intervals))
+        interval.update
+      endForEach
+
+endClass
+
+class TimerInterval
+  PROPERTIES
+    tick_interval  : Int32
+    elapsed_ticks  : Int32
+    fn             : Delegate
+
+  METHODS
+    method init( fn, tick_interval )
+
+    method update
+      ++elapsed_ticks
+      if (elapsed_ticks == tick_interval)
+        elapsed_ticks = 0
+        fn.call
+      endIf
+endClass
+
+#==============================================================================
+#  Layout
+#==============================================================================
+class LayoutBox
+  ENUMERATE
+    empty, single, horizontal, vertical, stack
+
+  PROPERTIES
+    first, second    : LayoutBox
+    position         : Vector2
+    offset           : Vector2
+    size             : Vector2
+    alignment(Handle.center)   : Handle
+    handle(Handle.top_left)    : Handle
+    layout_type=empty          : Int32
+    color(255,255,255)         : Color
+    background_color(0,0,0,0)  : Color
+    on_select                  : Delegate
+
+  METHODS
+    method init( size )
+
+    method init( Real64 w, Real64 h )
+      init( Vector2(w,h) )
+
+    method init( Box box )
+      position = box.position
+      size = box.size
+
+    method init( Real64 x, Real64 y, Real64 w, Real64 h )
+      init( Box(x,y,w,h) )
+
+    method init( Vector2 pos, Real64 w, Real64 h )
+      init( Box(pos,w,h) )
+
+    method init( Vector2 pos, Real64 s )
+      init( Box(x,y,s,s) )
+
+    method init( Real64 x, Real64 y, Vector2 _size )
+      init( Box(x,y,_size) )
+
+    method init( Vector2 pos, Vector2 _size )
+      init( Box(pos,_size) )
+
+    method init( size, first )
+      position = first.position
+      first.update_offset( bounds )
+      layout_type = single
+
+    method init( Box box, first )
+      position = box.position
+      &size = box.size
+      first.update_offset( bounds )
+      layout_type = single
+
+    method init( first, second, layout_type )
+      position = first.position
+
+      which (layout_type)
+        case horizontal
+          local var h = max( first.size.y, second.size.y )
+          if (h != first.size.y)
+            init( first.within(Vector2(first.size.x,h)), second, layout_type )
+            escapeWhich
+          elseIf (h != second.size.y)
+            init( first, second.within(Vector2(second.size.x,h)), layout_type )
+            escapeWhich
+          else
+            &size = Vector2( first.size.x+second.size.x, h )
+            first.offset = Vector2(0,0)
+            second.offset = first.size.xv
+          endIf
+
+        case vertical
+          local var w = max( first.size.x, second.size.x )
+          if (w != first.size.x)
+            init( first.within(Vector2(w,first.size.y)), second, layout_type )
+            escapeWhich
+          elseIf (w != second.size.x)
+            init( first, second.within(Vector2(w,second.size.y)), layout_type )
+            escapeWhich
+          else
+            &size = Vector2( w, first.size.y+second.size.y )
+            first.offset = Vector2(0,0)
+            second.offset = first.size.yv
+          endIf
+
+      endWhich
+
+    method update_offset( Box parent_bounds )
+      offset = bounds.relative_to(parent_bounds,alignment).position - parent_bounds.position
+
+    method position( position )
+      if (first?)  first.position = position + first.offset
+      if (second?) second.position = position + second.offset
+
+    method position( Vector2 new_pos, Int32 relative_to )
+      position( Box(0,0,size).relative_to(relative_to).position + new_pos )
+
+    method contains( Vector2 pos ).Logical
+      return bounds.contains( pos )
+
+    method background_color( background_color ).LayoutBox
+      return this
+
+    method color( color ).LayoutBox
+      return this
+
+    method alignment( alignment ).LayoutBox
+      return this
+
+    method alignment( Int32 relative_position ).LayoutBox
+      alignment = Handle(relative_position)
+      return this
+
+    method alignment( Real64 x, Real64 y ).LayoutBox
+      alignment = Handle(x,y)
+      return this
+
+    method handle( handle ).LayoutBox
+      return this
+
+    method handle( Int32 relative_position ).LayoutBox
+      handle = Handle(relative_position)
+      return this
+
+    method handle( Real64 x, Real64 y ).LayoutBox
+      handle = Handle(x,y)
+      return this
+
+    method with_padding( Real64 pixels_each_side, Color bg_color=Color(0,0,0,0) ).LayoutBox
+      return this.within( size + pixels_each_side*2 ).background_color(bg_color)
+
+    method within( Vector2 box_size ).LayoutBox
+      return LayoutBox( box_size, this )
+
+    method within( Box box ).LayoutBox
+      return LayoutBox( box, this )
+
+    method within( LayoutBox box ).LayoutBox
+      box.init( box.bounds, this )
+      return box
+
+    method bounds.Box
+      return Box( position, size )
+
+    method op+( LayoutBox other ).LayoutBox
+      return LayoutBox( this, other, horizontal )
+
+    method op^( LayoutBox other ).LayoutBox
+      local StackBox result( this )
+      result.add( other )
+      return result
+
+    method op/( LayoutBox other ).LayoutBox
+      return LayoutBox( this, other, vertical )
+
+    method draw
+      ViewTransform.push( Transform.translate(position) )
+      if (background_color.alpha != 0) Box(size).fill( background_color )
+      draw_content
+      ViewTransform.pop
+
+    method draw( Vector2 pos, Int32 relative_to=Handle.top_left )
+      position = Box(0,0,size).relative_to(relative_to).position + pos
+      draw
+
+    method draw_content
+      which (layout_type)
+        case single
+          ViewTransform.push( Transform.translate(first.offset) )
+          first.draw_content
+          ViewTransform.pop
+        case horizontal, vertical
+          ViewTransform.push( Transform.translate(first.offset) )
+          first.draw_content
+          ViewTransform.pop
+          ViewTransform.push( Transform.translate(second.offset) )
+          second.draw_content
+          ViewTransform.pop
+      endWhich
+
+endClass
+
+class Spacer : LayoutBox
+  METHODS
+    method init( Real64 size )
+      prior.init( size, size )
+
+    method init( Vector2 size )
+      prior.init( size )
+endClass
+
+class ImageBox : LayoutBox
+  PROPERTIES
+    image : GenericImage
+
+  METHODS
+    method init( image )
+      size = image.bounds.size
+
+    method init( String filename )
+      init( Image(filename) )
+
+    method draw_content
+      if (background_color.alpha != 0)
+        Box(size).fill( background_color )
+      endIf
+      local var old_scale = image.scale
+      local var image_bounds = image.bounds
+      image.scale *= size / image_bounds.size
+      local var old_handle = image.handle_info
+      image.handle = Handle.top_left
+      image.draw( 0, 0 )
+      image.handle = old_handle
+      image.scale = old_scale
+
+endClass
+
+class TextBox : LayoutBox
+  CLASS_PROPERTIES
+    previous_font : Font
+
+  PROPERTIES
+    text : String
+    font : Font
+
+  METHODS
+    method init( text, font=TextBox.previous_font )
+      previous_font = font
+      handle = Handle.center
+      size = Vector2( font.text_width_of(text), font.height )
+
+    method init( text, font, Real64 width )
+      previous_font = font
+      handle = Handle.center
+      local var lines = font.word_wrap(text,width)
+      size = Vector2( width, lines.count * font.height )
+      text = lines.join
+
+    method init( text, Real64 width )
+      init( text, previous_font, width )
+
+    method init( text, font, size )
+      previous_font = font
+      handle = Handle.center
+      text = font.word_wrap(text,size.x).join
+
+    method init( text, size )
+      init( text, previous_font, size )
+
+    method draw_content
+      if (background_color.alpha != 0) Box(size).fill( background_color )
+      font.handle = handle
+      font.color = color
+      font.draw( text, Box(size) )
+endClass
+
+class StackBox : LayoutBox
+  PROPERTIES
+    stack(2) : LayoutBox[]
+
+  METHODS
+    method init( LayoutBox content )
+      size = content.size
+      position = content.position
+      stack.add( content )
+      update_layout
+
+    method position( position )
+      forEach (layer in stack)
+        layer.position = position + layer.offset
+      endForEach
+
+    method add( LayoutBox content ).LayoutBox
+      stack.add( content )
+      update_layout
+      return this
+
+    method op^( LayoutBox other ).LayoutBox
+      stack.add( other )
+      update_layout
+      return this
+
+    method update_layout
+      local var w = 0.0
+      local var h = 0.0
+      forEach (layer in stack)
+        w = max( w, layer.size.x )
+        h = max( h, layer.size.y )
+      endForEach
+      size = Vector2( w, h )
+
+      forEach (index of stack)
+        local var layer = stack[index]
+        if (layer.size.x != w or layer.size.y != h)
+          layer = layer.within(Vector2(w,h))
+          stack[index] = layer
+        endIf
+        layer.update_offset( bounds )
+      endForEach
+
+    method draw_content
+      if (background_color.alpha != 0)
+        Box(size).fill( background_color )
+      endIf
+      forEach (layer in stack)
+        ViewTransform.push( Transform.translate(layer.offset) )
+        layer.draw_content
+        ViewTransform.pop
+      endForEach
+endClass
+
+class GridBox : LayoutBox
+  PROPERTIES
+    grid()    : LayoutBox[]
+    rows      : Int32
+    columns   : Int32
+    grid_size : Vector2
+
+  METHODS
+    method init( columns, rows, grid_size )
+      size = grid_size * Vector2(columns,rows)
+
+    method position( position )
+      forEach (item in grid)
+        item.position = position + item.offset
+      endForEach
+
+    method add( LayoutBox content ).GridBox
+      local var i = grid.count % columns
+      local var j = grid.count / columns
+      if (content.size != grid_size) content = content.within(grid_size)
+      grid.add( content )
+      local Vector2 delta = Vector2(i,j) * grid_size
+      content.update_offset( Box(delta,grid_size) )
+      content.offset += delta
+      return this
+
+    method draw_content
+      if (background_color.alpha != 0) Box(size).fill( background_color )
+      forEach (item in grid)
+        ViewTransform.push( Transform.translate(item.offset) )
+        item.draw_content
+        ViewTransform.pop
+      endForEach
+endClass
+

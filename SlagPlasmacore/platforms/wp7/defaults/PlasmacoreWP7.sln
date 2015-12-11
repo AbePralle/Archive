@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010 Express for Windows Phone
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlasmacoreWP7", "src\PlasmacoreWP7.csproj", "{6412B0AB-7293-4B17-AB6E-E767A18C8F1B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sounds", "sounds\Sounds.contentproj", "{F57DCB97-2430-4584-9F87-AD03F68EC118}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Windows Phone = Debug|Windows Phone
+		Release|Windows Phone = Release|Windows Phone
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6412B0AB-7293-4B17-AB6E-E767A18C8F1B}.Debug|Windows Phone.ActiveCfg = Debug|Windows Phone
+		{6412B0AB-7293-4B17-AB6E-E767A18C8F1B}.Debug|Windows Phone.Build.0 = Debug|Windows Phone
+		{6412B0AB-7293-4B17-AB6E-E767A18C8F1B}.Debug|Windows Phone.Deploy.0 = Debug|Windows Phone
+		{6412B0AB-7293-4B17-AB6E-E767A18C8F1B}.Release|Windows Phone.ActiveCfg = Release|Windows Phone
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

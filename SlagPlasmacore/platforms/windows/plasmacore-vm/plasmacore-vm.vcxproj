@@ -1,0 +1,214 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{F36A0E47-EC16-4C2E-95B1-964AFA1F87B7}</ProjectGuid>
+    <RootNamespace>plasmacore_windows</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)build\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(Configuration)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)build\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(Configuration)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\..\..\libraries\native\plasmacore;..\..\..\libraries\native\bard;..\..\..\libraries\native\SDL-1.2.13\include;..\..\..\libraries\native\audiere-1.9.4x-r694\include;..\..\..\libraries\native\zlib-1.2.5;..\..\..\libraries\native\zlib-1.2.5\contrib\minizip;..\..\..\libraries\native\jpeg-8c;..\..\..\libraries\native\libpng-1.5.4;..\..\..\libraries\native\gd-2.0.36RC1;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;BARD_VM;HAVE_LIBPNG;HAVE_LIBJPEG;NONDLL=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <FloatingPointModel>Precise</FloatingPointModel>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>winmm.lib;shlwapi.lib;d3d9.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\..\libraries\native\SDL-1.2.13\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <TargetMachine>MachineX86</TargetMachine>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>copy /y ..\build\plasmacore-vm.exe ..\plasmacore.exe</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <AdditionalIncludeDirectories>..\..\..\libraries\native\plasmacore;..\..\..\libraries\native\bard;..\..\..\libraries\native\SDL-1.2.13\include;..\..\..\libraries\native\audiere-1.9.4x-r694\include;..\..\..\libraries\native\zlib-1.2.5;..\..\..\libraries\native\zlib-1.2.5\contrib\minizip;..\..\..\libraries\native\jpeg-8c;..\..\..\libraries\native\libpng-1.5.4;..\..\..\libraries\native\gd-2.0.36RC1;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;BARD_VM;HAVE_LIBPNG;HAVE_LIBJPEG;NONDLL=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>winmm.lib;shlwapi.lib;d3d9.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\..\libraries\native\SDL-1.2.13\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <TargetMachine>MachineX86</TargetMachine>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>..\..\..\bin\windows\iconsmash.exe ..\build\plasmacore-vm.exe ..\..\..\libraries\native\plasmacore\plasmacore.ico
+copy /y ..\build\plasmacore-vm.exe ..\plasmacore.exe
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\libraries\native\plasmacore\font_system_17.cpp" />
+    <ClCompile Include="..\..\..\libraries\native\plasmacore\plasmacore.cpp" />
+    <ClCompile Include="..\..\..\libraries\native\bard\bard_mm.cpp" />
+    <ClCompile Include="..\..\..\libraries\native\bard\bard_runtime.cpp" />
+    <ClCompile Include="..\..\..\libraries\native\bard\bard_stdlib.cpp" />
+    <ClCompile Include="..\..\..\libraries\native\bard\bard_vm.cpp" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\adler32.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\compress.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\crc32.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\deflate.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\inffast.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\inflate.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\inftrees.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\contrib\minizip\ioapi.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\trees.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\uncompr.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\contrib\minizip\unzip.c" />
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\zutil.c" />
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd.c" />
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_gd.c" />
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_io.c" />
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_io_dp.c" />
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_io_file.c" />
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_jpeg.c" />
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_png.c" />
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_security.c" />
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gdhelpers.c" />
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gdtables.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jaricom.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcapimin.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcapistd.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcarith.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jccoefct.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jccolor.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcdctmgr.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jchuff.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcinit.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcmainct.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcmarker.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcmaster.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcomapi.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcparam.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcprepct.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcsample.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jctrans.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdapimin.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdapistd.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdarith.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdatadst.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdatasrc.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdcoefct.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdcolor.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jddctmgr.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdhuff.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdinput.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdmainct.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdmarker.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdmaster.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdmerge.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdpostct.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdsample.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdtrans.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jerror.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jfdctflt.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jfdctfst.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jfdctint.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jidctflt.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jidctfst.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jidctint.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jmemansi.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jmemmgr.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jquant1.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jquant2.c" />
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jutils.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\png.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngerror.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngget.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngmem.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngpread.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngread.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngrio.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngrtran.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngrutil.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngset.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngtrans.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngwio.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngwrite.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngwtran.c" />
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngwutil.c" />
+    <ClCompile Include="..\src\main.cpp" />
+    <ClCompile Include="..\src\win_audio.cpp" />
+    <ClCompile Include="..\src\win_core.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\libraries\native\plasmacore\plasmacore.h" />
+    <ClInclude Include="..\..\..\libraries\native\bard\bard.h" />
+    <ClInclude Include="..\..\..\libraries\native\bard\bard_mm.h" />
+    <ClInclude Include="..\..\..\libraries\native\bard\bard_runtime.h" />
+    <ClInclude Include="..\..\..\libraries\native\bard\bard_stdlib.h" />
+    <ClInclude Include="..\..\..\libraries\native\bard\bard_version.h" />
+    <ClInclude Include="..\..\..\libraries\native\bard\bard_vm.h" />
+    <ClInclude Include="..\src\win_core.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Library Include="..\..\..\libraries\native\audiere-1.9.4x-r694\lib\audiere.lib" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

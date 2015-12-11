@@ -1,0 +1,328 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd.c">
+      <Filter>libgd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gdtables.c">
+      <Filter>libgd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_gd.c">
+      <Filter>libgd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_io.c">
+      <Filter>libgd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_io_dp.c">
+      <Filter>libgd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_io_file.c">
+      <Filter>libgd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_jpeg.c">
+      <Filter>libgd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_png.c">
+      <Filter>libgd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gd_security.c">
+      <Filter>libgd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\gd-2.0.36RC1\gdhelpers.c">
+      <Filter>libgd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\compress.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\crc32.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\deflate.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\inffast.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\inflate.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\inftrees.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\contrib\minizip\ioapi.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jaricom.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jquant2.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcapimin.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcapistd.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcarith.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jccoefct.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jccolor.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcdctmgr.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jchuff.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcinit.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcmainct.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcmarker.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcmaster.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcomapi.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcparam.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcprepct.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jcsample.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jctrans.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdapimin.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdapistd.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdarith.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdatadst.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdatasrc.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdcoefct.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdcolor.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jddctmgr.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdhuff.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdinput.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdmainct.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdmarker.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdmaster.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdmerge.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdpostct.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdsample.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jdtrans.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jerror.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jfdctflt.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jfdctfst.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jfdctint.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jidctflt.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jidctfst.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jidctint.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jmemansi.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jmemmgr.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jquant1.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\jpeg-8c\jutils.c">
+      <Filter>libjpeg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\png.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngwutil.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngerror.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngget.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngmem.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngpread.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngread.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngrio.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngrtran.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngrutil.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngset.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngtrans.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngwio.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngwrite.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\libpng-1.5.4\pngwtran.c">
+      <Filter>libpng</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\contrib\minizip\unzip.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\trees.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\uncompr.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\zutil.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\zlib-1.2.5\adler32.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\main.cpp">
+      <Filter>windows_plasmacore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\win_core.cpp">
+      <Filter>windows_plasmacore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\bard\bard_mm.cpp">
+      <Filter>bard</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\bard\bard_runtime.cpp">
+      <Filter>bard</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\bard\bard_stdlib.cpp">
+      <Filter>bard</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\bard\bard_vm.cpp">
+      <Filter>bard</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\plasmacore\font_system_17.cpp">
+      <Filter>windows_plasmacore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\libraries\native\plasmacore\plasmacore.cpp">
+      <Filter>windows_plasmacore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\win_audio.cpp">
+      <Filter>windows_plasmacore</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="libgd">
+      <UniqueIdentifier>{c864a6f1-1231-4985-97a1-ea3f87fa1601}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libjpeg">
+      <UniqueIdentifier>{4380462f-6ac7-4a4d-b50d-f891ba3623cd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libpng">
+      <UniqueIdentifier>{2e82a054-1b0a-4815-bcbe-bb58d0c62e50}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="zlib">
+      <UniqueIdentifier>{2ae1d58e-36b8-4d41-8fe4-21d061a990cb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="bard">
+      <UniqueIdentifier>{d48624fd-e74d-4c27-ab04-e0ddb6327909}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="windows_plasmacore">
+      <UniqueIdentifier>{7056a673-8c67-44d3-9232-37de3016ddb9}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\libraries\native\bard\bard.h">
+      <Filter>bard</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\libraries\native\bard\bard_mm.h">
+      <Filter>bard</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\libraries\native\bard\bard_runtime.h">
+      <Filter>bard</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\libraries\native\bard\bard_stdlib.h">
+      <Filter>bard</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\libraries\native\bard\bard_version.h">
+      <Filter>bard</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\libraries\native\bard\bard_vm.h">
+      <Filter>bard</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\libraries\native\plasmacore\plasmacore.h">
+      <Filter>windows_plasmacore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\win_core.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Library Include="..\..\..\libraries\native\audiere-1.9.4x-r694\lib\audiere.lib" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,282 @@
+#=====================================================================
+# 3d.bard
+#
+# $(PLASMACORE_VERSION) $(DATE)
+#
+# --------------------------------------------------------------------
+#
+# $(COPYRIGHT)
+#
+#   http://plasmaworks.com/plasmacore
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); 
+# you may not use this file except in compliance with the License. 
+# You may obtain a copy of the License at 
+#
+#   http://www.apache.org/licenses/LICENSE-2.0 
+#
+# Unless required by applicable law or agreed to in writing, 
+# software distributed under the License is distributed on an 
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, 
+# either express or implied. See the License for the specific 
+# language governing permissions and limitations under the License.
+#
+#=====================================================================
+
+class Scene3D
+  PROPERTIES
+    fov_y(55.0)                : Degrees
+    near_clip=1                : Real64
+    far_clip=100               : Real64
+
+    camera(0,0,0) : Vector3
+    look_at(0,0,8) : Vector3
+
+  METHODS
+    method draw
+      local var old_projection = ProjectionTransform.set( 
+        Transform.perspective( fov_y, near_clip, far_clip ) )
+      local var old_view = ViewTransform.set( Transform.translate(-camera) )
+      local var old_object = ObjectTransform.set( Transform.rotate(Radians(Degrees(0)),Radians(Degrees(90)),Radians(Degrees(0))) )
+      native_begin_draw
+      draw_content
+      native_end_draw
+      ProjectionTransform.set( old_projection )
+      ProjectionTransform.set( Transform.orthographic(Display.bounds,0,1000) )
+      ViewTransform.set( old_view )
+      ObjectTransform.set( old_object )
+
+    method draw_content
+      # Override this
+
+    native method native_begin_draw
+
+    native method native_end_draw
+endClass
+
+
+#==============================================================================
+# Vector3
+#==============================================================================
+compound Vector3( Real64 x, Real64 y, Real64 z )
+
+singleton class Vector3Manager
+  METHODS
+    method op-( Vector3 v ).Vector3
+      # Negate
+      return Vector3( -v.x, -v.y, -v.z )
+
+    method op+( Vector3 a, Vector3 b ).Vector3
+      return Vector3( a.x+b.x, a.y+b.y, a.z+b.z )
+
+    method op-( Vector3 a, Vector3 b ).Vector3
+      return Vector3( a.x-b.x, a.y-b.y, a.z-b.z )
+
+    method op*( Vector3 a, Vector3 b ).Vector3
+      return Vector3( a.x*b.x, a.y*b.y, a.z*b.z )
+
+    method op/( Vector3 a, Vector3 b ).Vector3
+      return Vector3( a.x/b.x, a.y/b.y, a.z/b.z )
+
+    method op+( Vector3 a, Real64 b ).Vector3
+      return Vector3( a.x+b, a.y+b, a.z+b )
+
+    method op-( Vector3 a, Real64 b ).Vector3
+      return Vector3( a.x-b, a.y-b, a.z-b )
+
+    method op*( Vector3 a, Real64 b ).Vector3
+      return Vector3( a.x*b, a.y*b, a.z*b )
+
+    method op/( Vector3 a, Real64 b ).Vector3
+      return Vector3( a.x/b, a.y/b, a.z/b )
+
+    method op+( Real64 a, Vector3 b ).Vector3
+      return Vector3( a+b.x, a+b.y, a+b.z )
+
+    method op-( Real64 a, Vector3 b ).Vector3
+      return Vector3( a-b.x, a-b.y, a-b.z )
+
+    method op*( Real64 a, Vector3 b ).Vector3
+      return Vector3( a*b.x, a*b.y, a*b.z )
+
+    method op/( Real64 a, Vector3 b ).Vector3
+      return Vector3( a/b.x, a/b.y, a/b.z )
+
+    method to_String( Vector3 v ).String
+      return "($(.2),$(.2),$(.2))" (v.x,v.y,v.z)
+
+    method to_Vector2( Vector3 v ).Vector2
+      return Vector2( v.x, v.y )
+
+    method magnitude( Vector3 v ).Real64
+      local Real64 x = v.x
+      local Real64 y = v.y
+      local Real64 z = v.z
+      return sqrt( x*x + y*y + z*z )
+
+    method normalized( Vector3 v ).Vector3
+      local var m = sqrt( v.x*v.x + v.y*v.y + v.z*v.z )
+      return Vector3( a.x/m, a.y/m, a.z/m )
+
+    method dot( Vector3 a, Vector3 b ).Real64
+      return a.x*Real64(b.x) + a.y*Real64(b.y) + a.z*Real64(b.z)
+
+    method cross( Vector3 a, Vector3 b ).Vector3
+      return Vector3( a.y*b.z - b.y*a.z, a.z*b.x - b.z*a.x, a.x*b.y - b.x*a.y )
+
+    method projection_on( Vector3 a, Vector3 b ).Vector3
+      # Gives the projection of vector 'a' on vector 'b'.
+      local var x = b.x
+      local var y = b.y
+      local var z = b.z
+      local var m = sqrt( x*x + y*y + z*z )
+      return Vector3( a.x*b.x/m, a.y*b.y/m, a.z*b.z/m )
+      
+endClass
+
+
+#==============================================================================
+# Triangle3D
+#==============================================================================
+compound Triangle3D( Vector3 a, Vector3 b, Vector3 c )
+
+class Triangle3DManager
+  PROPERTIES
+
+  METHODS
+endClass
+
+
+#==============================================================================
+# Quad3D
+#==============================================================================
+compound Quad3D( Vector3 a, Vector3 b, Vector3 c, Vector3 d )
+
+class Quad3DManager
+  PROPERTIES
+
+  METHODS
+endClass
+
+
+#==============================================================================
+# Model
+#==============================================================================
+class Model
+  PROPERTIES
+    native_data : NativeData
+    image       : Image
+    #position    : Vector3
+    #orientation : Vector3
+    #filename    : String
+
+  METHODS
+    method init( Int32 triangle_count, Int32 vertex_count, Int32 frame_count, image )
+      native_init( triangle_count, vertex_count, frame_count )
+
+    method draw
+      if (image.prepare)
+        native_draw( image.texture )
+      endIf
+
+    native method native_init( Int32 triangle_count, Int32 vertex_count, Int32 frame_count )
+
+    native method define_triangles( Array<<Char>> data )
+
+    native method define_frame( Int32 frame_index, Array<<Vertex>> data )
+
+    native method native_draw( Texture texture )
+
+    #{
+    method init( filename )
+      load( filename )
+
+    method load
+      load( filename )
+
+    method draw
+      draw( position, orientation )
+
+    native method load( String _filename )
+
+    native method draw( Vector3 position, Vector3 orientation )
+    }#
+
+endClass
+
+
+#==============================================================================
+# Vertex
+#==============================================================================
+requisite class Vertex
+  PROPERTIES
+    x, y, z : Real32
+    u, v    : Real32
+
+  METHODS
+    method init( x, y, z, u, v )
+
+    method init( Vector3 pos, Vector2 uv )
+      x = pos.x
+      y = pos.y
+      z = pos.z
+      u = uv.x
+      v = uv.y
+
+    method to_String.String
+      return "($,$,$)($,$)" (x,y,z,u,v)
+endClass
+
+
+#==============================================================================
+# ModelBuilder
+#==============================================================================
+class ModelBuilder
+  PROPERTIES
+    triangles() : Char[]
+      # Contains indices of triangles; every three indices forms a triangle.
+
+    vertices()  : Vertex[]
+      # Vertices for current frame being defined.
+
+    image : Image
+
+    #frames() : Vertex[][]
+
+  METHODS
+    method add( Triangle3D triangle, Triangle uv )
+      local var i = vertices.count
+      vertices.add( Vertex(triangle.a, uv.a) )
+      vertices.add( Vertex(triangle.b, uv.b) )
+      vertices.add( Vertex(triangle.c, uv.c) )
+      triangles.add( i )
+      triangles.add( i+1 )
+      triangles.add( i+2 )
+
+    method add( Quad3D quad, Corners uv )
+      add( 
+        Triangle3D( quad.a, quad.b, quad.c ), 
+        Triangle( uv.top_left, uv.top_right, uv.bottom_right )
+      )
+      add( 
+        Triangle3D( quad.a, quad.c, quad.d ), 
+        Triangle( uv.top_left, uv.bottom_right, uv.bottom_left )
+      )
+
+    method add( Quad3D quad, Image img )
+      if (image is null) image = img
+      if (not image.prepare or not img.prepare) throw Error( "Bad image" )
+      if (image isNot img)
+        println( "Can't add an image from a different texture." )
+        return
+      endIf
+      add( quad, img.uv )
+
+    method to_Model.Model
+      local Model model( triangles.count/3, vertices.count, 1, image )
+      model.define_triangles( triangles.data )
+      model.define_frame( 0, vertices.data )
+      return model
+
+endClass
+

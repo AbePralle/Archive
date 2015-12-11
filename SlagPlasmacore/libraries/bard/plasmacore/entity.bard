@@ -1,0 +1,323 @@
+#=====================================================================
+# entity.bard
+#
+# $(PLASMACORE_VERSION) $(DATE)
+#
+# --------------------------------------------------------------------
+#
+# Copyright 2010 Plasmaworks LLC
+#
+#   http://plasmaworks.com/plasmacore
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); 
+# you may not use this file except in compliance with the License. 
+# You may obtain a copy of the License at 
+#
+#   http://www.apache.org/licenses/LICENSE-2.0 
+#
+# Unless required by applicable law or agreed to in writing, 
+# software distributed under the License is distributed on an 
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, 
+# either express or implied. See the License for the specific 
+# language governing permissions and limitations under the License.
+#
+#=====================================================================
+
+[include "linked_list.bard"]
+
+class Entity
+  # Root class for all entities.  Contains basic structural logic and behavior hooks.
+  # As an entity is updated it is automatically purged from its surrounding network if 
+  # it marks itself as ''dead'' with the die() method.  By default all entities in
+  # a system (e.g. entity tree) are allowed to update themselves every cycle. 
+  #
+  # Plasmacore defines only three types of entities - a base type and two container 
+  # types - allowing you to build the rest to suit your game style.
+  # You will likely want to augment class Entity to add other base functionality.
+  PROPERTIES
+    parent : Entity
+      # The parent (and often target of) this entity.
+    
+    children : EntityList
+      # List of this entity's children.  All children are generally updated and drawn.
+
+    dead : readOnly Logical
+      # An entity is automatically removed from its system when dead becomes true.
+
+  METHODS
+    method dispatch_update.Entity
+      update
+      if (children?) children .= dispatch_update
+      if (dead) return null
+      else return this
+
+    method dispatch_draw
+      draw
+      if (children?) children.dispatch_draw
+
+    method attach( Entity new_child ).Entity
+      # Returns 'this' for call chaining.
+      if (children is null) children = EntityList()
+      new_child.parent = this
+      children.add(new_child)
+      return this
+
+    method detach.Entity
+      # Detaches this entity from its parent and returns 'this'.
+      if (parent?) parent.children.remove(this); parent = null
+      return this
+
+    method replace_with( Entity other )
+      other.parent = parent
+      other.children = children
+      &dead = true
+
+    method die
+      # Marks this entity as ''dead'' and calls die() on all of its children 
+      # recursively.  It will be automatically removed from its system 
+      # during the update cycle.
+      if (not &dead)
+        &dead = true
+        if (children?) 
+          forEach (child in children) child.die
+        endIf
+      endIf
+
+    method update
+      # Generally called on every Entity in a system by the main loop.
+      # Override this method to take a desired action.
+
+    method draw
+      # Generally called on every Entity in a system by the main loop.
+      # Override this method to take a desired action.
+
+    method contains( Vector2 at_pos ).Logical
+      # Overload this method for entities that should work with find(Vector2)
+      return false
+
+    method find( Vector2 at_pos ).Entity
+      if (children?)
+        forEach (child in children)
+          local var result = child.find(at_pos)
+          if (result?) return result
+        endForEach
+      endIf
+
+      if (this.contains(at_pos)) return this
+
+      return null
+
+endClass
+
+class EntityList : LinkedList<<Entity>>
+  METHODS
+    method update
+      dispatch_update
+
+    method draw
+      dispatch_draw
+
+    method dispatch_update.EntityList
+
+      # Update the first node until it has a living entity.
+      while (first_node?)
+        local var result = first_node.value.dispatch_update 
+        if (result?)
+          # first_node could have been removed during the update; double-check
+          # before accessing again.
+          if (first_node?) first_node.value = result
+          escapeWhile
+        else
+          remove_first
+        endIf
+      endWhile
+
+      # Update the other nodes, removing any dead entities.
+      if (first_node?)
+        local var prev = first_node
+        local var cur = first_node.next
+        while (cur?)
+          local var result = cur.value.dispatch_update 
+          if (result?)
+            cur.value = result
+            prev = cur
+            cur .= next
+          else
+            prev.next = cur.next
+            if (cur is last_node) last_node = prev; cur = null
+            else cur = prev.next
+            --counter
+            ++modification_count
+          endIf
+        endWhile
+      endIf
+
+      if (counter?) return this
+      else return null
+
+    method dispatch_draw
+      forEach (entity in this) entity.dispatch_draw
+endClass
+
+class EntityMap<<$ChunkType,$LocationType>> : Entity
+  PROPERTIES
+    width, height  : Int32
+    tile_size      : Vector2
+    camera         : Vector2
+    position       : Vector2
+    viewport       : Box
+    view_center    : Vector2
+    extra_border   : Int32
+
+    chunks         : Array<<Array<<$ChunkType>>>>
+    chunks_wide, chunks_high  : Int32
+    chunk_width, chunk_height : Int32
+    active_chunks()  : $ChunkType[]
+    cached_chunks()  : $ChunkType[]
+
+    camera_delta   : Vector2
+      # Maintained as "position - camera"
+
+  METHODS
+    method init( width, height, tile_size, viewport, chunk_width=0, chunk_height=0 )
+      if (chunk_width  == 0) chunk_width = width
+      if (chunk_height == 0) chunk_height = height
+
+      chunks_wide = ceiling( Real64(width) / chunk_width )
+      chunks_high = ceiling( Real64(height) / chunk_height )
+
+      chunks = ArrayOf<<$ChunkType>>[chunks_wide,chunks_high]
+      forEach (j in 0..<chunks_high)
+        forEach (i in 0..<chunks_wide)
+          chunks[i][j] = Chunk(i,j,chunk_width,chunk_height)
+        endForEach
+      endForEach
+
+    method get_chunk( Int32 i, Int32 j ).$ChunkType
+      local var chunk = chunks[i][j]
+      if (active_chunks.contains(chunk)) return chunk
+
+      if (cached_chunks.contains(chunk))
+        cached_chunks.remove(chunk)
+        active_chunks.add(chunk)
+        return chunk
+      endIf
+
+      chunk.prep
+      active_chunks.add(chunk)
+      return chunk
+
+    method get( Int32 i, Int32 j ).$LocationType
+      if (not contains(i,j)) return null
+
+      local var chunk = get_chunk(i/chunk_width,j/chunk_height)
+      if (chunk is null) return null
+
+      return chunk[i%chunk_width,j%chunk_height]
+
+    method get( Vector2 pos ).$LocationType
+      return get( pos.x, pos.y )
+
+    method camera( Vector2 new_camera )
+      &camera = new_camera
+      camera_delta = position - camera
+
+    method position( Vector2 new_position )
+      &position = new_position
+      camera_delta = position - camera
+
+    method contains( Vector2 world_coord ).Logical
+      local Int32 x = world_coord.x
+      local Int32 y = world_coord.y
+      return (x >= 0 and y >= 0 and x < width and y < height)
+
+    method contains( Real64 i, Real64 j ).Logical
+      return contains( Vector2(i,j) )
+
+    method world_bounds.Box
+      return Box( Vector2(width,height) )
+
+    method viewport( Box v )
+      &viewport = v
+      view_center = v.center
+
+    method to_screen( Vector2 world ).Vector2
+      return (world + camera_delta) * tile_size + view_center
+
+    method to_world( Vector2 screen ).Vector2
+      return (screen - view_center) / tile_size - camera_delta
+
+    method to_screen( Real64 i, Real64 j ).Vector2
+      return to_screen( Vector2(i,j) )
+
+    method to_world( Real64 i, Real64 j ).Vector2
+      return to_world( Vector2(i,j) )
+
+    method draw
+      local var top_left = to_world( viewport.top_left )
+      local var bottom_right = to_world( viewport.bottom_right )
+
+      # floor() is necessary here over an Int32 cast -
+      # floor(-2.1) is -3 while Int32(-2.1) is -2.
+      local var i1 = Int32(floor(top_left.x)) - extra_border
+      local var j1 = Int32(floor(top_left.y)) - extra_border
+      local var i2 = Int32(floor(bottom_right.x)) + extra_border
+      local var j2 = Int32(floor(bottom_right.y)) + extra_border
+
+      if (i1 < 0) i1 = 0
+      if (j1 < 0) j1 = 0
+      if (i2 >= width) i2 = width - 1
+      if (j2 >= height) j2 = height - 1
+
+      if (i1 <= i2 and j1 <= j2)
+        draw( i1, j1, i2, j2 )
+      endIf
+
+      forEach (chunk in cached_chunks) chunk.stow
+      cached_chunks.clear
+      cached_chunks.transfer_from(active_chunks)
+
+    method draw( Int32 i1, Int32 j1, Int32 i2, Int32 j2 )
+      local var chunk_i1 = i1 / chunk_width
+      local var chunk_i2 = i2 / chunk_width
+      local var chunk_j1 = j1 / chunk_height
+      local var chunk_j2 = j2 / chunk_height
+
+      local var start_xy = to_screen(i1,j1)
+
+      # Under
+      local var layer = 0
+      loop
+        local var success = false
+
+        local var y = start_xy.y
+        forEach (chunk_j in chunk_j1..chunk_j2)
+          local Int32 sub_j1, sub_j2
+          if (chunk_j == chunk_j1) sub_j1 = j1 % chunk_height
+          else                     sub_j1 = 0
+          if (chunk_j == chunk_j2) sub_j2 = j2 % chunk_height
+          else                     sub_j2 = chunk_height - 1
+
+          local var x = start_xy.x
+          forEach (chunk_i in chunk_i1..chunk_i2)
+            local Int32 sub_i1, sub_i2
+            if (chunk_i == chunk_i1) sub_i1 = i1 % chunk_width
+            else                     sub_i1 = 0
+            if (chunk_i == chunk_i2) sub_i2 = i2 % chunk_width
+            else                     sub_i2 = chunk_width - 1
+
+            local var chunk = get_chunk(chunk_i,chunk_j)
+            success |= chunk.draw(layer,x,y,sub_i1,sub_j1,sub_i2,sub_j2)
+            x += (sub_i2 - sub_i1 + 1) * tile_size.x
+
+          endForEach
+
+          y += (sub_j2 - sub_j1 + 1) * tile_size.y
+        endForEach
+
+        if (not success) escapeLoop
+        ++layer
+      endLoop
+
+endClass
+

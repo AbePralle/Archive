@@ -1,0 +1,383 @@
+#==============================================================================
+# transform.bard
+#
+# $(PLASMACORE_VERSION) $(DATE)
+#
+# -----------------------------------------------------------------------------
+#
+# $(COPYRIGHT)
+#
+#   http://plasmaworks.com/plasmacore
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); 
+# you may not use this file except in compliance with the License. 
+# You may obtain a copy of the License at 
+#
+#   http://www.apache.org/licenses/LICENSE-2.0 
+#
+# Unless required by applicable law or agreed to in writing, 
+# software distributed under the License is distributed on an 
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, 
+# either express or implied. See the License for the specific 
+# language governing permissions and limitations under the License.
+#
+#==============================================================================
+singleton class Transform
+  PROPERTIES
+    current : Matrix4
+
+  METHODS
+    method modified.Logical
+      return (ProjectionTransform.modified or ObjectTransform.modified or ViewTransform.modified)
+
+    method current.Matrix4
+      if (modified)
+        current = ProjectionTransform.&current * (ViewTransform.&current * ObjectTransform.&current)
+        ProjectionTransform.modified = false
+        ObjectTransform.modified = false
+        ViewTransform.modified = false
+      endIf
+      return &current
+
+    method orthographic( Box bounds, Real64 near, Real64 far ).Matrix4
+      local var w  = bounds.width
+      local var h  = bounds.y1 - bounds.y2
+      local var tx = -(bounds.x1 + bounds.x2) / w
+      local var ty = -(bounds.y1 + bounds.y2) / h
+      local var tz = near / (near - far)
+      return Matrix4(
+        2/w,   0,             0, 0,
+          0, 2/h,             0, 0,
+          0,   0,  1/(far-near), 0,
+         tx,  ty,            tz, 1 )
+
+    method perspective( Degrees fov_y, Real64 near=1, Real64 far=100 ).Matrix4
+      local var f = 1.0 / Degrees(fov_y.value/2).tan
+      local var aspct = Display.size.x / Display.size.y
+
+      local var depth = near - far
+      local var c = (far+near) / depth
+      local var d = 2*far*near / depth
+
+      return Matrix4(
+        f/aspct, 0,  0, 0,
+        0,      -f,  0, 0,
+        0,       0, -c, 1,
+        0,       0,  d, 0 )
+
+    method translate( Vector3 delta ).Matrix4
+      return Matrix4( 1,0,0,0, 0,1,0,0, 0,0,1,0, delta.x,delta.y,delta.z,1 )
+
+    method rotate( Degrees z ).Matrix4
+      return rotate( Radians(z) )
+
+    method rotate( Radians z ).Matrix4
+      local var cos_z = z.cos
+      local var sin_z = z.sin
+      return Matrix4(
+           cos_z, sin_z, 0, 0,
+          -sin_z, cos_z, 0, 0,
+               0,     0, 1, 0,
+               0,     0, 0, 1 
+        )
+
+    method rotate( Radians x, Radians y, Radians z ).Matrix4
+      local var cos_x = x.cos
+      local var cos_y = y.cos
+      local var cos_z = z.cos
+      local var sin_x = x.sin
+      local var sin_y = y.sin
+      local var sin_z = z.sin
+      return Matrix4(
+      #cos_y*cos_z, -cos_x*sin_z+sin_x*sin_y*cos_z,  sin_x*sin_z+cos_x*sin_y*cos_z, 0,
+      #cos_y*sin_z,  cos_x*cos_z+sin_x*sin_y*sin_z, -sin_x*cos_z+cos_x*sin_y*sin_z, 0,
+      #(-sin_y),                    sin_x*cos_y,                    cos_x*cos_y, 0,
+      #0,                              0,                              0, 1 
+                             cos_y*cos_z,                      cos_y*sin_z,    (-sin_y), 0,
+        (-cos_x)*sin_z+sin_x*sin_y*cos_z,    cos_x*cos_z+sin_x*sin_y*sin_z, sin_x*cos_y, 0,
+           sin_x*sin_z+cos_x*sin_y*cos_z, (-sin_x)*cos_z+cos_x*sin_y*sin_z, cos_x*cos_y, 0,
+                                       0,                                0,           0, 1 
+        )
+
+    native method create( Vector2 size, Vector2 handle, Radians angle, Vector2 scale, 
+        Vector2 translate, Logical hflip, Logical vflip ).Matrix4
+
+    #{
+    method create_from( Vector2 handle, Radians angle, Vector2 scale, Vector2 translation ).Transform
+      local Real64 hx = handle.x
+      local Real64 hy = handle.y
+      local Real64 sx = scale.x
+      local Real64 sy = scale.y
+      local Real64 cost = angle.cos
+      local Real64 sint = angle.sin
+      local Real64 tx = translation.x
+      local Real64 ty = translation.y
+      return Transform( TransformRow(cost*sx,-sint*sy,(tx-sx*hx*cost+sint*sy*hy)), 
+                        TransformRow(sint*sx, cost*sy,(ty-sx*hx*sint-cost*sy*hy)) )
+
+    method create_from( Radians angle, Vector2 scale, Vector2 translation ).Transform
+      local Real64 sx = scale.x
+      local Real64 sy = scale.y
+      local Real64 cost = angle.cos
+      local Real64 sint = angle.sin
+      local Real64 tx = translation.x
+      local Real64 ty = translation.y
+      return Transform( TransformRow(cost*sx,-sint*sy,(tx-sx*cost+sint*sy)), 
+                        TransformRow(sint*sx, cost*sy,(ty-sx*sint-cost*sy)) )
+
+    method current.Transform: native
+      # Multiplies out the camera transforms and the object transforms
+      # and returns a final camera*object local-to-screen transform.
+      # Results are cached; you can call this
+      # method heavily if needed.
+
+    method inverse( Transform t ).Transform: native
+      # Returns the inverse of a transform
+
+    method transform( Transform t, Vector2 v ).Vector2
+      # Applies the specified transformation to the given Vector2.
+      local var r0 = t.r0
+      local var r1 = t.r1
+      return Vector2( r0.c0*v.x + r0.c1*v.y + r0.c2, r1.c0*v.x + r1.c1*v.y + r1.c2 )
+
+    method op*( Transform transform1, Transform transform2 ).Transform: native
+      # Multiplies two transforms together.
+
+    method identity.Transform
+      return Transform( TransformRow(1,0,0), TransformRow(0,1,0) )
+
+    method rotate( Radians angle ).Transform
+      local Real64 cos_value = angle.cos
+      local Real64 sin_value = angle.sin
+      return Transform( TransformRow(cos_value,-sin_value,0), TransformRow(sin_value,cos_value,0) )
+
+    method rotate( Degrees angle ).Transform
+      local Real64 cos_value = angle.cos
+      local Real64 sin_value = angle.sin
+      return Transform( TransformRow(cos_value,-sin_value,0), TransformRow(sin_value,cos_value,0) )
+      }#
+
+    method translate( Vector2 delta ).Matrix4
+      return Matrix4( 1,0,0,delta.x, 0,1,0,delta.y )
+
+    method translate( Real64 dx, Real64 dy ).Matrix4
+      return Matrix4( 1,0,0,dx, 0,1,0,dy )
+
+    method scale( Vector2 delta ).Matrix4
+      return scale( delta.x, delta.y )
+
+    method scale( Real64 s ).Matrix4
+      return scale( s, s )
+
+    method scale( Real64 sx, Real64 sy ).Matrix4
+      return Matrix4( sx,0,0,0, 0,sy,0,0 )
+
+      #{
+    method scale( Vector2 scale ).Transform
+      return Transform( TransformRow(scale.x,0,0), TransformRow(0,scale.y,0) )
+
+    method scale( Real64 sx, Real64 sy ).Transform
+      return Transform( TransformRow(sx,0,0), TransformRow(0,sy,0) )
+
+    method scale( Real64 s ).Transform
+      return Transform( TransformRow(s,0,0), TransformRow(0,s,0) )
+
+    method to_String( Transform transform ).String
+      return "[$ $ $;\n $ $ $]" (transform.r0.c0, transform.r0.c1, transform.r0.c2,
+          transform.r1.c0, transform.r1.c1, transform.r1.c2)
+
+    method push_object_transform( Transform t ): native
+      # Adds the given transform to the object transform stack which
+      # translates, rotates, and scales the next thing drawn relative
+      # to the current camera setup.
+      #
+      # Every call to push_object_transform() should be paired with a 
+      # call to pop_object_transform().
+
+    method pop_object_transform: native
+      # Removes the most recently pushed object transform.
+
+    method push_camera_transform( Transform t ): native
+      # Adds the given transform to the camera transform stack which
+      # modifies the coordinate system for future drawing.
+
+    method pop_camera_transform: native
+      # Removes the most recently pushed camera transform.
+    }#
+endClass
+
+compound Matrix4Row( Real64 c0, Real64 c1, Real64 c2, Real64 c3 )
+compound Matrix4( Matrix4Row r0, Matrix4Row r1, Matrix4Row r2, Matrix4Row r3 )
+
+singleton class Matrix4RowManager
+  METHODS
+    method to_String( Matrix4Row r ).String
+      return "$(4.4) $(4.4) $(4.4) $(4.4)" (r.c0, r.c1, r.c2, r.c3)
+endClass
+
+singleton class Matrix4Manager
+  METHODS
+    method create_from.Matrix4
+      return Matrix4( 
+        Matrix4Row(1,0,0,0),
+        Matrix4Row(0,1,0,0),
+        Matrix4Row(0,0,1,0),
+        Matrix4Row(0,0,0,1)
+      )
+
+    method create_from( Real64 r0c0, Real64 r0c1, Real64 r0c2, Real64 r0c3,
+                        Real64 r1c0, Real64 r1c1, Real64 r1c2, Real64 r1c3,
+                        Real64 r2c0, Real64 r2c1, Real64 r2c2, Real64 r2c3,
+                        Real64 r3c0, Real64 r3c1, Real64 r3c2, Real64 r3c3 ).Matrix4
+      return Matrix4( 
+        Matrix4Row(r0c0,r0c1,r0c2,r0c3),
+        Matrix4Row(r1c0,r1c1,r1c2,r1c3),
+        Matrix4Row(r2c0,r2c1,r2c2,r2c3),
+        Matrix4Row(r3c0,r3c1,r3c2,r3c3)
+      )
+
+    method create_from( Real64 r0c0, Real64 r0c1, Real64 r0c2, Real64 r0c3,
+                        Real64 r1c0, Real64 r1c1, Real64 r1c2, Real64 r1c3 ).Matrix4
+      return Matrix4( 
+        Matrix4Row(r0c0,r0c1,r0c2,r0c3),
+        Matrix4Row(r1c0,r1c1,r1c2,r1c3),
+        Matrix4Row(0,0,1,0),
+        Matrix4Row(0,0,0,1)
+      )
+
+    method op*( Matrix4 m1, Matrix4 m2 ).Matrix4
+      return Matrix4( 
+        Matrix4Row(
+          m1.r0.c0*m2.r0.c0 + m1.r0.c1*m2.r1.c0 + m1.r0.c2*m2.r2.c0 + m1.r0.c3*m2.r3.c0,
+          m1.r0.c0*m2.r0.c1 + m1.r0.c1*m2.r1.c1 + m1.r0.c2*m2.r2.c1 + m1.r0.c3*m2.r3.c1,
+          m1.r0.c0*m2.r0.c2 + m1.r0.c1*m2.r1.c2 + m1.r0.c2*m2.r2.c2 + m1.r0.c3*m2.r3.c2,
+          m1.r0.c0*m2.r0.c3 + m1.r0.c1*m2.r1.c3 + m1.r0.c2*m2.r2.c3 + m1.r0.c3*m2.r3.c3
+        ),
+        Matrix4Row(
+          m1.r1.c0*m2.r0.c0 + m1.r1.c1*m2.r1.c0 + m1.r1.c2*m2.r2.c0 + m1.r1.c3*m2.r3.c0,
+          m1.r1.c0*m2.r0.c1 + m1.r1.c1*m2.r1.c1 + m1.r1.c2*m2.r2.c1 + m1.r1.c3*m2.r3.c1,
+          m1.r1.c0*m2.r0.c2 + m1.r1.c1*m2.r1.c2 + m1.r1.c2*m2.r2.c2 + m1.r1.c3*m2.r3.c2,
+          m1.r1.c0*m2.r0.c3 + m1.r1.c1*m2.r1.c3 + m1.r1.c2*m2.r2.c3 + m1.r1.c3*m2.r3.c3
+        ),
+        Matrix4Row(
+          m1.r2.c0*m2.r0.c0 + m1.r2.c1*m2.r1.c0 + m1.r2.c2*m2.r2.c0 + m1.r2.c3*m2.r3.c0,
+          m1.r2.c0*m2.r0.c1 + m1.r2.c1*m2.r1.c1 + m1.r2.c2*m2.r2.c1 + m1.r2.c3*m2.r3.c1,
+          m1.r2.c0*m2.r0.c2 + m1.r2.c1*m2.r1.c2 + m1.r2.c2*m2.r2.c2 + m1.r2.c3*m2.r3.c2,
+          m1.r2.c0*m2.r0.c3 + m1.r2.c1*m2.r1.c3 + m1.r2.c2*m2.r2.c3 + m1.r2.c3*m2.r3.c3
+        ),
+        Matrix4Row(
+          m1.r3.c0*m2.r0.c0 + m1.r3.c1*m2.r1.c0 + m1.r3.c2*m2.r2.c0 + m1.r3.c3*m2.r3.c0,
+          m1.r3.c0*m2.r0.c1 + m1.r3.c1*m2.r1.c1 + m1.r3.c2*m2.r2.c1 + m1.r3.c3*m2.r3.c1,
+          m1.r3.c0*m2.r0.c2 + m1.r3.c1*m2.r1.c2 + m1.r3.c2*m2.r2.c2 + m1.r3.c3*m2.r3.c2,
+          m1.r3.c0*m2.r0.c3 + m1.r3.c1*m2.r1.c3 + m1.r3.c2*m2.r2.c3 + m1.r3.c3*m2.r3.c3
+        )
+      )
+
+    method to_String( Matrix4 m ).String
+      local StringBuilder buffer()
+      buffer.println( m.r0 )
+      buffer.println( m.r1 )
+      buffer.println( m.r2 )
+      buffer.println( m.r3 )
+      return buffer.to_String
+
+    native method inverse( Matrix4 m ).Matrix4
+    native method transform( Matrix4 m, Vector2 v ).Vector2
+    native method transform( Matrix4 m, Vector3 v ).Vector3
+endClass
+
+class TransformStage
+  PROPERTIES
+    transform_stack() : Matrix4[]
+    current()         : Matrix4
+    reverse_order     : Logical
+    modified          : Logical
+
+  METHODS
+    method update
+      modified = true
+      if (transform_stack.count == 0)
+        current = Matrix4()   # Identity
+      else
+        if (reverse_order)
+          current = transform_stack.last
+          forEach (index in (transform_stack.count-2) downTo 0)
+            current = &current * transform_stack[index]
+          endForEach
+        else
+          current = transform_stack.first
+          forEach (index in 1..<transform_stack.count)
+            current = &current * transform_stack[index]
+          endForEach
+        endIf
+      endIf
+
+    method count.Int32
+      return transform_stack.count
+
+    method clear
+      transform_stack.clear
+      update
+
+    method set( Matrix4 transform ).Matrix4
+      local var result = &current
+      transform_stack.clear
+      push( transform )
+      return result
+
+    method push( Matrix4 transform )
+      transform_stack.add( transform )
+      update
+
+    method pop.Matrix4
+      local var result = transform_stack.remove_last
+      update
+      return result
+endClass
+
+requisite singleton class ProjectionTransform : TransformStage
+  METHODS
+    method init
+[if defined(PLASMACORE)]
+      set( Transform.orthographic(Box(0,0,1024,768),0,1) )
+[endIf]
+
+    method update
+      prior.update
+      native_projection_transform = current
+
+    native method native_projection_transform( Matrix4 m )
+endClass
+
+requisite singleton class ViewTransform : TransformStage
+  PROPERTIES
+    inverse() : Matrix4
+
+  METHODS
+    method update
+      prior.update
+      native_view_transform = &current * ObjectTransform.&current
+
+    method current.Matrix4
+      return ObjectTransform.&current * &current
+
+    native method native_view_transform( Matrix4 m )
+endClass
+
+requisite singleton class ObjectTransform : TransformStage
+  METHODS
+    method init
+      reverse_order = true
+
+    method push( Matrix4 transform )
+      prior.push(transform)
+
+    method update
+      prior.update
+      ViewTransform.native_view_transform = ViewTransform.&current * &current
+endClass
+
+singleton class InputTransform
+  PROPERTIES
+    current : Matrix4
+endClass

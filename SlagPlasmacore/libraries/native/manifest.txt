@@ -1,0 +1,1474 @@
+id: plasmacore
+version: 3.5.0
+date: 20110618
+name: Plasmacore v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/plasmacore-3.5.0.zip
+description: Supports Mac, Windows, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.5 
+
+id: platform-windows
+version: 3.5.0
+date: 20110618
+name: Plasmacore Windows Platform v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/plasmacore-3.5.0-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.5.0
+date: 20110618
+name: Plasmacore Mac Platform v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/plasmacore-3.5.0-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.5.0
+date: 20110618
+name: Plasmacore Windows Project v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/plasmacore-3.5.0-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2010 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.5.0
+date: 20110618
+name: Plasmacore Mac Platform v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/plasmacore-3.5.0-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.5.0
+date: 20110618
+name: Plasmacore Linux Source Project v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/plasmacore-3.5.0-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).  *** NOTE: libaudiere is no longer available in the latest Ubuntu release.  Linux Plasmacore is considered DEFUNCT for now but advanced users should be able to get things compiling. ***
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.5.0
+date: 20110618
+name: Plasmacore iOS Platform v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/plasmacore-3.5.0-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.5.0
+date: 20110618
+name: Plasmacore Android Platform v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/plasmacore-3.5.0-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.5.0
+date: 20110618
+name: Plasmacore Windows Phone 7 Platform v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/plasmacore-3.5.0-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.5.0
+date: 20110618
+name: Plasmacore Native Library v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/libplasmacore-3.5.0.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.5.0
+date: 20110618
+name: Slag Native Library v3.5.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.5.0/libslag-3.5.0.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.4.0
+date: 20110527
+name: Plasmacore v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/plasmacore-3.4.0.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.3 
+
+id: platform-windows
+version: 3.4.0
+date: 20110527
+name: Plasmacore Windows Platform v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/plasmacore-3.4.0-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.4.0
+date: 20110527
+name: Plasmacore Mac Platform v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/plasmacore-3.4.0-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.4.0
+date: 20110527
+name: Plasmacore Windows Project v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/plasmacore-3.4.0-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2010 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.4.0
+date: 20110527
+name: Plasmacore Mac Platform v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/plasmacore-3.4.0-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.4.0
+date: 20110527
+name: Plasmacore Linux Source Project v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/plasmacore-3.4.0-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.4.0
+date: 20110527
+name: Plasmacore iOS Platform v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/plasmacore-3.4.0-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.4.0
+date: 20110527
+name: Plasmacore Android Platform v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/plasmacore-3.4.0-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.4.0
+date: 20110527
+name: Plasmacore Windows Phone 7 Platform v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/plasmacore-3.4.0-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.4.0
+date: 20110527
+name: Plasmacore Native Library v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/libplasmacore-3.4.0.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.4.0
+date: 20110527
+name: Slag Native Library v3.4.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.4.0/libslag-3.4.0.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.3.2
+date: 20110518
+name: Plasmacore v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/plasmacore-3.3.2.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.3 
+
+id: platform-windows
+version: 3.3.2
+date: 20110518
+name: Plasmacore Windows Platform v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/plasmacore-3.3.2-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.3.2
+date: 20110518
+name: Plasmacore Mac Platform v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/plasmacore-3.3.2-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.3.2
+date: 20110518
+name: Plasmacore Windows Project v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/plasmacore-3.3.2-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2010 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.3.2
+date: 20110518
+name: Plasmacore Mac Platform v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/plasmacore-3.3.2-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.3.2
+date: 20110518
+name: Plasmacore Linux Source Project v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/plasmacore-3.3.2-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.3.2
+date: 20110518
+name: Plasmacore iOS Platform v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/plasmacore-3.3.2-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.3.2
+date: 20110518
+name: Plasmacore Android Platform v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/plasmacore-3.3.2-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.3.2
+date: 20110518
+name: Plasmacore Windows Phone 7 Platform v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/plasmacore-3.3.2-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.3.2
+date: 20110518
+name: Plasmacore Native Library v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/libplasmacore-3.3.2.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.3.2
+date: 20110518
+name: Slag Native Library v3.3.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.2/libslag-3.3.2.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.3.1
+date: 20110428
+name: Plasmacore v3.3.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/plasmacore-3.3.1.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.3 
+
+id: platform-windows
+version: 3.3.1
+date: 20110428
+name: Plasmacore Windows Platform v3.3.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/plasmacore-3.3.1-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.3.1
+date: 20110428
+name: Plasmacore Mac Platform v3.3.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/plasmacore-3.3.1-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.3.1
+date: 20110428
+name: Plasmacore Windows Project v3.3.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/plasmacore-3.3.1-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2010 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.3.1
+date: 20110428
+name: Plasmacore Mac Platform v3.3.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/plasmacore-3.3.1-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.3.1
+date: 20110428
+name: Plasmacore Linux Source Project v3.3.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/plasmacore-3.3.1-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.3.1
+date: 20110428
+name: Plasmacore iOS Platform v3.3.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/plasmacore-3.3.1-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.3.1
+date: 20110428
+name: Plasmacore Android Platform v3.3.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/plasmacore-3.3.1-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.3.1
+date: 20110428
+name: Plasmacore Windows Phone 7 Platform v3.3.1 (Beta)
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/plasmacore-3.3.1-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.3.1
+date: 20110428
+name: Plasmacore Native Library v3.3.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/libplasmacore-3.3.1.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.3.1
+date: 20110428
+name: Slag Native Library v3.3.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.1/libslag-3.3.1.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.3.0
+date: 20110404
+name: Plasmacore v3.3.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.3.0.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.3 
+
+id: platform-windows
+version: 3.3.0
+date: 20110402
+name: Plasmacore Windows Platform v3.3.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.0/plasmacore-3.3.0-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.3.0
+date: 20110402
+name: Plasmacore Mac Platform v3.3.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.0/plasmacore-3.3.0-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.3.0
+date: 20110402
+name: Plasmacore Windows Project v3.3.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.0/plasmacore-3.3.0-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2010 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.3.0
+date: 20110402
+name: Plasmacore Mac Platform v3.3.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.0/plasmacore-3.3.0-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.3.0
+date: 20110402
+name: Plasmacore Linux Source Project v3.3.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.0/plasmacore-3.3.0-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.3.0
+date: 20110402
+name: Plasmacore iOS Platform v3.3.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.0/plasmacore-3.3.0-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.3.0
+date: 20110401
+name: Plasmacore Android Platform v3.3.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.0/plasmacore-3.3.0-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.3.0
+date: 20110402
+name: Plasmacore Windows Phone 7 Platform v3.3.0 (Beta)
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.0/plasmacore-3.3.0-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.3.0
+date: 20110401
+name: Plasmacore Native Library v3.3.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.0/libplasmacore-3.3.0.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.3.0
+date: 20110401
+name: Slag Native Library v3.3.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.3.0/libslag-3.3.0.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.2.6
+date: 20110222
+name: Plasmacore v3.2.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.6.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.2 
+
+id: platform-windows
+version: 3.2.6
+date: 20110222
+name: Plasmacore Windows Platform v3.2.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.6/plasmacore-3.2.6-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.2.6
+date: 20110222
+name: Plasmacore Mac Platform v3.2.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.6/plasmacore-3.2.6-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.2.6
+date: 20110222
+name: Plasmacore Windows Project v3.2.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.6/plasmacore-3.2.6-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2010 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.2.6
+date: 20110222
+name: Plasmacore Mac Platform v3.2.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.6/plasmacore-3.2.6-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.2.6
+date: 20110222
+name: Plasmacore Linux Source Project v3.2.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.6/plasmacore-3.2.6-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.2.6
+date: 20110222
+name: Plasmacore iOS Platform v3.2.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.6/plasmacore-3.2.6-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.2.6
+date: 20110222
+name: Plasmacore Android Platform v3.2.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.6/plasmacore-3.2.6-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.2.6
+date: 20110222
+name: Plasmacore Windows Phone 7 Platform v3.2.6 (Beta)
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.6/plasmacore-3.2.6-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.2.6
+date: 20110222
+name: Plasmacore Native Library v3.2.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.6/libplasmacore-3.2.6.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.2.6
+date: 20110222
+name: Slag Native Library v3.2.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.6/libslag-3.2.6.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.2.5
+date: 20110216
+name: Plasmacore v3.2.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.5.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.2 
+
+id: platform-windows
+version: 3.2.5
+date: 20110216
+name: Plasmacore Windows Platform v3.2.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.5/plasmacore-3.2.5-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.2.5
+date: 20110216
+name: Plasmacore Mac Platform v3.2.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.5/plasmacore-3.2.5-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.2.5
+date: 20110216
+name: Plasmacore Windows Project v3.2.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.5/plasmacore-3.2.5-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2010 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.2.5
+date: 20110216
+name: Plasmacore Mac Platform v3.2.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.5/plasmacore-3.2.5-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.2.5
+date: 20110216
+name: Plasmacore Linux Source Project v3.2.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.5/plasmacore-3.2.5-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.2.5
+date: 20110216
+name: Plasmacore iOS Platform v3.2.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.5/plasmacore-3.2.5-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.2.5
+date: 20110216
+name: Plasmacore Android Platform v3.2.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.5/plasmacore-3.2.5-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.2.5
+date: 20110216
+name: Plasmacore Windows Phone 7 Platform v3.2.5 (Beta)
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.5/plasmacore-3.2.5-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.2.5
+date: 20110216
+name: Plasmacore Native Library v3.2.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.5/libplasmacore-3.2.5.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.2.5
+date: 20110216
+name: Slag Native Library v3.2.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.5/libslag-3.2.5.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.2.4
+date: 20110215
+name: Plasmacore v3.2.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.4.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.2 
+
+id: platform-windows
+version: 3.2.4
+date: 20110215
+name: Plasmacore Windows Platform v3.2.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.4/plasmacore-3.2.4-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.2.4
+date: 20110215
+name: Plasmacore Mac Platform v3.2.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.4/plasmacore-3.2.4-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.2.4
+date: 20110215
+name: Plasmacore Windows Project v3.2.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.4/plasmacore-3.2.4-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2010 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.2.4
+date: 20110215
+name: Plasmacore Mac Platform v3.2.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.4/plasmacore-3.2.4-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.2.4
+date: 20110215
+name: Plasmacore Linux Source Project v3.2.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.4/plasmacore-3.2.4-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.2.4
+date: 20110215
+name: Plasmacore iOS Platform v3.2.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.4/plasmacore-3.2.4-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.2.4
+date: 20110215
+name: Plasmacore Android Platform v3.2.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.4/plasmacore-3.2.4-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.2.4
+date: 20110215
+name: Plasmacore Windows Phone 7 Platform v3.2.4 (Beta)
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.4/plasmacore-3.2.4-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.2.4
+date: 20110215
+name: Plasmacore Native Library v3.2.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.4/libplasmacore-3.2.4.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.2.4
+date: 20110215
+name: Slag Native Library v3.2.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.4/libslag-3.2.4.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.2.3
+date: 20110213
+name: Plasmacore v3.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.3.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.2 
+
+id: platform-windows
+version: 3.2.3
+date: 20110213
+name: Plasmacore Windows Platform v3.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.3/plasmacore-3.2.3-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.2.3
+date: 20110213
+name: Plasmacore Mac Platform v3.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.3/plasmacore-3.2.3-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.2.3
+date: 20110214
+name: Plasmacore Windows Project v3.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.3/plasmacore-3.2.3-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2010 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.2.3
+date: 20110213
+name: Plasmacore Mac Platform v3.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.3/plasmacore-3.2.3-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.2.3
+date: 20110213
+name: Plasmacore Linux Source Project v3.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.3/plasmacore-3.2.3-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.2.3
+date: 20110213
+name: Plasmacore iOS Platform v3.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.3/plasmacore-3.2.3-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.2.3
+date: 20110213
+name: Plasmacore Android Platform v3.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.3/plasmacore-3.2.3-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.2.3
+date: 20110213
+name: Plasmacore Windows Phone 7 Platform v3.2.3 (Beta)
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.3/plasmacore-3.2.3-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.2.3
+date: 20110213
+name: Plasmacore Native Library v3.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.3/libplasmacore-3.2.3.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.2.3
+date: 20110213
+name: Slag Native Library v3.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.3/libslag-3.2.3.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.2.2
+date: 20110211
+name: Plasmacore v3.2.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.2.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.2 
+
+id: platform-windows
+version: 3.2.2
+date: 20110211
+name: Plasmacore Windows Platform v3.2.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.2/plasmacore-3.2.2-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.2.2
+date: 20110211
+name: Plasmacore Mac Platform v3.2.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.2/plasmacore-3.2.2-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.2.2
+date: 20110211
+name: Plasmacore Windows Project v3.2.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.2/plasmacore-3.2.2-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2010 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.2.2
+date: 20110211
+name: Plasmacore Mac Platform v3.2.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.2/plasmacore-3.2.2-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.2.2
+date: 20110211
+name: Plasmacore Linux Source Project v3.2.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.2/plasmacore-3.2.2-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.2.2
+date: 20110211
+name: Plasmacore iOS Platform v3.2.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.2/plasmacore-3.2.2-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.2.2
+date: 20110211
+name: Plasmacore Android Platform v3.2.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.2/plasmacore-3.2.2-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.2.2
+date: 20110211
+name: Plasmacore Windows Phone 7 Platform v3.2.2 (Beta)
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.2/plasmacore-3.2.2-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.2.2
+date: 20110211
+name: Plasmacore Native Library v3.2.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.2/libplasmacore-3.2.2.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.2.2
+date: 20110211
+name: Slag Native Library v3.2.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/v/3.2.2/libslag-3.2.2.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.2.1
+date: 20110126
+name: Plasmacore v3.2.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.1.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.2 
+
+id: platform-windows
+version: 3.2.1
+date: 20110126
+name: Plasmacore Windows Platform v3.2.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.1-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.2.1
+date: 20110126
+name: Plasmacore Mac Platform v3.2.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.1-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.2.1
+date: 20110126
+name: Plasmacore Windows Project v3.2.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.1-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2008 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.2.1
+date: 20110126
+name: Plasmacore Mac Platform v3.2.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.1-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.2.1
+date: 20110126
+name: Plasmacore Linux Source Project v3.2.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.1-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.2.1
+date: 20110126
+name: Plasmacore iOS Platform v3.2.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.1-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.2.1
+date: 20110126
+name: Plasmacore Android Platform v3.2.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.1-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.2.1
+date: 20110126
+name: Plasmacore Windows Phone 7 Platform v3.2.1 (Beta)
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.1-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.2.1
+date: 20110126
+name: Plasmacore Native Library v3.2.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libplasmacore-3.2.1.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.2.1
+date: 20110126
+name: Slag Native Library v3.2.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libslag-3.2.1.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.2.0
+date: 20110116
+name: Plasmacore v3.2.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.0.zip
+description: Supports Mac, Windows, Linux, iOS, iPad, Android, and Windows Phone 7.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.2 
+
+id: platform-windows
+version: 3.2.0
+date: 20110116
+name: Plasmacore Windows Platform v3.2.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.0-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.2.0
+date: 20110116
+name: Plasmacore Mac Platform v3.2.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.0-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.2.0
+date: 20110116
+name: Plasmacore Windows Project v3.2.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.0-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2008 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.2.0
+date: 20110116
+name: Plasmacore Mac Platform v3.2.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.0-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-linux-project
+version: 3.2.0
+date: 20110116
+name: Plasmacore Linux Source Project v3.2.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.0-linux-project.zip
+description: Linux platform project files.  You must also install the Slag language (http://code.google.com/p/slag) as well as libsdl1.2-dev and libaudiere-dev (Ubuntu: "sudo apt-get install libsdl1.2-dev" etc.).
+dependencies: nativelib-gd nativelib-libplasmacore
+
+id: platform-ios-project
+version: 3.2.0
+date: 20110116
+name: Plasmacore iOS Platform v3.2.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.0-ios-project.zip
+description: iOS platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.2.0
+date: 20110116
+name: Plasmacore Android Platform v3.2.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.0-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: platform-wp7-project
+version: 3.2.0
+date: 20110116
+name: Plasmacore Windows Phone 7 Platform v3.2.0 (Beta)
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.2.0-wp7-project.zip
+description: WP7 platform project files. Requires installation of Windows Visual Studio 2010+WP7 - see Plasmacore Wiki.
+
+id: nativelib-libplasmacore
+version: 3.2.0
+date: 20110116
+name: Plasmacore Native Library v3.2.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libplasmacore-3.2.0.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.2.0
+date: 20110116
+name: Slag Native Library v3.2.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libslag-3.2.0.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.1.7
+date: 20101102
+name: Plasmacore v3.1.7
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.7.zip
+description: Supports Mac, Windows, iPhone, iPad, and Android.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.1 
+
+id: platform-windows
+version: 3.1.7
+date: 20101102
+name: Plasmacore Windows Platform v3.1.7
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.7-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.1.7
+date: 20101102
+name: Plasmacore Mac Platform v3.1.7
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.7-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.1.7
+date: 20101102
+name: Plasmacore Windows Project v3.1.7
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.7-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2008 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.1.7
+date: 20101102
+name: Plasmacore Mac Platform v3.1.7
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.7-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-iphone-project
+version: 3.1.7
+date: 20101102
+name: Plasmacore iPhone/iPad Platform v3.1.7
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.7-iphone-project.zip
+description: iPhone platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.1.7
+date: 20101102
+name: Plasmacore Android Platform v3.1.7
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.7-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: nativelib-libplasmacore
+version: 3.1.7
+date: 20101102
+name: Plasmacore Native Library v3.1.7
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libplasmacore-3.1.7.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.1.7
+date: 20101102
+name: Slag Native Library v3.1.7
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libslag-3.1.7.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.1.6
+date: 20101010
+name: Plasmacore v3.1.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.6.zip
+description: Supports Mac, Windows, iPhone, iPad, and Android.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.1 
+
+id: platform-windows
+version: 3.1.6
+date: 20101010
+name: Plasmacore Windows Platform v3.1.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.6-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.1.6
+date: 20101010
+name: Plasmacore Mac Platform v3.1.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.6-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.1.6
+date: 20101010
+name: Plasmacore Windows Project v3.1.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.6-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2008 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.1.6
+date: 20101010
+name: Plasmacore Mac Platform v3.1.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.6-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-iphone-project
+version: 3.1.6
+date: 20101010
+name: Plasmacore iPhone/iPad Platform v3.1.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.6-iphone-project.zip
+description: iPhone platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.1.6
+date: 20101010
+name: Plasmacore Android Platform v3.1.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.6-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: nativelib-libplasmacore
+version: 3.1.6
+date: 20101010
+name: Plasmacore Native Library v3.1.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libplasmacore-3.1.6.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.1.6
+date: 20101010
+name: Slag Native Library v3.1.6
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libslag-3.1.6.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.1.5
+date: 20100902
+name: Plasmacore v3.1.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.5.zip
+description: Supports Mac, Windows, iPhone, iPad, and Android.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.1 
+
+id: platform-windows
+version: 3.1.5
+date: 20100902
+name: Plasmacore Windows Platform v3.1.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.5-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.1.5
+date: 20100902
+name: Plasmacore Mac Platform v3.1.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.5-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.1.5
+date: 20100902
+name: Plasmacore Windows Project v3.1.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.5-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2008 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.1.5
+date: 20100902
+name: Plasmacore Mac Platform v3.1.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.5-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-iphone-project
+version: 3.1.5
+date: 20100902
+name: Plasmacore iPhone/iPad Platform v3.1.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.5-iphone-project.zip
+description: iPhone platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.1.5
+date: 20100902
+name: Plasmacore Android Platform v3.1.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.5-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: nativelib-libplasmacore
+version: 3.1.5
+date: 20100902
+name: Plasmacore Native Library v3.1.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libplasmacore-3.1.5.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.1.5
+date: 20100902
+name: Slag Native Library v3.1.5
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libslag-3.1.5.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.1.4
+date: 20100826
+name: Plasmacore v3.1.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.4.zip
+description: Supports Mac, Windows, iPhone, iPad, and Android.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.1 
+
+id: platform-windows
+version: 3.1.4
+date: 20100826
+name: Plasmacore Windows Platform v3.1.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.4-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.1.4
+date: 20100826
+name: Plasmacore Mac Platform v3.1.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.4-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.1.4
+date: 20100826
+name: Plasmacore Windows Project v3.1.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.4-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2008 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.1.4
+date: 20100826
+name: Plasmacore Mac Platform v3.1.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.4-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-iphone-project
+version: 3.1.4
+date: 20100826
+name: Plasmacore iPhone/iPad Platform v3.1.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.4-iphone-project.zip
+description: iPhone platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.1.4
+date: 20100826
+name: Plasmacore Android Platform v3.1.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.4-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: nativelib-libplasmacore
+version: 3.1.4
+date: 20100826
+name: Plasmacore Native Library v3.1.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libplasmacore-3.1.4.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.1.4
+date: 20100826
+name: Slag Native Library v3.1.4
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libslag-3.1.4.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.1.3
+date: 20100822
+name: Plasmacore v3.1.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.3.zip
+description: Supports Mac, Windows, iPhone, iPad, and Android.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.1 
+
+id: platform-windows
+version: 3.1.3
+date: 20100822
+name: Plasmacore Windows Platform v3.1.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.3-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.1.3
+date: 20100822
+name: Plasmacore Mac Platform v3.1.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.3-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.1.3
+date: 20100822
+name: Plasmacore Windows Project v3.1.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.3-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2008 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.1.3
+date: 20100822
+name: Plasmacore Mac Platform v3.1.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.3-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-iphone-project
+version: 3.1.3
+date: 20100822
+name: Plasmacore iPhone/iPad Platform v3.1.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.3-iphone-project.zip
+description: iPhone platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.1.3
+date: 20100822
+name: Plasmacore Android Platform v3.1.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.3-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: nativelib-libplasmacore
+version: 3.1.3
+date: 20100822
+name: Plasmacore Native Library v3.1.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libplasmacore-3.1.3.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.1.3
+date: 20100822
+name: Slag Native Library v3.1.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libslag-3.1.3.zip
+description: Slag VM and Runtime C++ library.
+
+id: plasmacore
+version: 3.1.2
+date: 20100818
+name: Plasmacore v3.1.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.2.zip
+description: Supports Mac, Windows, iPhone, iPad, and Android.  For details, see http://plasmaworks.com/wiki/index.php/Plasmacore_v3.1 
+
+id: platform-windows
+version: 3.1.2
+date: 20100818
+name: Plasmacore Windows Platform v3.1.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.2-windows.zip
+description: Pre-compiled Windows platform utilizing DirectX and Audiere.
+
+id: platform-mac
+version: 3.1.2
+date: 20100818
+name: Plasmacore Mac Platform v3.1.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.2-mac.zip
+description: Precompiled Mac platform.
+
+id: platform-windows-project
+version: 3.1.2
+date: 20100818
+name: Plasmacore Windows Project v3.1.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.2-windows-project.zip
+dependencies: nativelib-gd nativelib-audiere nativelib-libplasmacore platform-windows nativelib-sdl-windows
+description: Windows platform utilizing DirectX and Audiere. Requires Microsoft Visual Studio Express 2008 to compile. Necessary for adding custom native functionality into your Plasmacore projects.
+
+id: platform-mac-project
+version: 3.1.2
+date: 20100818
+name: Plasmacore Mac Platform v3.1.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.2-mac-project.zip
+description: Mac platform project files. Must be compiled using Xcode. Necessary for adding custom native functionality into your Plasmacore projects.  Note: you must also download SDL 1.2.13 (http://www.libsdl.org/release/SDL-1.2.14.dmg) and copy the SDL.framework into the /Libraries folder. 
+dependencies: nativelib-gd nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-iphone-project
+version: 3.1.2
+date: 20100818
+name: Plasmacore iPhone/iPad Platform v3.1.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.2-iphone-project.zip
+description: iPhone platform project files. Must be compiled using Xcode.
+dependencies: nativelib-libplasmacore nativelib-mac_audio
+
+id: platform-android-project
+version: 3.1.2
+date: 20100818
+name: Plasmacore Android Platform v3.1.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/plasmacore-3.1.2-android-project.zip
+description: Android platform project files. Requires installation of Android SDK and additional tools - see Plasmacore Wiki.
+dependencies: nativelib-libplasmacore
+
+id: nativelib-libplasmacore
+version: 3.1.2
+date: 20100818
+name: Plasmacore Native Library v3.1.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libplasmacore-3.1.2.zip
+description: Native C++ libraries for compiling Plasmacore.
+dependencies: nativelib-zlib nativelib-slag
+
+id: nativelib-slag
+version: 3.1.2
+date: 20100818
+name: Slag Native Library v3.1.2
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libslag-3.1.2.zip
+description: Slag VM and Runtime C++ library.
+
+id: nativelib-audiere
+min_version: 3.0.7
+date: 20100310
+name: Audiere Sound Library v1.9.4x r694
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libraries/native/audiere-1.9.4x-r694.zip
+description: Audiere Windows DLL and header file, built from revision 694 of the Audiere source repository at http://audiere.sourceforge.net/
+
+id: nativelib-mac_audio
+min_version: 3.2.0
+date: 20110319
+name: Mac Audio v1.2.
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libraries/native/mac_audio-1.2.zip
+description: Simple Mac and iOS audio library.
+
+id: nativelib-gd
+min_version: 3.1.1
+date: 20110111
+name: GD Graphics Library v2.0.36RC1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libraries/native/gd-2.0.36RC1.zip
+dependencies: nativelib-libpng nativelib-libjpeg
+description: GD Library source code originally from libgd.org.
+
+id: nativelib-gd
+min_version: 3.0.7
+date: 20100310
+name: GD Graphics Library v2.0.35
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libraries/native/gd-2.0.35.zip
+dependencies: nativelib-libpng nativelib-libjpeg
+description: GD Library source code originally from libgd.org.
+
+id: nativelib-libjpeg
+min_version: 3.0.7
+date: 20100310
+name: JPEG Library version 8a
+url: http://www.ijg.org/files/jpegsr8a.zip
+description: Independent JPEG Group's JPEG Library
+install_path: libraries/native
+install_action-default: copy upgrade/new_project/libraries/native/jpeg-8a/jconfig.vc upgrade/new_project/libraries/native/jpeg-8a/jconfig.h
+
+id: nativelib-libpng
+min_version: 3.0.7
+date: 20100310
+name: PNG Library version 1.4.1
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libraries/native/lpng141.zip
+description: A condensed libpng v1.4.1, originally from libpng.org.
+
+id: nativelib-sdl-windows
+min_version: 3.0.7
+date: 20100310
+name: SDL 1.2.13 for Windows
+url:  http://www.libsdl.org/release/SDL-devel-1.2.13-VC8.zip
+install_path: libraries/native
+description: SDL 1.2.13 for Windows.
+
+id: nativelib-zlib
+min_version: 3.0.7
+date: 20100314
+name: Zlib 1.2.3
+url:  http://www.plasmaworks.com/files/plasmacore/archive/libraries/native/zlib-1.2.3.zip
+install_path: libraries/native
+description: Zlib 1.2.3.
+
+id: tool-ishottheserif-font-maker
+min_version: 3.0.7
+date: 20100315
+name: iShotTheSerif v1.0
+url:  http://www.plasmaworks.com/files/plasmacore/archive/tools/iShotTheSerif-1.0.zip
+install_path: bin
+description: iShotTheSerif bitmap font creator for Plasmacore. This Java JAR file will be placed in your bin directory; run it by double-clicking on it.
+

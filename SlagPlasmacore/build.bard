@@ -1,0 +1,488 @@
+[include "build_core.bard"]
+
+class BuildPlasmacore : BuildCore
+  PROPERTIES
+    bard_dir : String
+    dist : String
+    version : String
+
+    src_extensions = {".bard",".cpp",".h",".mm"} : String[]
+      # Used to detect files that might need properties inserted.
+
+  METHODS
+    method build( String cmd )
+      version = "plasmacore-$" (project_properties.PLASMACORE_VERSION)
+      dist = "dist/$/new_project" (version)
+      set_up
+
+      local var original_cmd = cmd
+      cmd = menu( cmd, null, {"core-dist","zip-dist","mac-dist","windows-dist","linux-dist",
+        "ios-dist","android-dist","wp7-dist", "clean"} )
+      if (cmd is null) return
+
+      which (cmd)
+        case "clean": clean
+        case "core-dist": make_core_dist
+        case "zip-dist": zip_dist
+        case "mac-dist": make_mac_dist
+        case "windows-dist": make_windows_dist
+        case "linux-dist": make_linux_dist
+        case "ios-dist": make_ios_dist
+        case "wp7-dist":    make_wp7_dist
+        case "android-dist": make_core_dist; make_android_dist
+        case "version"
+          if (System.os == "mac")
+            execute( "mvim project.properties" )
+          endIf
+        others
+          if (original_cmd is null) original_cmd = cmd
+          prior.build( original_cmd )
+      endWhich
+
+    method clean
+      prior.clean
+      delete( "dist" )
+      delete( "platforms/mac/build" )
+      delete( "platforms/windows/build" )
+      delete( "platforms/windows/plasmacore-vm/Release" )
+      delete( "platforms/windows/plasmacore-vm/Debug" )
+      delete( "platforms/windows/plasmacore.exe" )
+
+    method clean_android
+      delete( "platforms/android/AndroidManifest.xml" )
+      delete( "platforms/android/Application.mk" )
+      delete( "platforms/android/build" )
+      delete( "platforms/android/build.properties" )
+      delete( "platforms/android/default.properties" )
+      delete( "platforms/android/local.properties" )
+      delete( "platforms/android/src/com/developer/project/CustomPlasmacore.java" )
+      delete( "platforms/android/src/com/developer/project/Main.java" )
+      delete( "platforms/android/jni/Android-vm.mk" )
+      delete( "platforms/android/jni/Android-xc.mk" )
+      delete( "platforms/android/jni/Android.mk" )
+      delete( "platforms/android/jni/custom.cpp" )
+      delete( "platforms/android/res/values/strings.xml" )
+      delete( "platforms/android/res/drawable" )
+
+
+    method set_up
+      prior.set_up
+
+      local var exe_name = "bardic"
+      if (System.os == "windows") exe_name += ".exe"
+
+      if (not local_properties.contains("BARD_SRC"))
+        local var loc = where(exe_name)
+        if (loc is null)
+          throw Error( //You must define "BARD_SRC: path/to/bard_dev_folder" in "local.properties".// )
+        endIf
+        local var path1 = loc.before_last('/')
+        local var path2 = loc.before_last('\\')
+        if (path2.count < path1.count) path1 = path2
+        local_properties.BARD_SRC = File(path1+"/../..").absolute_filepath
+      endIf
+
+      bard_dir = local_properties.BARD_SRC
+
+      #println( local_properties )
+      #println( project_properties )
+      update_libraries
+
+    method update_libraries
+      if (local_properties.contains("BARD_SRC"))
+        #println( "> Updating Libraries" )
+        local var bard_src = local_properties.BARD_SRC
+
+        # Native libraries
+        local FileSet bard_lib( bard_src + "/libraries/native/bard" )
+        bard_lib.exclude("*.o").exclude("*.swp")
+        copy( bard_lib, Directory("libraries/native/bard") )
+
+        # Bard libraries
+        local FileSet files( bard_src+"/libraries/bard" )
+        files.exclude("bardic/*")
+        copy( files, Directory("libraries/bard"), Copy.insert_properties )
+
+        if (File(bard_src+"/bin/mac/gogo").exists)
+          mkdir("bin/mac")
+          local var copied = copy( File(bard_src + "/bin/mac/bardic"), Directory("bin/mac") )
+          copied         |= copy( File(bard_src + "/bin/mac/gogo"), Directory("bin/mac") )
+          if (copied) chmod( "bin/mac", "a+rx" )
+        endIf
+
+        if (File(bard_src+"/bin/windows/gogo.exe").exists)
+          copy( File(bard_src + "/bin/windows/bardic.exe"), Directory("bin/windows") )
+          copy( File(bard_src + "/bin/windows/gogo.exe"),  Directory("bin/windows") )
+        endIf
+      endIf
+
+    method make_dist
+      println( "> Making distributable" )
+      make_core_dist
+      make_mac_dist
+      make_windows_dist
+      make_android_dist
+      make_ios_dist
+
+    method copy_file( String src_filename, String dest_filename )
+      contingent
+        forEach (ext in src_extensions)
+          sufficient (src_filename.ends_with(ext))
+        endForEach
+        necessary (false)
+      satisfied
+        copy( File(src_filename), File(dest_filename), Copy.insert_properties )
+      unsatisfied
+        copy( File(src_filename), File(dest_filename) )
+      endContingent
+
+
+    method make_core_dist
+      mkdir( dist + "/src" )
+      mkdir( dist + "/upgrade" )
+      mkdir( dist + "/bin/mac" )
+      mkdir( dist + "/bin/windows" )
+      mkdir( dist + "/libraries/native" )
+      mkdir( dist + "/libraries/native/plasmacore" )
+      mkdir( dist + "/libraries/bard/plasmacore" )
+
+      # Build files
+      copy( File("build_core.bard"), File( dist + "/build_core.bard" ), Copy.insert_properties )
+      copy( File("libraries/native/plasmacore/build.xml"), File( dist + "/build.xml" ) )
+      copy( File("libraries/native/plasmacore/gogo"), File( dist + "/gogo" ), Copy.insert_properties )
+      copy( File("libraries/native/plasmacore/gogo.bat"), File( dist + "/gogo.bat" ) )
+      copy( File("libraries/native/plasmacore/Makefile"), File( dist + "/Makefile" ), Copy.insert_properties )
+      chmod( dist+"/gogo", "a+rx" )
+
+      # Bard runtime libraries
+      local FileSet files(bard_dir+"/libraries/native/bard")
+      forEach (filename in files) 
+        local var rel_path = files.relative_filepath_to( filename )
+        copy_file( filename, dist+"/libraries/native/bard/"+rel_path )
+      endForEach
+
+      # Plasmacore native library and 3rd party native libraries
+      files = FileSet("libraries/native",null)
+      files.include("gd-2.0.36RC1")
+      files.include("jpeg-8c")
+      files.include("libpng-1.5.4")
+      files.include("zlib-1.2.5")
+      files.include("audiere-1.9.4x-r694")
+      files.include("plasmacore")
+      files.exclude(  "plasmacore/gogo")
+      files.exclude(  "plasmacore/gogo.bat")
+      files.exclude(  "plasmacore/Makefile")
+      files.exclude(  "plasmacore/build.xml")
+      files.exclude(  "plasmacore/font_system_17.png")
+      files.include("mac_audio")
+      copy( files, Directory(dist+"/libraries/native") )
+
+      # Bard standard libraries
+      files = FileSet(bard_dir+"/libraries/bard","*",false)
+      files.include("standard/*")
+      files.exclude("*/introspection.bard")
+      forEach (filename in files)
+        local var rel_path = files.relative_filepath_to( filename )
+        copy_file( filename, dist+"/libraries/bard/"+rel_path )
+      endForEach
+
+      # Bard Plasmacore libraries
+      files = FileSet("libraries/bard/plasmacore","*",false)
+      forEach (filename in files)
+        local var rel_path = files.relative_filepath_to( filename )
+        copy_file( filename, dist+"/libraries/bard/plasmacore/"+rel_path )
+      endForEach
+
+      copy( File("libraries/bard/image_compiler.bard"), Directory(dist+"/libraries/bard"),
+         Copy.insert_properties )
+
+    method zip_dist
+      local FileSet files( "dist", version )
+      files.exclude("*/new_project/libraries/native")
+      files.exclude("*/ui.bard")
+      files.exclude("*/entity.bard")
+      files.exclude("*/platforms/*")
+      files.exclude("*build.bard")
+      files.exclude("*/bin/windows/iconsmash.exe")
+      files.exclude("*/libraries/bard/bardic/*")
+      zip( files, "dist/$.zip"(version) )
+
+      local FileSet gd_files("dist/$/new_project/libraries/native/gd-2.0.36RC1" (version), null );
+      gd_files.include("*.c");
+      gd_files.include("*.h");
+      gd_files.include("COPYING");
+      zip( gd_files, "dist/gd-2.0.36RC1.zip", "libraries/native/gd-2.0.36RC1" )
+
+
+      zip( FileSet("dist/$/new_project/libraries/native/libpng-1.5.4" (version), "png*.c") ...
+        .include("*.h",false),
+        "dist/libpng-1.5.4.zip", "libraries/native/libpng-1.5.4" )
+
+      zip( FileSet("dist/$/new_project/libraries/native/audiere-1.9.4x-r694" (version), null ) ...
+        .include("bin").include("include").include("lib"),
+        "dist/audiere-1.9.4x-r694.zip", "libraries/native/audiere-1.9.4x-r694" )
+
+      zip( FileSet("dist/$/new_project/libraries/native/bard" (version) ).exclude("*.orig"),
+      "dist/libbard-$.zip" (project_properties.BARD_VERSION.substring(1)), 
+        "libraries/native/bard" )
+
+      files = FileSet( "dist/$/new_project/libraries/native/plasmacore" (version), null )
+      files.include( "gl_core*" )
+      files.include( "plasmacore.*" )
+      files.include( "font_system_17.cpp" )
+      files.include( "iconsmash.exe" )
+      files.include( "plasmacore.ico" )
+      zip( files, "dist/lib$.zip" (version), "libraries/native/plasmacore" )
+
+      zip( FileSet("dist/$/new_project/libraries/native/mac_audio" (version)),
+        "dist/mac_audio-1.2.zip", "libraries/native/mac_audio" )
+
+
+    method make_mac_core
+      if (System.os != "mac") return
+
+      mkdir( dist + "/bin/mac" )
+
+      local var bard_src = local_properties.BARD_SRC + "/bin/mac/"
+      copy( File(bard_src+"bardic"),Directory(dist+"/bin/mac") )
+      copy( File(bard_src+"gogo"), Directory(dist+"/bin/mac") )
+      chmod( FileSet(dist+"/bin/mac"), "a+rx" )
+
+    method make_windows_core
+      mkdir( dist + "/bin/windows" )
+      mkdir( dist + "/platforms/windows" )
+
+      local var bard_src = local_properties.BARD_SRC + "/bin/windows/"
+
+      if (File(bard_src+"bardic.exe").exists)
+        copy( File(bard_src+"bardic.exe"), Directory(dist+"/bin/windows") )
+        copy( File(bard_src+"gogo.exe"),  Directory(dist+"/bin/windows") )
+        copy( File("bin/windows/iconsmash.exe"),  Directory(dist+"/bin/windows") )
+      endIf
+
+    method windows_reset
+      delete( "platforms/windows/Debug" )
+      delete( "platforms/windows/Release" )
+      delete( "platforms/windows/plasmacore_windows/Debug" )
+      delete( "platforms/windows/plasmacore_windows/Release" )
+
+
+    method make_mac_dist
+      if (System.os != "mac") return
+
+      make_core_dist
+      make_mac_core
+
+      mkdir( dist + "/platforms/mac" )
+
+      compile_mac_vm
+
+      pushd( "platforms/mac" )
+      execute( "xcodebuild" )
+      popd
+
+      local FileSet mac_files( "platforms/mac/plasmacore.app" )
+      mac_files.exclude( "*/Contents/Resources/*" )
+      mac_files.exclude( "*.dSYM*" )
+      mac_files.exclude( "*xcworkspace*" )
+      mac_files.exclude( "*xcuserdata*" )
+      copy( mac_files, Directory( dist+"/platforms/mac/plasmacore.app" ) )
+
+      mac_files = FileSet( "platforms/mac" )
+      mac_files.exclude( "*.dSYM*" )
+      mac_files.exclude( "build" )
+      mac_files.exclude( "build/*" )
+      mac_files.exclude( "*.mode1v3*" )
+      mac_files.exclude( "*.pbxuser*" )
+      mac_files.exclude( "*~" )
+      mac_files.exclude( "main.mm" )
+      mac_files.exclude( "custom_build" )
+      mac_files.exclude( "mac_plasmacore.xcodeproj*" )
+      forEach (filename in mac_files)
+        local var dest = dist+"/platforms/mac/" + mac_files.relative_filepath_to(filename)
+        if (copy(File(filename),File(dest)))
+          if (filename.ends_with(".mm")) insert_properties( dest )
+        endIf
+      endForEach
+
+      if (copy( File("platforms/mac/src/main.mm"), Directory(dist+"/platforms/mac/defaults") ))
+        insert_properties( dist+"/platforms/mac/defaults/main.mm" )
+      endIf
+      copy( FileSet("platforms/mac/mac_plasmacore.xcodeproj").exclude("*.mode1v3").exclude("*.pbxuser").exclude("*.xcworkspace/*").exclude("*xcuserdata/*"), 
+        Directory(dist+"/platforms/mac/defaults/mac_plasmacore.xcodeproj") )
+
+        zip( FileSet(dist,"platforms/mac/plasmacore.app").exclude("*.zip").exclude("*/project.properties").exclude("*/game.etc").exclude("*/save/log.txt"), "dist/$-mac.zip" (version) )
+
+      local FileSet files("dist/$/new_project/platforms/mac" (version), null)
+      files.include( "English.lproj" )
+      files.include( "Info.plist" )
+      files.include( "defaults/*" )
+      files.include( "mac_core.mm" )
+      zip( files, "dist/$-mac-project.zip" (version), "platforms/mac" )
+
+
+    method make_windows_dist
+      #if (System.os != "windows") return
+      make_core_dist
+      make_windows_core
+
+      println
+      println( //Load Visual Studio 2010 and open the platforms\\plasmacore_windows solution.  Set the build mode to Release and then right-click..build "plasmacore-vm".//.word_wrap(70) )
+      println
+      input_String( "Press [ENTER] when the build has finished." )
+
+      mkdir( dist+"/platforms/windows" )
+
+      copy( File("libraries/native/audiere-1.9.4x-r694/bin/audiere.dll"), Directory(dist+"/platforms/windows") )
+
+      local FileSet files( "platforms/windows", "*", false )
+      files.include( "plasmacore_windows/plasmacore_windows.vcxproj" )
+      files.include( "plasmacore-vm/*.vcxproj" )
+      files.include( "plasmacore-xc/*.vcxproj" )
+      files.exclude( "*.ncb" )
+      files.exclude( "*.suo" )
+      files.exclude( "*.sdf" )
+      files.exclude( "*.opensdf" )
+      forEach (filename in files)
+        local var relpath = files.relative_filepath_to(filename)
+        if (copy(File(filename), File(dist+"/platforms/windows/"+relpath)))
+          if (filename.ends_with(".cpp")) insert_properties(filename)
+          elseIf (filename.ends_with(".c")) insert_properties(filename)
+          elseIf (filename.ends_with(".h")) insert_properties(filename)
+        endIf
+      endForEach
+
+      files = FileSet(dist+"/platforms/windows")
+      files.exclude("plasmacore.exe").exclude("audiere.dll")
+      files.exclude("plasmacore_windows*")
+      files.exclude("plasmacore-vm*")
+      files.exclude("plasmacore-xc*")
+      zip( files, "dist/$-windows-project.zip" (version), "platforms/windows" )
+      zip( FileSet(dist+"/platforms/windows","plasmacore_windows*").include("plasmacore-vm/plasmacore-vm.vcxproj").include("plasmacore-xc/plasmacore-xc.vcxproj"),
+        "dist/$-windows-project.zip" (version), "platforms/windows/defaults" )
+
+      files = FileSet( dist, null )
+      files.include("platforms/windows/plasmacore.exe").include("platforms/windows/audiere.dll").include("bin/windows/iconsmash.exe")
+      zip( files, "dist/$-windows.zip" (version) )
+
+    method make_linux_dist
+      make_core_dist
+
+      delete( "platforms/linux/build" )
+
+      mkdir( dist+"/platforms/linux/defaults" )
+
+      local FileSet files("platforms/linux")
+      files.exclude("box2d*")
+      files.exclude("main.cpp")
+      files.exclude("Makefile")
+      copy( files, Directory(dist+"/platforms/linux") )
+      copy( File("platforms/linux/Makefile"), Directory(dist+"/platforms/linux/defaults") )
+      copy( File("platforms/linux/main.cpp"), Directory(dist+"/platforms/linux/defaults") )
+
+      zip( FileSet(dist+"/platforms/linux"),
+        "dist/$-linux-project.zip" (version), "platforms/linux" )
+
+    method make_android_dist
+      clean_android
+      mkdir( dist + "/platforms/android" )
+
+      local FileSet files("platforms/android")
+      files.exclude("jni/*")
+      files.include("jni/android_core.h")
+      files.include("jni/android_core.cpp")
+      files.exclude("libs/*")
+      files.exclude("res/*" )
+      copy( files, Directory(dist+"/platforms/android") )
+
+      files = FileSet( "dist/$/new_project" (version), null, false )
+      files.include( "platforms/android/*" )
+      zip( files, "dist/$-android-project.zip" (version) )
+
+    method make_ios_dist
+      if (System.os != "mac") return
+
+      make_core_dist
+
+      mkdir( dist + "/platforms/ios" )
+      mkdir( dist + "/bin/mac" )
+
+      local var bard_src = local_properties.BARD_SRC
+      copy( File(bard_src + "/bin/mac/bardic"), Directory(dist+"/bin/mac") )
+      copy( File(bard_src + "/bin/mac/gogo"), Directory(dist+"/bin/mac") )
+      chmod( FileSet(dist+"/bin/mac"), "a+rx" )
+
+      local var ios_files = FileSet( "platforms/ios" )
+      ios_files.exclude( "build" )
+      ios_files.exclude( "build/*" )
+      ios_files.exclude( "*.mode1v3*" )
+      ios_files.exclude( "*.pbxuser*" )
+      ios_files.exclude( "ios_plasmacore.xcodeproj*" )
+      ios_files.exclude( "src/main.mm" )
+      ios_files.exclude( "src/Info.plist" )
+      ios_files.exclude( "data.zip" )
+      ios_files.exclude( "images.zip" )
+      ios_files.exclude( "game.etc" )
+      ios_files.exclude( "src/Icon.png" )
+      ios_files.exclude( "src/Icon72x72.png" )
+      ios_files.exclude( "src/Default.png" )
+      ios_files.exclude( "src/Default-Portrait.png" )
+      ios_files.exclude( "src/plasmacore_Prefix.pch" )
+      forEach (filename in ios_files)
+        local var dest = dist+"/platforms/ios/" + ios_files.relative_filepath_to(filename)
+        if (copy(File(filename),File(dest)))
+          if (filename.ends_with(".mm")) insert_properties( dest )
+        endIf
+      endForEach
+
+      copy( File("platforms/ios/src/main.mm"), Directory(dist+"/platforms/ios/defaults"),
+          Copy.insert_properties )
+      copy( File("platforms/ios/ios_plasmacore.xcodeproj/project.pbxproj"),
+      Directory(dist+"/platforms/ios/defaults/ios_plasmacore.xcodeproj") )
+      copy( File("platforms/ios/src/Info.plist"), Directory(dist+"/platforms/ios/defaults") )
+      copy( File("platforms/ios/src/Icon.png"), Directory(dist+"/platforms/ios/defaults") )
+      copy( File("platforms/ios/src/Icon72x72.png"), Directory(dist+"/platforms/ios/defaults") )
+      copy( File("platforms/ios/src/Default.png"),
+      Directory(dist+"/platforms/ios/defaults") )
+      copy( File("platforms/ios/src/Default-Portrait.png"),
+        Directory(dist+"/platforms/ios/defaults") )
+      copy( File("platforms/ios/src/plasmacore_Prefix.pch"),
+        Directory(dist+"/platforms/ios/defaults") )
+
+      local FileSet files("dist/$/new_project/platforms/ios" (version), null)
+      files.include( "Classes/*" )
+      files.include( "defaults/*" )
+      files.include( "plasmacore_Prefix.pch" )
+      zip( files, "dist/$-ios-project.zip" (version), "platforms/ios" )
+
+    method make_wp7_dist
+      make_core_dist
+
+      mkdir( dist + "/platforms/wp7" )
+      mkdir( dist + "/platforms/wp7/defaults" )
+      mkdir( dist + "/platforms/wp7/plasmacore_wp7" )
+
+      local Directory dest( dist + "/platforms/wp7/plasmacore_wp7" )
+      local Directory defaults( dist + "/platforms/wp7/defaults" )
+
+      copy( File("platforms/wp7/PlasmacoreWP7.sln"), defaults )
+      copy( File("platforms/wp7/sounds/Sounds.contentproj"), defaults )
+      copy( File("platforms/wp7/plasmacore_wp7/Game.ico"), defaults )
+      copy( File("platforms/wp7/plasmacore_wp7/GameThumbnail.png"), defaults )
+      copy( File("platforms/wp7/plasmacore_wp7/GameTile.png"), defaults )
+      copy( File("platforms/wp7/plasmacore_wp7/PlasmacoreWP7.csproj"), defaults )
+      copy( File("platforms/wp7/plasmacore_wp7/Properties/AppManifest.xml"), defaults )
+      copy( File("platforms/wp7/plasmacore_wp7/Properties/AssemblyInfo.cs"), defaults )
+      copy( File("platforms/wp7/plasmacore_wp7/Properties/WMAppManifest.xml"), defaults )
+
+      copy( File("platforms/wp7/plasmacore_wp7/PlasmacoreSettings.cs"), defaults, Copy.insert_properties )
+      copy( File("platforms/wp7/plasmacore_wp7/Main.cs"), dest, Copy.insert_properties )
+      copy( File("platforms/wp7/plasmacore_wp7/Plasmacore.cs"), dest, Copy.insert_properties )
+      copy( File("platforms/wp7/plasmacore_wp7/Program.cs"), dest, Copy.insert_properties )
+      copy( File("platforms/wp7/plasmacore_wp7/Bard.cs"), dest, Copy.insert_properties )
+
+
+      local FileSet files("dist/$/new_project/platforms/wp7" (version))
+      zip( files, "dist/$-wp7-project.zip" (version), "platforms/wp7" )
+endClass
+

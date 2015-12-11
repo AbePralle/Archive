@@ -1,0 +1,16 @@
+[include "plasmacore.slag"]
+
+class RePNG
+  METHODS
+    method init:
+      if (System.command_line_args.count != 1)
+        println( "Usage: slag repng img.png" )
+        return
+      endIf
+
+      local var filename = System.command_line_args.first
+      local Bitmap bmp( File(filename).to_bytes )
+      bmp.unmultiply_alpha
+      File("repng_" + filename).save( bmp.to_png_bytes )
+endClass
+

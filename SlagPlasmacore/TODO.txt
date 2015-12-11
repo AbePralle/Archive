@@ -1,0 +1,45 @@
+- Manually putting a large image (>512x512) in category non-general will cause a crash.
+- Add specific Signal (id,arg) to native API
+- Change default Android FPS to be 60 for 24 MB+
+- Fix 'return' in init() to return "this".
+- Make Scene3D a Component
+- Add simple makefile for Mac/Linux that does an automatic chmod on ./gogo and runs it
+- Detect Cygwin on "gogo" script
+- Nine-patch Drawable
+
+
+
+-------------------------------------------------------------------------------
+FINISHED
+-------------------------------------------------------------------------------
+- Leading negative on new line of list def is error
+- Make screen fade data into a standalone object.
+- Remove LAST_BUILD vm/xc on clean.
+- Fix ios_core.mm to_bard_string() to not leave ref on stack
+- Add the following frameworks to iOS version:
+//        a.  AddressBook
+//        b.  AddressBookUI
+//        c.  AudioToolbox
+//        d.  AVFoundation
+//        e.  CoreMotion
+//        f.  EventKit
+//        g.  MediaPlayer
+//        h.  MessageUI
+//        i.  QuartzCore
+//        j.  SystemConfiguration
+//        k. iAd
+- Change key_repeat to is_repeat flag in key_press
+- Close app when window closed
+  if (plasmacore_allow_hires_iphone4)
+  {
+    if ([[[UIDevice currentDevice] systemVersion] floatValue] >= 3.2f)
+    {
+      int w2 = (int) [UIScreen mainScreen].currentMode.size.width;
+      int h2 = (int) [UIScreen mainScreen].currentMode.size.height;
+      if ((w2 == 640 && h2 == 960))
+      {
+        w = w2;
+        h = h2;
+      }
+    }
+  }

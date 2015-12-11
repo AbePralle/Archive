@@ -1,0 +1,57 @@
+[if defined(PLATFORM_WP7)]
+singleton class WP7
+  PROPERTIES
+    is_trial        : Logical
+    must_check=true : Logical
+
+  METHODS
+    method is_trial.Logical
+      if (must_check) is_trial = native_is_trial; must_check = false
+      return &is_trial
+
+    method native_is_trial.Logical: native
+
+    method prompt( String title, String description="", String default="" ): native
+      # Shows a full-screen prompt with the given title, description,
+      # and default text.  When the user presses okay, each character of
+      # the input will be sent as a series of key events terminated by
+      # an ASCII 10 key event.  If the dialog is canceled, only ASCII
+      # 10 is sent.
+      #
+      # Notes: 
+      # - WP7 workaround for not having a traditional virtual keyboard.
+      # - Has no effect on a non-WP7 device.  Use in conjunction with
+      #   Input.keyboard_visible = true/false (which itself doesn't work
+      #   on WP7).
+
+    method web_request( String url, DataListener listener ) : native
+endClass
+
+[else]
+singleton class WP7
+  PROPERTIES
+    is_trial : Logical
+      # Set to "true" or "false" as desired.
+
+  METHODS
+    method is_trial.Logical
+      return &is_trial
+
+    method prompt( String title, String description="", String default="" )
+      # Shows a full-screen prompt with the given title, description,
+      # and default text.  When the user presses okay, each character of
+      # the input will be sent as a series of key events terminated by
+      # an ASCII 10 key event.  If the dialog is canceled, only ASCII
+      # 10 is sent.
+      #
+      # Notes: 
+      # - WP7 workaround for not having a traditional virtual keyboard.
+      # - Has no effect on a non-WP7 device.  Use in conjunction with
+      #   Input.keyboard_visible = true/false (which itself doesn't work
+      #   on WP7).
+
+    method web_request( String url, DataListener listener )
+      listener.on( null )
+endClass
+[endIf]
+

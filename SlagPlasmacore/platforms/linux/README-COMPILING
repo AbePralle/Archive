@@ -1,0 +1,10 @@
+To compile Linux Plasmacore you'll need:
+
+SDL
+- Ubuntu:
+    sudo apt-get install libsdl1.2-dev libsdl1.2debian
+
+Audiere
+- Ubuntu:
+    sudo apt-get install libaudiere-dev
+

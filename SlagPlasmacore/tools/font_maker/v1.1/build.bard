@@ -1,0 +1,13 @@
+class Main : GoGo
+  PROPERTIES
+    version="1.2" : String
+
+  METHODS
+    method build( String cmd )
+      execute( "javac *.java" )
+      execute( "jar -cfm iShotTheSerif-$.jar manifest.txt *.class" (version) )
+      delete( FileSet(".","*.class") )
+      execute( "zip iShotTheSerif-$.zip iShotTheSerif-$.jar" (version,version) )
+      execute( "unzip -tq iShotTheSerif-$.zip" (version) )
+      delete( "build.etc" )
+endClass
