@@ -1,0 +1,8 @@
+class Test
+  METHODS
+    method init
+      print_hello_world
+
+    method print_hello_world
+      => $'printf( "Hello World!\\n" )'
+endClass
