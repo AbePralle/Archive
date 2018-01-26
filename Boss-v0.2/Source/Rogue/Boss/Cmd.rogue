@@ -1,0 +1,479 @@
+module Boss
+
+class Cmd [abstract]
+  PROPERTIES
+    t : Token
+
+  METHODS
+    method init( t )
+
+    method print( buffer:StringBuilder )->StringBuilder [abstract]
+
+    method require_type->Type
+      if (type) return type
+      throw t.error( "Value expected." )
+
+    method require_value->Cmd
+      require_type
+      return this
+
+    method resolved->Cmd
+      return this
+
+    method resolved_assignment( new_value:Cmd )->Cmd
+      throw t.error( "Invalid assignment target." )
+
+    method to->String
+      return print( StringBuilder() )->String
+
+    method type->Type
+      return null
+
+    method write( m:Method ) [abstract]
+
+    method write_statement( m:Method )
+      write( m )
+      if (type) m.write( Opcode.DISCARD )
+
+endClass
+
+class CmdStatements : Cmd
+  PROPERTIES
+    statements = Cmd[]
+
+  METHODS
+    method init( t )
+
+    method add( statement:Cmd )->this
+      statements.add( statement )
+      return this
+
+    method add( other_statements:CmdStatements )->this
+      statements.add( other_statements.statements )
+      return this
+
+    method clear->this
+      statements.clear
+      return this
+
+    method count->Int32
+      return statements.count
+
+    method first->Cmd
+      return statements.first
+
+    method get( index:Int32 )->Cmd
+      return statements[ index ]
+
+    method print( buffer:StringBuilder )->StringBuilder
+      buffer.println( forEach in this )
+      return buffer
+
+    method resolved->CmdStatements
+      forEach (statement at index in statements)
+        statements[ index ] = statement.resolved
+      endForEach
+      return this
+
+    method set( index:Int32, value:Cmd )->this
+      statements[ index ] = value
+      return this
+
+    method write( m:Method )
+      forEach (statement in statements)
+        statement.write_statement( m )
+      endForEach
+
+endClass
+
+class CmdUndefinedValue( t ) : Cmd
+  METHODS
+    method print( buffer:StringBuilder )->StringBuilder
+      return buffer.print( "undefined" )
+
+    method write( m:Method )
+      m.write( Opcode.UNDEFINED )
+endClass
+
+class CmdLogical( t, value:Logical ) : Cmd
+  METHODS
+    method print( buffer:StringBuilder )->StringBuilder
+      return buffer.print( value )
+
+    method write( m:Method )
+      m.write( ?:{value:Opcode.TRUE || Opcode.FALSE} )
+endClass
+
+class CmdInt32( t, value:Int32 ) : Cmd
+  METHODS
+    method print( buffer:StringBuilder )->StringBuilder
+      return buffer.print( value )
+
+    method write( m:Method )
+      m.write( Opcode.INTEGER, value )
+endClass
+
+class CmdString( t, value:String ) : Cmd
+  METHODS
+    method print( buffer:StringBuilder )->StringBuilder
+      return buffer.print( '"' ).print( value ).print( '"' )
+
+    method write( m:Method )
+      m.write( Opcode.STRING, value )
+endClass
+
+class CmdAccess( t, context:Cmd, name:String ) : Cmd
+  PROPERTIES
+    args : Cmd[]
+
+  METHODS
+    method init( t, name )
+
+    method add_arg( arg:Cmd )->this
+      (ensure args(5)).add( arg )
+      return this
+
+    method print( buffer:StringBuilder )->StringBuilder
+      if (context) context.print( buffer ).print( '.' )
+      buffer.print( name )
+      if (args)
+        buffer.print( '(' )
+        forEach (arg at index in args)
+          if (index > 0) buffer.print( ',' )
+          arg.print( buffer )
+        endForEach
+        buffer.print( ')' )
+      endIf
+      return buffer
+
+      #{
+    method resolved->Cmd
+      if (args)
+        # Method call for sure
+        if (args.count)
+          if (context) return CmdCall( t, context, name ).resolved
+          else         return CmdCallThis( t, name ).resolved
+        else
+          if (context) return CmdCallWithArgs( t, context, name, args ).resolved
+          else         return CmdCallThisWithArgs( t, name, args ).resolved
+        endIf
+
+      elseIf (context)
+        return CmdGetProperty( t, context, name ).resolved
+
+      else
+        forEach (local_name at index in Scope.locals step -1)
+          if (name == local_name) return CmdGetLocal( t, index ).resolved
+        endForEach
+        return CmdGetThisProperty( t, name ).resolved
+      endIf
+      }#
+
+      #{
+    method resolved_assignment( new_value:Cmd )->Cmd
+      if (not args)
+        if (context) return CmdSetProperty( t, context, name, new_value ).resolved
+        forEach (local_name at index in Scope.locals step -1)
+          if (name == local_name) return CmdSetLocal( t, index, new_value ).resolved
+        endForEach
+        return CmdSetThisProperty( t, name, new_value ).resolved
+      endIf
+      return prior.resolved_assignment( new_value )
+      }#
+
+    method write( m:Method )
+      if (context) context.write( m )
+      else         m.write( Opcode.THIS )
+
+      if (args)
+        (forEach in args).write( m )
+      endIf
+
+      m.write( Opcode.CALL, name, ?:{args:args.count || 0} )
+
+endClass
+
+class CmdUnaryOp( t, operand:Cmd ) : Cmd [abstract]
+  METHODS
+    method print( buffer:StringBuilder )->StringBuilder
+      buffer.print( symbol ).print( ' ' )
+      return operand.print( buffer )
+
+    method opcode->Opcode [abstract]
+
+    method resolved->Cmd
+      operand = operand.resolved
+      return this
+
+    method symbol->String [abstract]
+
+    method write( m:Method )
+      operand.write( m )
+      m.write( opcode )
+endClass
+
+class CmdBinaryOp( t, lhs:Cmd, rhs:Cmd ) : Cmd [abstract]
+  METHODS
+    method opcode->Opcode [abstract]
+
+    method print( buffer:StringBuilder )->StringBuilder
+      lhs.print( buffer ).print( ' ' ).print( symbol ).print( ' ' )
+      return rhs.print( buffer )
+
+    method resolved->Cmd
+      lhs = lhs.resolved
+      rhs = rhs.resolved
+      return this
+
+    method symbol->String [abstract]
+
+    method write( m:Method )
+      lhs.write( m )
+      rhs.write( m )
+      m.write( opcode )
+endClass
+
+class CmdCompare( t, lhs:Cmd, rhs:Cmd ) : CmdBinaryOp [abstract]
+  METHODS
+endClass
+
+class CmdCompareEQ : CmdCompare
+  METHODS
+    method opcode->Opcode
+      return Opcode.CMP_EQ
+
+    method symbol->String
+      return "=="
+endClass
+
+class CmdCompareNE : CmdCompare
+  METHODS
+    method opcode->Opcode
+      return Opcode.CMP_NE
+
+    method symbol->String
+      return "!="
+endClass
+
+class CmdCompareLT : CmdCompare
+  METHODS
+    method opcode->Opcode
+      return Opcode.CMP_LT
+
+    method symbol->String
+      return "<"
+endClass
+
+class CmdCompareGT : CmdCompare
+  METHODS
+    method opcode->Opcode
+      return Opcode.CMP_GT
+
+    method symbol->String
+      return ">"
+endClass
+
+class CmdCompareLE : CmdCompare
+  METHODS
+    method opcode->Opcode
+      return Opcode.CMP_LE
+
+    method symbol->String
+      return "<="
+endClass
+
+class CmdCompareGE : CmdCompare
+  METHODS
+    method opcode->Opcode
+      return Opcode.CMP_GE
+
+    method symbol->String
+      return ">="
+endClass
+
+class CmdNot( t, operand:Cmd ) : Cmd
+  METHODS
+    method print( buffer:StringBuilder )->StringBuilder
+      buffer.print( "not " )
+      return operand.print( buffer )
+
+    method resolved->Cmd
+      operand = operand.resolved
+      return this
+
+    method write( m:Method )
+      operand.write( m )
+      m.write( Opcode.LOGICAL_NOT )
+endClass
+
+class CmdIf : Cmd
+  PROPERTIES
+    condition       : Cmd
+    statements      : CmdStatements
+    else_statements : CmdStatements
+
+  METHODS
+    method init( t, condition )
+      ensure statements( t )
+
+    method print( buffer:StringBuilder )->StringBuilder
+      buffer.print( "if (" )
+      condition.print( buffer ).println( ")" )
+
+      buffer.indent += 2
+      statements.print( buffer )
+      buffer.indent -= 2
+
+      if (else_statements)
+        buffer.println( "else" )
+        buffer.indent += 2
+        statements.print( buffer )
+        buffer.indent -= 2
+      endIf
+
+      return buffer.print( "endIf" )
+
+    method resolved->Cmd
+      if (else_statements)
+        else_statements = else_statements.resolved
+      endIf
+
+      condition = condition.resolved
+      statements = statements.resolved
+      return this
+
+    method write( m:Method )
+      if (else_statements)
+        condition.write( m )
+        m.write( Opcode.JUMP_IF_NOT )
+        local jump_to_else = m.write( 0 )
+        statements.write( m )
+        m.write( Opcode.JUMP )
+        local jump_to_end = m.write( 0 )
+        m.backpatch( jump_to_else )
+        else_statements.write( m )
+        m.backpatch( jump_to_end )
+      else
+        condition.write( m )
+        m.write( Opcode.JUMP_IF_NOT )
+        local jump_to_end = m.write( 0 )
+        statements.write( m )
+        m.backpatch( jump_to_end )
+      endIf
+
+
+endClass
+
+class CmdReturn( t, expression:Cmd ) : Cmd
+  METHODS
+    method print( buffer:StringBuilder )->StringBuilder
+      buffer.print( "return " )
+      return expression.print( buffer )
+
+    method resolved->Cmd
+      expression = expression.resolved
+      return this
+
+    method write( m:Method )
+      expression.write( m )
+      m.write( Opcode.RETURN )
+
+endClass
+
+class CmdAdd : CmdBinaryOp
+  METHODS
+    method opcode->Opcode
+      return Opcode.ADD
+
+    method symbol->String
+      return "+"
+endClass
+
+class CmdSubtract : CmdBinaryOp
+  METHODS
+    method opcode->Opcode
+      return Opcode.SUBTRACT
+
+    method symbol->String
+      return "-"
+endClass
+
+class CmdMultiply : CmdBinaryOp
+  METHODS
+    method opcode->Opcode
+      return Opcode.MULTIPLY
+
+    method symbol->String
+      return "*"
+endClass
+
+class CmdDivide : CmdBinaryOp
+  METHODS
+    method opcode->Opcode
+      return Opcode.DIVIDE
+
+    method symbol->String
+      return "/"
+endClass
+
+class CmdMod : CmdBinaryOp
+  METHODS
+    method opcode->Opcode
+      return Opcode.MOD
+
+    method symbol->String
+      return "%"
+endClass
+
+class CmdAssign( t, target:Cmd, new_value:Cmd ) : Cmd
+  METHODS
+    method print( buffer:StringBuilder )->StringBuilder
+      target.print( buffer ).print( " = " )
+      return new_value.print( buffer )
+
+    method resolved->Cmd
+      return target.resolved_assignment( new_value )
+
+    method write( m:Method )
+      throw UnsupportedOperationError()
+endClass
+
+class CmdWithArgs : Cmd [abstract]
+  PROPERTIES
+    args : Cmd[]
+
+  METHODS
+    method init( t )
+
+    method init( t, args )
+
+    method init( t, arg:Cmd )
+      init( t )
+      args.add( arg )
+
+    method init( t, arg1:Cmd, arg2:Cmd )
+      init( t )
+      args.add( arg1 ).add( arg2 )
+
+    method print( buffer:StringBuilder )->StringBuilder
+      buffer.print( '(' )
+      forEach (arg at index in args)
+        if (index > 0) buffer.print( ',' )
+        arg.print( buffer )
+      endForEach
+      return buffer.print( ')' )
+
+endClass
+
+class CmdPrintln : CmdWithArgs
+  METHODS
+    method print( buffer:StringBuilder )->StringBuilder
+      buffer.print( "println" )
+      return prior.print( buffer )
+
+    method write( m:Method )
+      m.write( Opcode.THIS )
+      (forEach in args).write( m )
+      m.write( Opcode.IMPLICIT_CALL, "println", args.count )
+endClass
+

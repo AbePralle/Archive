@@ -1,0 +1,9 @@
+module Boss
+
+class Local
+  PROPERTIES
+    name : String
+    type : Type
+
+  METHODS
+endClass

@@ -1,0 +1,145 @@
+module Boss
+
+class TokenType
+  GLOBAL PROPERTIES
+    keywords = StringTable<<TokenType>>()
+    symbols  = Table<<Character,TokenType[]>>()
+
+    EOL                  = TokenType( "end of line" )
+    IDENTIFIER           = IdentifierTokenType( "identifier" )
+    STRING               = TokenType( "string" )
+    INT32                = TokenType( "integer" )
+    EOF                  = TokenType( "end of file", &is_structural )
+
+    CLASS                = KeywordTokenType( "class", &is_structural )
+
+    ELSE                 = KeywordTokenType( "else", &is_structural )
+    ELSE_IF              = KeywordTokenType( "elseIf", &is_structural )
+    END_CLASS            = KeywordTokenType( "endClass", &is_structural )
+    END_IF               = KeywordTokenType( "endIf", &is_structural )
+
+    IF                   = KeywordTokenType( "if" )
+
+    FALSE                = KeywordTokenType( "false" )
+    NOT                  = KeywordTokenType( "not" )
+    RETURN               = KeywordTokenType( "return" )
+    THIS                 = KeywordTokenType( "this" )
+    TRUE                 = KeywordTokenType( "true" )
+
+    SYMBOL_CLOSE_BRACKET = SymbolTokenType( "]", &is_structural )
+    SYMBOL_CLOSE_PAREN   = SymbolTokenType( ")", &is_structural )
+    SYMBOL_COMMA         = SymbolTokenType( ",", &is_structural )
+
+    SYMBOL_AMPERSAND     = SymbolTokenType( "&" )
+    SYMBOL_AT            = SymbolTokenType( "@" )
+    SYMBOL_DOT           = SymbolTokenType( "." )
+    SYMBOL_COMPARE_EQ    = SymbolTokenType( "==" )
+    SYMBOL_COMPARE_NE    = SymbolTokenType( "!=" )
+    SYMBOL_COMPARE_LT    = SymbolTokenType( "<" )
+    SYMBOL_COMPARE_GT    = SymbolTokenType( ">" )
+    SYMBOL_COMPARE_LE    = SymbolTokenType( "<=" )
+    SYMBOL_COMPARE_GE    = SymbolTokenType( ">=" )
+    SYMBOL_EQUALS        = SymbolTokenType( "=" )
+    SYMBOL_MINUS         = SymbolTokenType( "-" )
+    SYMBOL_OPEN_BRACKET  = SymbolTokenType( "[" )
+    SYMBOL_OPEN_PAREN    = SymbolTokenType( "(" )
+    SYMBOL_PERCENT       = SymbolTokenType( "%" )
+    SYMBOL_PLUS          = SymbolTokenType( "+" )
+    SYMBOL_SEMICOLON     = SymbolTokenType( ";" )
+    SYMBOL_SLASH         = SymbolTokenType( "/" )
+    SYMBOL_TIMES         = SymbolTokenType( "*" )
+
+  PROPERTIES
+    name          : String
+    is_structural : Logical
+
+  METHODS
+    method init( name, is_structural=false )
+
+    method quoted( t:Token )->String
+      return this->String
+
+    method to->String
+      return name
+endClass
+
+class IdentifierTokenType : QuotedTokenType
+  METHODS
+    method quoted( t:Token )->String
+      return "'$'" (t.string)
+endClass
+
+class QuotedTokenType : TokenType
+  METHODS
+    method quoted( t:Token )->String
+      return "'$'" (this->String)
+endClass
+
+class KeywordTokenType : QuotedTokenType
+  METHODS
+    method init( name, is_structural=false )
+      TokenType.keywords[ name ] = this
+endClass
+
+class SymbolTokenType : QuotedTokenType
+  METHODS
+    method init( name, is_structural=false )
+      local first_ch = name[0]
+      if (not TokenType.symbols.contains(first_ch))
+        TokenType.symbols[ first_ch ] = TokenType[]
+      endIf
+      TokenType.symbols[ first_ch ].add( this ).sort( (a,b)=>(a.name.count>=b.name.count) )
+endClass
+
+
+class Token
+  GLOBAL PROPERTIES
+    next_filename : String
+    next_line     : Int32
+
+  PROPERTIES
+    type                     : TokenType
+    filename = next_filename : String
+    line = next_line         : Int32
+    string                   : String
+    number                   : Real64
+
+  METHODS
+    method init( type, string=null )
+
+    method init( type, number )
+
+    method init( string )
+      type = TokenType.STRING
+
+    method init( value:Int32 )
+      type = TokenType.INT32
+      number = value
+
+    method error( message:String )->BossError
+      return BossError( filename, line, message )
+
+    method is_structural->Logical
+      return type.is_structural
+
+    method quoted->String
+      return type.quoted( this )
+
+    method set_position( filename, line )->this
+      return this
+
+    method to->Logical
+      return number->Logical
+
+    method to->Int32
+      return number->Int32
+
+    method to->Real64
+      return number->Real64
+
+    method to->String
+      if (string) return string
+      return type->String
+
+endClass
+

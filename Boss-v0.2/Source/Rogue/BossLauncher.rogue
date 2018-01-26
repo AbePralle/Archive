@@ -1,0 +1,53 @@
+$include "Boss/Boss.rogue"
+using Boss
+
+BossLauncher( System.command_line_arguments )
+
+class BossLauncher
+  PROPERTIES
+    input_filenames = String[]
+
+  METHODS
+    method init( args:String[] )
+      if (args.count)
+        parse_args( args )
+        try
+          local vm = BossVM()
+          forEach (filename in input_filenames)
+            vm.load( File(filename) )
+          endForEach
+          vm.launch
+          while (vm.update) noAction
+        catch (err:BossError)
+          println err
+          System.exit( 1 )
+        endTry
+      else
+        local vm = BossVM()
+        loop
+          try
+            vm.execute( Console.input("boss> "), (v)=>println v )
+            vm.launch
+            while (vm.update) noAction
+          catch (err:BossError)
+            println err
+          endTry
+        endLoop
+      endIf
+
+    method parse_args( args:String[] )
+      forEach (arg in args)
+        if (arg.begins_with("--"))
+          parse_option( arg )
+        else
+          input_filenames.add( arg )
+        endIf
+      endForEach
+
+    method parse_option( arg:String )
+      local option = arg.before_first('=')
+      which (option)
+        others
+          throw BossError( "Unrecognized launch option: " + option )
+      endWhich
+endClass

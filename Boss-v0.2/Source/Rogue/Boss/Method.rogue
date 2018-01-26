@@ -1,0 +1,59 @@
+module Boss
+
+class Method
+  PROPERTIES
+    vm          : BossVM
+    name        : String
+    t           : Token
+    return_type : Type
+    code        = Int32[]
+    #handler     : Function(BossVM)
+    locals      = Local[]
+
+    is_resolved : Logical
+
+  METHODS
+    method init( vm, name, t=null )
+      if (not t) t  = vm.t
+
+      #method init( vm, name, handler )
+      #t = vm.t
+
+    method backpatch( address:Int32 )
+      code[ address ] = code.count
+
+    method resolve
+      if (is_resolved) return
+      is_resolved = true
+
+      write( ?:{ return_type:Opcode.RETURN_UNDEFINED || Opcode.RETURN } )
+
+    method to->String
+      return name + "()"
+
+    method write( opcode:Int32 )->Int32
+      local index = code.count
+      code.add( opcode )
+      return index
+
+    method write( opcode:Opcode, operand:Int32 )->Int32
+      local index = write( opcode )
+      write( operand )
+      return index
+
+    method write( opcode:Opcode, operand:Real64 )->Int32
+      local index = write( opcode )
+      write( vm.real_index(operand) )
+      return index
+
+    method write( opcode:Opcode, operand:String )->Int32
+      local index = write( opcode )
+      write( vm.string_index(operand) )
+      return index
+
+    method write( opcode:Opcode, operand1:String, operand2:Int32  )->Int32
+      local index = write( opcode, operand1 )
+      write( operand2 )
+      return index
+endClass
+

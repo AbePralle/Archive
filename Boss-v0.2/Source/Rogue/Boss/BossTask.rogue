@@ -1,0 +1,267 @@
+module Boss
+
+class StackFrame( m:Method, ip:Int32, fp:Int32, arg_count:Int32, lp:Int32 ) [compound]
+endClass
+
+class BossTask
+  ENUMERATE
+    UNDEFINED
+    RUNNING
+    FINISHED
+
+  PROPERTIES
+    status      : Int32
+    vm          : BossVM
+    m           : Method
+    code        : Int32[]
+    ip          : Int32
+    int32_stack : Int32[]
+
+  METHODS
+    method init( vm, status=BossTask.UNDEFINED )
+
+    method init( vm, m )
+      status = RUNNING
+      code = m.code
+      ip   = 0
+      ensure int32_stack
+
+  #{
+  PROPERTIES
+    # The following property is set before every call to a native method
+    # and is only valid until the call returns.
+    result       : BossValue
+    is_retry     : Logical
+
+    is_finished  : Logical
+    callback     : Function(BossValue)
+
+    vm           : BossVM
+    this_method  : Method
+    code         : Array<<Int32>>
+    ip           : Int32
+    fp           : Int32
+    lp           : Int32
+    arg_count    : Int32
+    locals       = BossValue[]
+    stack        = BossValue[]
+    call_stack   = StackFrame[]
+
+  METHODS
+    method init( vm )
+
+    method arg( index:Int32 )->BossValue
+      if (index < 0 or index > arg_count) return vm.undefined
+      return stack[ fp + index ]
+
+    method call( context:BossValue, this_method, args=null:BossValue[], callback=null )->BossTask
+      is_finished = false
+      stack.clear.add( context )
+      arg_count = 0
+      if (args) stack.add( args ); arg_count += args.count
+      locals.clear
+      forEach (1..this_method.local_count) locals.add( vm.undefined )
+
+      code = this_method.code.data
+      ip = 0
+      fp = 0
+      lp = 0
+
+      execute
+
+      return this
+
+    method is_running->Logical [macro]
+      (not this.is_finished)
+
+    method peek->BossValue
+      if (stack.is_empty) return vm.undefined
+      return stack.last
+
+    method pop->BossValue
+      if (stack.is_empty) return vm.undefined
+      return stack.remove_last
+
+    method push( value:BossValue )->this
+      stack.add( value )
+      return this
+
+    method to->String
+      if (is_finished) return "finished task"
+      else             return "$.$" (stack[fp],this_method)
+      }#
+
+    method execute->Logical
+      if (status != RUNNING) return false
+
+      BossVM = vm
+      local code = this.code
+
+      loop
+        ++ip
+        #local op = Opcode( code[ip-1] ); @trace op
+        which (code[ip-1])
+          case Opcode.NOP
+            noAction
+            #{
+
+          case Opcode.DISCARD
+            stack.remove_last
+            }#
+
+          case Opcode.RETURN
+            status = FINISHED
+            return false
+
+            #{
+          case Opcode.JUMP
+            ip = code[ ip ]
+
+          case Opcode.JUMP_IF
+            local dest_ip = code[ ip ]
+            ++ip
+            if (stack.remove_last->Logical) ip = dest_ip
+
+          case Opcode.JUMP_IF_NOT
+            local dest_ip = code[ ip ]
+            ++ip
+            if (not stack.remove_last->Logical) ip = dest_ip
+
+          case Opcode.FALSE
+            stack.add( BossValue(false) )
+            }#
+
+          case Opcode.INTEGER
+            int32_stack.add( code[ip] )
+            ++ip
+
+            #{
+          case Opcode.REAL
+            stack.add( BossValue(vm.real_list[code[ip]]) )
+            ++ip
+
+          case Opcode.STRING
+            stack.add( BossValue(vm.string_list[code[ip]]) )
+            ++ip
+
+          case Opcode.TRUE
+            stack.add( BossValue(true) )
+
+          case Opcode.UNDEFINED
+            stack.add( vm.undefined )
+
+          case Opcode.LOGICAL_NOT
+            stack.add( not stack.remove_last->Logical )
+            }#
+
+          case Opcode.ADD
+            local b = int32_stack.remove_last
+            int32_stack[ int32_stack.count ] += b
+
+            #{
+          case Opcode.SUBTRACT
+            local b = stack.remove_last; stack.add( stack.remove_last - b )
+
+          case Opcode.MULTIPLY
+            local b = stack.remove_last; stack.add( stack.remove_last * b )
+
+          case Opcode.DIVIDE
+            local b = stack.remove_last; stack.add( stack.remove_last / b )
+
+          case Opcode.MOD
+            local b = stack.remove_last; stack.add( stack.remove_last % b )
+
+          case Opcode.CMP_EQ
+            local b = stack.remove_last; stack.add( stack.remove_last == b )
+
+          case Opcode.CMP_NE
+            local b = stack.remove_last; stack.add( stack.remove_last != b )
+
+          case Opcode.CMP_LT
+            local b = stack.remove_last; stack.add( stack.remove_last < b )
+
+          case Opcode.CMP_GT
+            local b = stack.remove_last; stack.add( stack.remove_last > b )
+
+          case Opcode.CMP_LE
+            local b = stack.remove_last; stack.add( stack.remove_last <= b )
+
+          case Opcode.CMP_GE
+            local b = stack.remove_last; stack.add( stack.remove_last >= b )
+
+          case Opcode.THIS
+            stack.add( stack[fp] )
+
+          case Opcode.CONTEXT
+            local id = code[ ip ]
+            local name = vm.string_list[ id ]
+            ++ip
+            local obj = type_Global[ name ]
+            if (obj.is_defined)
+              stack.add( obj )
+            else
+              if (id == vm.global_id) stack.add( type_Global )
+              else                    stack.add( vm.undefined )
+            endIf
+
+          case Opcode.CALL
+            local name  = vm.string_list[ code[ip] ]
+            ip += 2
+            if (not is_retry)
+              local nargs = code[ ip - 1 ]
+              call_stack.add( StackFrame(this_method,ip,fp,arg_count,lp) )
+              fp = stack.count - (nargs+1)
+              arg_count = nargs
+            endIf
+
+            result = stack[ fp ].call( this, name )
+            if (result is BossRetry)
+              is_retry = true
+              ip -= 3
+              return result
+
+            elseIf (result is not BossContinue)
+              # We just came back from a native handler and it's up to us to
+              # clean up the stack frame.
+              is_retry = false
+              stack.discard_from( fp )
+              stack.add( result )
+              local frame = call_stack.remove_last
+              fp = frame.fp
+              arg_count = frame.arg_count
+            endIf
+
+          case Opcode.READ_ARG
+            stack.add( stack[fp+code[ip]] )
+            ++ip
+
+          case Opcode.READ_ARG_CHECKED
+            local offset = code[ip]
+            ++ip
+            if (offset < 0 or offset > arg_count)
+              stack.add( vm.undefined )
+            else
+              stack.add( stack[fp+offset] )
+            endIf
+
+          case Opcode.WRITE_ARG
+            stack[ fp+code[ip] ] = stack.remove_last
+            ++ip
+
+          case Opcode.READ_LOCAL
+            stack.add( locals[code[ip]] )
+            ++ip
+
+          case Opcode.WRITE_LOCAL
+            locals[ code[ip] ] = stack.remove_last
+            ++ip
+            }#
+
+          others
+            status = FINISHED
+            throw BossError( "[INTERNAL] Unsupported opcode @$: $ ($)" (ip-1,Opcode(code[ip-1]),code[ip-1]) )
+        endWhich
+      endLoop
+
+endClass
+

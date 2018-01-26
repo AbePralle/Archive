@@ -1,0 +1,235 @@
+module Boss
+
+class BossVM [singleton]
+  PROPERTIES
+    types = Table<<String,Type>>()
+    t = Token( TokenType.EOF ).set_position( "Boss", 0 ) : Token
+
+    type_Global = type( "Global" ) : Type
+
+    #{
+    type_Global    = BossObject()            # The Global object itself
+    type_Logical   = BossObject( "Logical" )
+    type_Number    = BossObject( "Number" )
+    type_String    = BossObject( "String" )  # Placed in Global object under name String
+    type_List      = BossObject( "List" )
+    undefined      = BossUndefined()
+    null_value     = BossNull()
+    logical_true   = BossLogicalTrue()  : BossLogical
+    logical_false  = BossLogicalFalse() : BossLogical
+    }#
+
+    old_global_statements = CmdStatements( t )
+    new_global_statements = CmdStatements( t )
+
+    real_table  = Table<<Real64,Int32>>()
+    real_list = Real64[]
+
+    string_table = StringTable<<Int32>>()
+    string_list  = String[]
+
+    is_resolved : Logical
+
+    tasks          = BossTask[]
+    updating_tasks = BossTask[]
+
+  METHODS
+    method init_object
+      BossVM = this
+
+    method init
+
+      #{
+      register( "pi", (task)=>pi )
+
+      register( "println",
+        function(task:BossTask)->BossValue
+          forEach (i in 1..task.arg_count)
+            print task.arg(i)
+          endForEach
+          println
+          return BossVM.undefined
+        endFunction )
+
+      register( "wait",
+        function(task:BossTask)->BossValue
+          if (task.is_retry)
+            local duration = task.arg(1)->Real64
+            local start_time = task.pop->Real64
+            if (System.time - start_time < duration)
+              task.push( start_time )
+              return BossRetry
+            endIf
+          else
+            task.push( System.time )
+            return BossRetry
+          endIf
+          return BossVM.undefined
+        endFunction )
+
+        #{
+      register( "Random", "integer", (task) => Random.int32 )
+      register( "String", "count", (task) => task.context->String.count )
+      }#
+
+      #{
+    method call( context:BossValue, m:Method, args=null:BossValue[] )->BossTask
+      return BossTask( this ).call( context, m, args )
+      }#
+
+      }#
+
+    method execute( source:String, callback=null:Function(Value) )->Value
+      trace "TODO"
+      #{
+      local statements = CmdStatements( BossVM.t )
+      Parser( this, statements ).parse( "execute()", source )
+
+      local task = BossTask( this ).call( type_Global, Method(this,statements), &callback=callback )
+      if (task.is_finished)
+        return task.result
+      else
+        running_tasks.add( task )
+        return BossRunning
+      endIf
+      }#
+      return NullValue
+
+    method invoke( context:String, method_name:String )->BossTask
+      local type = types[ context ]
+      if (not type) return BossTask( this )
+
+      local m = type.methods[ method_name ]
+      if (not m) return BossTask( this )
+
+      local task = BossTask( this, m )
+      tasks.add( task )
+      return task
+
+    method launch( callback=null:Function(Value) )
+      # Launch or relaunch the VM by executing all global statements
+      old_global_statements.add( new_global_statements )
+      swapValues( old_global_statements, new_global_statements )
+      old_global_statements.clear
+
+      update
+
+      if (callback) callback( NullValue )
+      #{
+      is_launched = true
+      local task = BossTask( this ).call( type_Global, m_launch, &callback=callback )
+      if (task.is_finished)
+        return task.result
+      else
+        running_tasks.add( task )
+        return BossRunning
+      endIf
+      }#
+
+    method load( file:File )
+      Parser( this ).parse( file )
+      is_resolved = false
+
+      #{
+    method parse( source:String )
+      Parser( this ).parse( "Command Line", source )
+      }#
+
+    method real_index( r:Real64 )->Int32
+      local entry = real_table.find( r )
+      if (entry) return entry.value
+
+      local result = real_list.count
+      real_list.add( r )
+      real_table[ r ] = result
+      return result
+
+    method resolve
+      if (is_resolved) return
+      is_resolved = true
+
+    method string_index( st:String )->Int32
+      local entry = string_table.find( st )
+      if (entry) return entry.value
+
+      local result = string_list.count
+      string_list.add( st )
+      string_table[ st ] = result
+      return result
+
+      #{
+    method register( method_name:String, handler:Function(BossTask)->BossValue )
+      register( "Global", method_name, handler )
+
+    method register( context_name:String, method_name:String, handler:Function(BossTask)->BossValue )
+      register( context_name, Method(this,method_name,handler) )
+
+    method register( context_name:String, m:Method )
+      local context : BossValue
+      if (context_name == "Global")
+        context = type_Global
+      else
+        context = type_Global[ context_name ]
+        if (context.is_undefined)
+          context = BossObject()
+          type_Global[ context_name ] = context
+        endIf
+      endIf
+      context[ m.name ] = m
+      }#
+
+    method type( name:String )->Type
+      return type( t, name )
+
+    method type( type_t:Token, name:String )->Type
+      local result = types[ name ]
+      if (result)
+        if (type_t is not this.t) result.t = type_t
+        return result
+      endIf
+
+      result = Type( this, type_t, name )
+      types[ name ] = result
+      return result
+
+    method update->Logical
+      resolve
+
+      if (new_global_statements.count)
+        local m_launch = type_Global.add_method( "on_launch" )
+
+        new_global_statements = new_global_statements.resolved
+
+        new_global_statements.write( m_launch )
+        old_global_statements.add( new_global_statements )
+        new_global_statements.clear
+
+        m_launch.resolve
+        invoke( "Global", "on_launch" )
+      endIf
+
+      updating_tasks.clear.add( tasks )
+      tasks.clear
+      forEach (task in updating_tasks)
+        if (task.execute)
+          # Task needs to run again next time
+          tasks.add( task )
+        endIf
+      endForEach
+
+      return tasks.count?
+
+      #{
+      # Returns true if any tasks are still running.
+      if (running_tasks.is_empty) return false
+
+      active_tasks.clear.add( running_tasks )
+      running_tasks.clear
+      forEach (task in active_tasks)
+        if (task.execute is BossRetry) running_tasks.add( task )
+      endForEach
+      active_tasks.clear
+      return (not running_tasks.is_empty)
+      }#
+
+endClass

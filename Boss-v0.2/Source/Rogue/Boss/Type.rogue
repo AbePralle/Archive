@@ -1,0 +1,20 @@
+module Boss
+
+class Type
+  PROPERTIES
+    vm      : BossVM
+    t       : Token
+    name    : String
+    methods = StringTable<<Method>>()
+
+  METHODS
+    method init( vm, t, name )
+
+    method add_method( m_name:String )->Method
+      return add_method( t, m_name )
+
+    method add_method( m_t:Token, m_name:String )->Method
+      local m = Method( vm, m_t, m_name )
+      methods[ m_name ] = m
+      return m
+endClass

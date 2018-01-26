@@ -1,0 +1,8 @@
+module Boss
+
+class Scope [singleton]
+  PROPERTIES
+    #this_entity : Entity
+    #this_method : BossMethod
+    locals      = String[]
+endClass

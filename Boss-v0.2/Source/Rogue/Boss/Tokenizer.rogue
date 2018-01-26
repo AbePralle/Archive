@@ -1,0 +1,137 @@
+module Boss
+
+class Tokenizer
+  PROPERTIES
+    filename      : String
+    scanner       : Scanner
+    tokens        = Token[]
+    buffer        = StringBuilder()
+
+  METHODS
+    method tokenize( file:File )->Token[]
+      if (not file.exists) throw BossError( ''No such file "$".'' (file.filepath) )
+      return tokenize( file.filepath, file.load_as_string )
+
+    method tokenize( filepath:String, source:String )->Token[]
+      tokens = Token[]
+      filename = File.filename( filepath )
+
+      scanner = Scanner( source )
+      tokenize
+      return tokens
+
+    method tokenize
+      while (tokenize_another) noAction
+      tokens.add( Token(TokenType.EOF) )
+
+    method tokenize_another->Logical
+      consume_spaces
+      Token.next_filename = filename
+      Token.next_line = scanner.line
+
+      if (not scanner.has_another) return false
+
+      local ch = scanner.peek
+
+      if (ch == '#')
+        # Discard comments up through EOL
+        while (scanner.has_another)
+          ch = scanner.read
+          if (ch == '\n') return true
+        endWhile
+        return true
+      endIf
+
+      if (ch == '\n')
+        scanner.read
+        tokens.add( Token(TokenType.EOL) )
+        return true
+      endIf
+
+      if (TokenType.symbols.contains(ch))
+        if (tokenize_symbol(ch)) return true
+      endIf
+
+      if (ch.is_letter or ch == '_')
+        buffer.clear.print( scanner.read )
+        while (scanner.has_another)
+          ch = scanner.peek
+          if (ch.is_alphanumeric or ch == '_')
+            buffer.print( scanner.read )
+          else
+            escapeWhile
+          endIf
+        endWhile
+        local keyword_type = TokenType.keywords[ buffer ]
+        if (keyword_type) tokens.add( Token(keyword_type) )
+        else              tokens.add( Token(TokenType.IDENTIFIER,buffer->String) )
+
+      elseIf (ch.is_number)
+        buffer.clear.print( scanner.read )
+        while (scanner.has_another)
+          ch = scanner.peek
+          if (ch.is_number)
+            buffer.print( scanner.read )
+          else
+            escapeWhile
+          endIf
+        endWhile
+        tokens.add( Token(buffer->String->Int32) )
+
+      elseIf (ch == '\'')
+        if (scanner.peek(1) == '\'')
+          if (not tokenize_string( "''" )) return false
+          tokens.add( Token('"' + tokens.remove_last->String + '"') )
+          return true
+        else
+          return tokenize_string( "'" )
+        endIf
+
+      elseIf (ch == '"')
+        return tokenize_string( "\"" )
+
+      else
+        throw BossError( filename, scanner.line, "Syntax error: unexpected '$'." (ch) )
+
+      endIf
+
+      return true
+
+    method consume_spaces->Logical
+      local consumed_any = false
+      while (scanner.consume_spaces) consumed_any = true
+      return consumed_any
+
+    method tokenize_string( terminator:String )->Logical
+      local line = scanner.line
+
+      scanner.consume( terminator )
+
+      buffer.clear
+      while (scanner.has_another)
+        if (scanner.consume(terminator))
+          tokens.add( Token(buffer->String) )
+          return true
+        endIf
+        buffer.print( scanner.read )
+      endWhile
+
+      throw BossError( filename, line, ''Missing closing $ on literal text.'' (terminator) )
+
+      return false
+
+    method tokenize_symbol( first_ch:Character )->Logical
+      local candidates = TokenType.symbols[ first_ch ]
+
+      # Candidates are ordered from most characters to least - the first one to fully match is the best choice
+      forEach (candidate in candidates)
+        if (scanner.consume(candidate.name))
+          tokens.add( Token(candidate) )
+          return true
+        endIf
+      endForEach
+
+      return false
+
+endClass
+
