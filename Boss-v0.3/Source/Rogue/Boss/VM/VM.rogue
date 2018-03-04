@@ -1,0 +1,4 @@
+module Boss
+
+$include "Boss/VM/BossVM.rogue"
+
