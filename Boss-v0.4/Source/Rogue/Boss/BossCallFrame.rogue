@@ -1,0 +1,4 @@
+module Boss
+
+class BossCallFrame( m:BossMethod, fp:Int32, arg_count:Int32, lp:Int32, sp:Int32, ip=0:Int32 ) [compound]
+endClass

@@ -1,0 +1,35 @@
+module Boss
+
+$include "Boss/Boss.rogue"
+
+BossConsole()
+
+class Point( x:Int32, y:Int32 ) [api]
+  METHODS
+    method to->String
+      return "($,$)" (x,y)
+endClass
+
+class BossConsole
+  PROPERTIES
+    vm = BossVM()
+
+  METHODS
+    method init
+      loop
+        local text = Console.input( "Boss> " ).trimmed
+        if (text.count == 0)
+          escapeLoop
+        else
+          vm.global_statements.clear
+          if (vm.parse("[Command Line]", text))
+            if (vm.global_statements and vm.global_statements.count)
+              vm.global_statements.last = BossCmdPrintln( vm.global_statements.first.t, vm.global_statements.last )
+              vm.run
+            endIf
+          endIf
+          vm.print_errors
+        endIf
+      endLoop
+
+endClass

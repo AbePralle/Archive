@@ -1,0 +1,374 @@
+module Boss
+
+class BossCmd
+  PROPERTIES
+    t : BossToken
+
+  METHODS
+    method init( t )
+
+    method execute( vm:BossVM )
+      throw BossError( "$.execute() is undefined." (type_name) )
+
+    method resolved( scope:BossScope )->BossCmd
+      throw UnsupportedOperationError()
+endClass
+
+class BossStatements
+  PROPERTIES
+    statements = BossCmd[]
+
+  METHODS
+    method add( statement:BossCmd )->this
+      statements.add( statement )
+      return this
+
+    method clear->this
+      statements.clear
+      return this
+
+    method count->Int32 [macro]
+      this.statements.count
+
+    method execute( vm:BossVM )
+      if (statements.is_empty)
+        vm.push_undefined
+      else
+        statements.first.execute( vm )
+        forEach (statement in statements from 1)
+          vm.type_stack.remove_last
+          statement.execute( vm )
+        endForEach
+      endIf
+
+    method first->BossCmd [macro]
+      this.statements.first
+
+    method get( index:Int32 )->BossCmd [macro]
+      this.statements[ index ]
+
+    method last->BossCmd [macro]
+      this.statements.last
+
+    method resolve( scope:BossScope )
+      forEach (statement at index in statements)
+        statements[ index ] = statement.resolved( scope )
+      endForEach
+
+    method set( index:Int32, cmd:BossCmd )->this
+      statements[ index ] = cmd
+      return this
+
+    method set_last( cmd:BossCmd ) [macro]
+      this.statements.last = cmd
+
+    method to->String
+      use builder = StringBuilder.pool
+        forEach (cmd in this)
+          builder.println( cmd->String )
+        endForEach
+        return builder->String
+      endUse
+endClass
+
+class BossArgs
+  PROPERTIES
+    args = BossCmd[]
+
+  METHODS
+    method add( arg:BossCmd )->this
+      args.add( arg )
+      return this
+
+    method count->Int32 [macro]
+      this.args.count
+
+    method execute( vm:BossVM )
+      (forEach in args).execute( vm )
+
+    method get( index:Int32 )->BossCmd [macro]
+      this.args[ index ]
+
+    method resolve( scope:BossScope )
+      forEach (arg at index in args)
+        args[ index ] = arg.resolved( scope )
+      endForEach
+endClass
+
+class BossCmdUnaryOp : BossCmd
+  PROPERTIES
+    operand : BossCmd
+
+  METHODS
+    method init( t, operand )
+
+    method execute( vm:BossVM )
+      operand.execute( vm )
+      operate( vm )
+
+    method operate( vm:BossVM )
+      throw BossError( "$.operate() is undefined." (type_name) )
+endClass
+
+
+class BossCmdNot : BossCmdUnaryOp
+  METHODS
+    method operate( vm:BossVM )
+      trace "TODO"
+endClass
+
+
+class BossCmdBinaryOp : BossCmd
+  PROPERTIES
+    left, right : BossCmd
+
+  METHODS
+    method init( t, left, right )
+
+    method execute( vm:BossVM )
+      left.execute( vm )
+      right.execute( vm )
+      operate( vm )
+
+    method operate( vm:BossVM )
+      throw BossError( "$.operate() is undefined." (type_name) )
+
+    method resolved( scope:BossScope )->BossCmd
+      left = left.resolved( scope )
+      right = right.resolved( scope )
+      return this
+
+endClass
+
+class BossCmdAdd : BossCmdBinaryOp
+  METHODS
+    method operate( vm:BossVM )
+      local rhs_type = vm.type_stack.remove_last
+      local lhs_type = vm.type_stack.remove_last
+      local sp = vm.type_stack.count
+
+      if (lhs_type.is_string or rhs_type.is_string)
+        vm.push( lhs_type->String(sp) + rhs_type->String(sp+1) )
+      else
+        vm.push( lhs_type->Real64(sp) + rhs_type->Real64(sp+1) )
+      endIf
+
+    method to->String
+      return "$ + $" (left,right)
+endClass
+
+class BossCmdSubtract : BossCmdBinaryOp
+  METHODS
+    method operate( vm:BossVM )
+      local rhs_type = vm.type_stack.remove_last
+      local lhs_type = vm.type_stack.remove_last
+      local sp = vm.type_stack.count
+      vm.push( lhs_type->Real64(sp) - rhs_type->Real64(sp+1) )
+
+    method to->String
+      return "$ - $" (left,right)
+endClass
+
+class BossCmdMultiply : BossCmdBinaryOp
+  METHODS
+    method operate( vm:BossVM )
+      local rhs_type = vm.type_stack.remove_last
+      local lhs_type = vm.type_stack.remove_last
+      local sp = vm.type_stack.count
+      vm.push( lhs_type->Real64(sp) * rhs_type->Real64(sp+1) )
+
+    method to->String
+      return "$ * $" (left,right)
+endClass
+
+class BossCmdDivide : BossCmdBinaryOp
+  METHODS
+    method operate( vm:BossVM )
+      local rhs_type = vm.type_stack.remove_last
+      local lhs_type = vm.type_stack.remove_last
+      local sp = vm.type_stack.count
+      vm.push( lhs_type->Real64(sp) / rhs_type->Real64(sp+1) )
+
+    method to->String
+      return "$ / $" (left,right)
+endClass
+
+class BossCmdMod : BossCmdBinaryOp
+  METHODS
+    method operate( vm:BossVM )
+      local rhs_type = vm.type_stack.remove_last
+      local lhs_type = vm.type_stack.remove_last
+      local sp = vm.type_stack.count
+      local a = lhs_type->Real64(sp)
+      local b = rhs_type->Real64(sp+1)
+      local q = a / b
+      vm.push( a - q.floor*b )
+
+    method to->String
+      return "$ % $" (left,right)
+endClass
+
+class BossCmdPower : BossCmdBinaryOp
+  METHODS
+    method operate( vm:BossVM )
+      local rhs_type = vm.type_stack.remove_last
+      local lhs_type = vm.type_stack.remove_last
+      local sp = vm.type_stack.count
+      vm.push( lhs_type->Real64(sp) ^ rhs_type->Real64(sp+1) )
+
+    method to->String
+      return "$ ^ $" (left,right)
+endClass
+
+class BossCmdLiteral : BossCmd
+  METHODS
+    method resolved( scope:BossScope )->BossCmd
+      return this
+endClass
+
+class BossCmdLiteralLogical( t, value:Logical ) : BossCmdLiteral
+  METHODS
+    method execute( vm:BossVM )
+      vm.type_stack.add( vm.type_Logical )
+      vm.number_stack.expand_to_count( vm.type_stack.count ).add( value )
+endClass
+
+class BossCmdLiteralReal64( t, value:Real64 ) : BossCmdLiteral
+  METHODS
+    method execute( vm:BossVM )
+      vm.push( value )
+
+    method to->String
+      return value->String
+endClass
+
+class BossCmdLiteralString( t, value:String ) : BossCmdLiteral
+  METHODS
+    method execute( vm:BossVM )
+      vm.push( value )
+endClass
+
+class BossCmdLiteralUndefined : BossCmdLiteral
+  METHODS
+    method execute( vm:BossVM )
+      vm.push_undefined
+endClass
+
+class BossCmdPrintln( t, operand:BossCmd ) : BossCmd
+  METHODS
+    method execute( vm:BossVM )
+      operand.execute( vm )
+      println vm.peek_string
+
+    method resolved( scope:BossScope )->BossCmd
+      operand = operand.resolved( scope )
+      return this
+endClass
+
+
+class BossCmdReturn( t, result:BossCmd ) : BossCmd
+  METHODS
+    method execute( vm:BossVM )
+      trace "TODO"
+endClass
+
+
+class BossCmdAssign( t, target:BossCmd, new_value:BossCmd ) : BossCmd
+  METHODS
+    method execute( vm:BossVM )
+      trace "TODO"
+endClass
+
+
+class BossCmdIf : BossCmd
+  PROPERTIES
+    condition       : BossCmd
+    statements      = BossStatements()
+    else_statements : BossStatements
+
+  METHODS
+    method init( t, condition )
+
+    method execute( vm:BossVM )
+      trace "TODO"
+endClass
+
+
+class BossCmdAccess : BossCmd
+  PROPERTIES
+    context : BossCmd
+    name    : String
+    args    : BossArgs
+
+  METHODS
+    method init( t, context, name )
+
+    method add_arg( arg:BossCmd )->this
+      ensure args
+      args.add( arg )
+      return this
+
+    method resolved( scope:BossScope )->BossCmd
+      local idx = scope.vm.idx( name )
+
+      if (not context)
+        if (scope.vm.native_constructors.contains(idx))
+          return BossCmdCreateObject( t, idx, args ).resolved( scope )
+        endIf
+      endIf
+
+      if (args and args.count)
+        trace "TODO"
+        return this
+      elseIf (context)
+        return BossCmdGetContext( t, context, idx ).resolved( scope )
+      else
+        trace "TODO"
+        return this
+      endIf
+endClass
+
+
+class BossCmdCachedAccess : BossCmd
+  PROPERTIES
+    idx     : Int32
+endClass
+
+
+class BossCmdGetContext : BossCmdCachedAccess
+  PROPERTIES
+    context : BossCmd
+
+  METHODS
+    method init( t, context, idx )
+
+    method execute( vm:BossVM )
+      context.execute( vm )
+      vm.arg_type( 0 ).get( this )
+
+    method resolved( scope:BossScope )->BossCmd
+      context = context.resolved( scope )
+      return this
+endClass
+
+class BossCmdCreateObject : BossCmd
+  PROPERTIES
+    idx  : Int32
+    args : BossArgs
+
+  METHODS
+    method init( t, idx, args )
+
+    method execute( vm:BossVM )
+      local fn = vm.native_constructors[ idx ]
+      if (fn)
+        if (args) args.execute( vm )
+        fn( vm )
+      endIf
+      vm._store_result
+
+    method resolved( scope:BossScope )->BossCmd
+      if (args) args.resolve( scope )
+      return this
+endClass
+

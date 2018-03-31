@@ -1,0 +1,145 @@
+module Boss
+
+class BossTokenType
+  GLOBAL PROPERTIES
+    keywords = StringTable<<BossTokenType>>()
+    symbols  = Table<<Character,BossTokenType[]>>()
+
+    EOL                  = BossTokenType( "end of line" )
+    IDENTIFIER           = BossIdentifierTokenType( "identifier" )
+    STRING               = BossTokenType( "string" )
+    INT32                = BossTokenType( "integer" )
+    EOI                  = BossTokenType( "end of input", &is_structural )
+
+    CLASS                = BossKeywordTokenType( "class", &is_structural )
+
+    ELSE                 = BossKeywordTokenType( "else", &is_structural )
+    ELSE_IF              = BossKeywordTokenType( "elseIf", &is_structural )
+    END_CLASS            = BossKeywordTokenType( "endClass", &is_structural )
+    END_IF               = BossKeywordTokenType( "endIf", &is_structural )
+
+    IF                   = BossKeywordTokenType( "if" )
+
+    FALSE                = BossKeywordTokenType( "false" )
+    NOT                  = BossKeywordTokenType( "not" )
+    RETURN               = BossKeywordTokenType( "return" )
+    THIS                 = BossKeywordTokenType( "this" )
+    TRUE                 = BossKeywordTokenType( "true" )
+
+    SYMBOL_CLOSE_BRACKET = BossSymbolTokenType( "]", &is_structural )
+    SYMBOL_CLOSE_PAREN   = BossSymbolTokenType( ")", &is_structural )
+    SYMBOL_COMMA         = BossSymbolTokenType( ",", &is_structural )
+
+    SYMBOL_AMPERSAND     = BossSymbolTokenType( "&" )
+    SYMBOL_AT            = BossSymbolTokenType( "@" )
+    SYMBOL_DOT           = BossSymbolTokenType( "." )
+    SYMBOL_COMPARE_EQ    = BossSymbolTokenType( "==" )
+    SYMBOL_COMPARE_NE    = BossSymbolTokenType( "!=" )
+    SYMBOL_COMPARE_LT    = BossSymbolTokenType( "<" )
+    SYMBOL_COMPARE_GT    = BossSymbolTokenType( ">" )
+    SYMBOL_COMPARE_LE    = BossSymbolTokenType( "<=" )
+    SYMBOL_COMPARE_GE    = BossSymbolTokenType( ">=" )
+    SYMBOL_EQUALS        = BossSymbolTokenType( "=" )
+    SYMBOL_MINUS         = BossSymbolTokenType( "-" )
+    SYMBOL_OPEN_BRACKET  = BossSymbolTokenType( "[" )
+    SYMBOL_OPEN_PAREN    = BossSymbolTokenType( "(" )
+    SYMBOL_PERCENT       = BossSymbolTokenType( "%" )
+    SYMBOL_PLUS          = BossSymbolTokenType( "+" )
+    SYMBOL_SEMICOLON     = BossSymbolTokenType( ";" )
+    SYMBOL_SLASH         = BossSymbolTokenType( "/" )
+    SYMBOL_TIMES         = BossSymbolTokenType( "*" )
+
+  PROPERTIES
+    name          : String
+    is_structural : Logical
+
+  METHODS
+    method init( name, is_structural=false )
+
+    method quoted( t:BossToken )->String
+      return this->String
+
+    method to->String
+      return name
+endClass
+
+class BossIdentifierTokenType : BossQuotedTokenType
+  METHODS
+    method quoted( t:BossToken )->String
+      return "'$'" (t.string)
+endClass
+
+class BossQuotedTokenType : BossTokenType
+  METHODS
+    method quoted( t:BossToken )->String
+      return "'$'" (this->String)
+endClass
+
+class BossKeywordTokenType : BossQuotedTokenType
+  METHODS
+    method init( name, is_structural=false )
+      BossTokenType.keywords[ name ] = this
+endClass
+
+class BossSymbolTokenType : BossQuotedTokenType
+  METHODS
+    method init( name, is_structural=false )
+      local first_ch = name[0]
+      if (not BossTokenType.symbols.contains(first_ch))
+        BossTokenType.symbols[ first_ch ] = BossTokenType[]
+      endIf
+      BossTokenType.symbols[ first_ch ].add( this ).sort( (a,b)=>(a.name.count>=b.name.count) )
+endClass
+
+
+class BossToken
+  GLOBAL PROPERTIES
+    next_filename : String
+    next_line     : Int32
+
+  PROPERTIES
+    type                     : BossTokenType
+    filename = next_filename : String
+    line = next_line         : Int32
+    string                   : String
+    number                   : Real64
+
+  METHODS
+    method init( type, string=null )
+
+    method init( type, number )
+
+    method init( string )
+      type = BossTokenType.STRING
+
+    method init( value:Int32 )
+      type = BossTokenType.INT32
+      number = value
+
+    method error( message:String )->BossError
+      return BossError( filename, line, message )
+
+    method is_structural->Logical
+      return type.is_structural
+
+    method quoted->String
+      return type.quoted( this )
+
+    method set_position( filename, line )->this
+      return this
+
+    method to->Logical
+      return number->Logical
+
+    method to->Int32
+      return number->Int32
+
+    method to->Real64
+      return number->Real64
+
+    method to->String
+      if (string) return string
+      return type->String
+
+endClass
+

@@ -1,0 +1,252 @@
+module Boss
+
+class BossType
+  PROPERTIES
+    vm               : BossVM
+    name             : String
+    type_index       : Int32
+
+    native_functions : Table<<Int32,Function(BossVM)>>
+
+  METHODS
+    method init( vm, name )
+      type_index = vm.types.count
+      vm.types.add( this )
+      vm.type_lookup[ name ] = this
+
+      native_functions = vm.native_functions[ name ]
+
+    method copy( from_sp:Int32, to_sp:Int32 )
+      throw UnsupportedOperationError()
+
+    method get( cmd:BossCmdCachedAccess )
+      # Context object and args will be on the VM stack
+      if (native_functions)
+        local fn = native_functions.get( cmd.idx )
+        if (fn)
+          fn( vm )
+          vm._store_result
+          return
+        endIf
+      endIf
+      vm.push_undefined._store_result
+
+    method is_logical->Logical
+      return false
+
+    method is_native->Logical
+      return false
+
+    method is_null->Logical
+      return false
+
+    method is_number->Logical
+      return false
+
+    method is_numeric->Logical
+      return false
+
+    method is_object->Logical
+      return false
+
+    method is_string->Logical
+      return false
+
+    method is_undefined->Logical
+      return false
+
+    method register( fn_name:String, fn:Function(BossVM) )
+      if (not native_functions)
+        # Make sure this local fn table is the same one stored in the VM's global fn table
+        vm.register( name, fn_name, fn )
+        native_functions = vm.native_functions[ name ]
+      else
+        native_functions[ vm.idx(fn_name) ] = fn
+      endIf
+
+    method resolve
+
+    method set( name:String )
+      # Context object and args will be on the VM stack
+      set( vm.idx(name) )
+
+    method set( idx:Int32 )
+      # Context object and args will be on the VM stack
+      vm.push_undefined
+
+    method to->Int32( sp:Int32 )
+      return this->Real64( sp )->Int32
+
+    method to->Logical( sp:Int32 )
+      return this->Real64( sp )?
+
+    method to->Object( sp:Int32 )
+      return null
+
+    method to->Real64( sp:Int32 )
+      throw UnsupportedOperationError()
+
+    method to->String( sp:Int32 )
+      throw UnsupportedOperationError()
+
+    method to->String
+      return name
+endClass
+
+
+class BossTypeLogical : BossType
+  METHODS
+    method init( vm:BossVM )
+      prior.init( vm, "Logical" )
+
+    method copy( from_sp:Int32, to_sp:Int32 )
+      vm.type_stack.set_x( to_sp, vm.type_stack[from_sp] )
+      vm.number_stack.set_x( to_sp, vm.number_stack[from_sp] )
+
+    method is_logical->Logical
+      return true
+
+    method is_numeric->Logical
+      return true
+
+    method to->Real64( sp:Int32 )
+      return ?:{ vm.number_stack[ sp ]:1.0 || 0.0 }
+
+    method to->String( sp:Int32 )
+      return ?:{ vm.number_stack[ sp ]:"true" || "false" }
+endClass
+
+
+class BossTypeNative : BossType
+  METHODS
+    method copy( from_sp:Int32, to_sp:Int32 )
+      vm.type_stack.set_x( to_sp, vm.type_stack[from_sp] )
+      vm.object_stack.set_x( to_sp, vm.object_stack[from_sp] )
+
+    method is_native->Logical
+      return true
+
+    method to->Object( sp:Int32 )
+      return vm.object_stack[ sp ]
+
+    method to->Real64( sp:Int32 )
+      return NaN
+
+    method to->String( sp:Int32 )
+      return vm.object_stack[ sp ]->String
+endClass
+
+
+class BossTypeNull : BossType
+  METHODS
+    method init( vm:BossVM )
+      prior.init( vm, "null" )
+
+    method copy( from_sp:Int32, to_sp:Int32 )
+      vm.type_stack.set_x( to_sp, vm.type_stack[from_sp] )
+
+    method is_null->Logical
+      return true
+
+    method is_numeric->Logical
+      return true
+
+    method to->Real64( sp:Int32 )
+      return 0
+
+    method to->String( sp:Int32 )
+      return "null"
+endClass
+
+
+class BossTypeNumber : BossType
+  METHODS
+    method init( vm:BossVM )
+      prior.init( vm, "Number" )
+
+    method copy( from_sp:Int32, to_sp:Int32 )
+      vm.type_stack.set_x( to_sp, vm.type_stack[from_sp] )
+      vm.number_stack.set_x( to_sp, vm.number_stack[from_sp] )
+
+    method is_number->Logical
+      return true
+
+    method is_numeric->Logical
+      return true
+
+    method to->Real64( sp:Int32 )
+      return vm.number_stack[ sp ]
+
+    method to->String( sp:Int32 )
+      local n = vm.number_stack[ sp ]
+      if (n->Int32 == n) return n->Int32->String  # omit the ".0"
+      return n->String
+endClass
+
+
+class BossTypeObject : BossType
+  METHODS
+    method copy( from_sp:Int32, to_sp:Int32 )
+      vm.type_stack.set_x( to_sp, vm.type_stack[from_sp] )
+      vm.object_stack.set_x( to_sp, vm.object_stack[from_sp] )
+
+    method is_object->Logical
+      return true
+
+    method to->Object( sp:Int32 )
+      return vm.object_stack[ sp ]
+
+    method to->Real64( sp:Int32 )
+      return NaN
+
+    method to->String( sp:Int32 )
+      return name
+endClass
+
+
+class BossTypeString : BossType
+  PROPERTIES
+    native_type = TypeInfo//String : TypeInfo
+
+  METHODS
+    method init( vm:BossVM )
+      prior.init( vm, "String" )
+
+    method copy( from_sp:Int32, to_sp:Int32 )
+      vm.type_stack.set_x( to_sp, vm.type_stack[from_sp] )
+      vm.object_stack.set_x( to_sp, vm.object_stack[from_sp] )
+
+    method is_string->Logical
+      return true
+
+    method to->Object( sp:Int32 )
+      return vm.object_stack[ sp ]
+
+    method to->Real64( sp:Int32 )
+      return (vm.object_stack[ sp ] as String)->Real64
+
+    method to->String( sp:Int32 )
+      return vm.object_stack[ sp ]->String
+endClass
+
+class BossTypeUndefined : BossType
+  METHODS
+    method init( vm:BossVM )
+      prior.init( vm, "undefined" )
+
+    method copy( from_sp:Int32, to_sp:Int32 )
+      vm.type_stack.set_x( to_sp, vm.type_stack[from_sp] )
+
+    method is_numeric->Logical
+      return true
+
+    method is_undefined->Logical
+      return true
+
+    method to->Real64( sp:Int32 )
+      return NaN
+
+    method to->String( sp:Int32 )
+      return "undefined"
+endClass
+

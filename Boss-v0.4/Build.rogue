@@ -1,0 +1,77 @@
+# To run this build file, install Rogue from github.com/AbePralle/Rogue and type "rogo" at the command line.
+
+#$ ROGUEC_ARGS = --api
+
+routine rogo_default
+  rogo_compile
+endRoutine
+
+routine rogo_vim
+  System.run @|mvim -p Source/Rogue/Boss/Boss.rogue
+endRoutine
+
+routine rogo_compile
+  if (Files("Source/Rogue/Boss/*.rogue").any_newer_than("Build/Rogue/boss"))
+    File.create_folder( "Build/Rogue" )
+    local cmd = @|roguec Source/Rogue/Boss/BossConsole.rogue --compile --output=Build/Rogue/Boss --debug
+    if (0 != rogo_run(cmd)) return
+  endIf
+  rogo_run( "Build/Rogue/boss" )
+endRoutine
+
+routine rogo_run( cmd:String )->Int32
+  println "> " + cmd
+  return System.run( cmd )
+endRoutine
+
+routine rogo_clean
+  rogo_run( "rm -rf Build" )
+  rogo_run( "rm -rf .rogo" )
+endRoutine
+
+routine rogo_help
+  println "USAGE"
+  local lines = String[]
+  forEach (m in <<Global>>.methods)
+    if (m.name.begins_with(method_prefix))
+      local line = "  rogo $" (m.name.after_first(method_prefix))
+      line += " <$>" (m.parameter_name(forEach in 0..<m.parameter_count))
+      lines.add( line )
+    endIf
+  endForEach
+  lines.sort( (a,b)=>(a<b) )
+  println (forEach in lines)
+endRoutine
+
+
+#------------------------------------------------------------------------------
+# Process command line arguments and invoke appropriate function
+#------------------------------------------------------------------------------
+global method_prefix = ?:{ $moduleName.count:$moduleName "::" || "" } + "rogo_" : String
+
+local args = @[]
+args.add( forEach in System.command_line_arguments )
+
+if (args.count)
+  run( args.remove_first, args )
+else
+  rogo_default
+endIf
+
+routine run( cmd:String, args:Value )
+  try
+    local m = <<Global>>.find_method( method_prefix + cmd )
+    if (m)
+      if (m.parameter_count == 1 and args.count > 1)
+        # Wrap all args in a ValueList.
+        args = @[ args ]
+      endIf
+      m.call( Global, args )
+    else
+      rogo_help
+    endIf
+  catch (err:Error)
+    rogo_help
+  endTry
+endRoutine
+

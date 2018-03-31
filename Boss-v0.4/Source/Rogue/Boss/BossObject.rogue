@@ -1,0 +1,4 @@
+module Boss
+
+class BossObject
+endClass

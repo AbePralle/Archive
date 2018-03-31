@@ -1,0 +1,371 @@
+module Boss
+
+class BossParser
+  PROPERTIES
+    vm                : BossVM
+    filename          : String
+    tokens            = BossToken[]
+    token_reader      : ListReader<<BossToken>>
+
+  METHODS
+    method init( vm )
+
+    method parse( file:File )
+      parse( BossTokenizer().tokenize(file) )
+
+    method parse( filename, source:String )
+      parse( BossTokenizer().tokenize(filename,source) )
+
+    method parse( tokens )
+      token_reader = tokens.reader
+
+      while (parse_element) noAction
+      must_consume( BossTokenType.EOI )
+
+    method consume_eols->Logical
+      local consumed_any = false
+      while (token_reader.has_another and token_reader.peek.type is BossTokenType.EOL)
+        token_reader.read
+        consumed_any = true
+      endWhile
+      return consumed_any
+
+    method consume_eof->Logical
+      local t = peek
+      if (t.type != BossTokenType.EOI) return false
+      read
+      return true
+
+    method consume( token_type:BossTokenType )->Logical
+      if (peek.type != token_type) return false
+      read
+      return true
+
+    method must_consume( token_type:BossTokenType )
+      local t = peek
+      if (t.type != token_type) throw t.error( "Expected '$', found '$'." (token_type.name,t.type.name) )
+      read
+
+    method must_consume_eols
+      must_consume( BossTokenType.EOL )
+      while (consume(BossTokenType.EOL)) noAction
+
+    method consume_id( name:String )->Logical
+      local t = peek
+      if (t.type != BossTokenType.IDENTIFIER or t->String != name) return false
+      read
+      return true
+
+    method has_another->Logical
+      return token_reader.has_another
+
+    method at_end_of_command->Logical
+      local type = peek.type
+      return (type is BossTokenType.EOL or type is BossTokenType.SYMBOL_SEMICOLON)
+
+    method next_is( token_type:BossTokenType )->Logical
+      return (peek.type is token_type)
+
+    method next_is_id->Logical
+      return (peek.type is BossTokenType.IDENTIFIER)
+
+    method next_is_string->Logical
+      return (peek.type is BossTokenType.STRING)
+
+    method next_is_structural->Logical
+      return peek.type.is_structural
+
+    method next_is_text->Logical
+      local type = peek.type
+      return (type is BossTokenType.IDENTIFIER or type is BossTokenType.STRING)
+
+    method peek( skip=0:Int32 )->BossToken
+      local index = token_reader.position + skip
+      if (index >= tokens.count) return tokens.last  # EOI token
+      return tokens[ index ]
+
+    method peek_id->String
+      local t = peek
+      if (t.type is BossTokenType.IDENTIFIER)
+        return t->String
+      else
+        throw t.error( "Identifier expected." )
+      endIf
+
+    method read->BossToken
+      if (not token_reader.has_another) return tokens.last  # EOI
+      return token_reader.read
+
+    method read_id->String
+      local t = peek
+      if (t.type is BossTokenType.IDENTIFIER)
+        read
+        return t->String
+      else
+        throw t.error( "Identifier expected." )
+      endIf
+
+    method read_entity_id->String
+      consume( BossTokenType.SYMBOL_AT )  # optional
+      return read_id
+
+    method read_int32->String
+      local t = peek
+      if (t.type is BossTokenType.INT32)
+        read
+        return t->Int32
+      else
+        throw t.error( "Integer expected." )
+      endIf
+
+    method read_string->String
+      local t = peek
+      if (t.type is BossTokenType.STRING)
+        read
+        return t->String
+      else
+        throw t.error( "String expected." )
+      endIf
+
+    method read_text->String
+      local t = peek
+      if (t.type is BossTokenType.IDENTIFIER or t.type is BossTokenType.STRING)
+        read
+        return t->String
+      else
+        throw t.error( "Identifier or string expected." )
+      endIf
+
+    method parse_element->Logical
+      consume_eols
+      if (next_is(BossTokenType.EOI)) return false
+
+      #{
+      if (next_is(BossTokenType.CLASS))
+        parse_class
+        return true
+      endIf
+      }#
+
+      local t = peek
+      parse_statements( vm.global_statements )
+      return (peek is not t)
+
+      #{
+    method parse_class
+      local t = read  # 'class'
+      local name = read_id
+      must_consume_eols
+
+      local type = vm.types[ name ]
+      if (not type)
+        type = Type( t, name )
+        vm.types[ name ] = type
+      endIf
+
+      must_consume( BossTokenType.END_CLASS )
+      }#
+
+    method parse_statements( statements:BossStatements, end_type=null:BossTokenType )
+      if (consume_eols)
+        parse_multi_line_statements( statements )
+        if (end_type) must_consume( end_type )
+      else
+        parse_single_line_statements( statements )
+        consume_eols
+      endIf
+
+    method parse_single_line_statements( statements:BossStatements )
+      while (parse_statement(statements))
+        if (not consume(BossTokenType.SYMBOL_SEMICOLON)) return
+        while (consume(BossTokenType.SYMBOL_SEMICOLON)) noAction
+        if (next_is(BossTokenType.EOL)) return
+      endWhile
+
+    method parse_multi_line_statements( statements:BossStatements )
+      while (parse_statement(statements,&allow_control_structures))
+        while (consume_eols or consume(BossTokenType.SYMBOL_SEMICOLON)) noAction
+      endWhile
+
+    method parse_statement( statements:BossStatements, &allow_control_structures )->Logical
+      consume_eols
+      if (not has_another) return false
+
+      local t = peek
+      if (t.is_structural) return false
+
+      if (allow_control_structures)
+        if (consume(BossTokenType.IF))
+          parse_if( t, statements )
+          return true
+        endIf
+      endIf
+
+      if (consume(BossTokenType.RETURN))
+        if (at_end_of_command)
+          statements.add( BossCmdReturn(t,BossCmdLiteralUndefined(t)) )
+        else
+          statements.add( BossCmdReturn(t,parse_expression) )
+        endIf
+        return true
+
+      else
+        local expr = parse_expression
+        if (consume(BossTokenType.SYMBOL_EQUALS))
+          statements.add( BossCmdAssign(t,expr,parse_expression) )
+        else
+          statements.add( expr )
+        endIf
+        return true
+
+      endIf
+
+    method parse_if( t:BossToken, statements:BossStatements )
+      local cmd_if = BossCmdIf( t, parse_expression )
+      statements.add( cmd_if )
+      if (consume_eols)
+        parse_multi_line_statements( cmd_if.statements )
+
+        while (next_is(BossTokenType.ELSE_IF))
+          #local pos = token_reader.position
+          t = read
+          local else_if_condition = parse_expression
+          if (not consume_eols)
+            throw t.error( "A multi-line 'if' cannot have a one-line 'elseIf'." )
+          endIf
+          local cmd_nested_if = BossCmdIf( t, else_if_condition )
+          (ensure cmd_if.else_statements).add( cmd_nested_if )
+          cmd_if = cmd_nested_if
+          parse_multi_line_statements( cmd_if.statements )
+        endWhile
+
+        if (next_is(BossTokenType.ELSE))
+          if (peek(1).type is not BossTokenType.EOL)
+            throw peek(1).error( "A multi-line 'if' cannot have a one-line 'else'." )
+          else
+            parse_multi_line_statements( ensure cmd_if.else_statements )
+          endIf
+        endIf
+
+        must_consume( BossTokenType.END_IF )
+
+      else
+        parse_single_line_statements( cmd_if.statements )
+        must_consume_eols
+
+        while (next_is(BossTokenType.ELSE_IF))
+          local start_pos = token_reader.position
+          t = read
+          local else_if_condition = parse_expression
+          if (consume_eols)
+            # Not part of this single-line 'if' structure
+            token_reader.position = start_pos
+            escapeWhile
+          endIf
+          local cmd_nested_if = BossCmdIf( t, else_if_condition )
+          (ensure cmd_if.else_statements).add( cmd_nested_if )
+          cmd_if = cmd_nested_if
+          parse_single_line_statements( cmd_if.statements )
+          must_consume_eols
+        endWhile
+
+        if (next_is(BossTokenType.ELSE) and peek(1).type is not BossTokenType.EOL)
+          parse_single_line_statements( ensure cmd_if.else_statements )
+          must_consume_eols
+        endIf
+      endIf
+
+    method parse_expression->BossCmd
+      return parse_comparison( parse_add_subtract )
+
+    method parse_comparison( lhs:BossCmd )->BossCmd
+      #{
+      local t = peek
+      if (consume(BossTokenType.SYMBOL_COMPARE_EQ))
+        return parse_comparison( BossCmdCompareEQ(t,lhs,parse_add_subtract) )
+      elseIf (consume(BossTokenType.SYMBOL_COMPARE_NE))
+        return parse_comparison( BossCmdCompareNE(t,lhs,parse_add_subtract) )
+      elseIf (consume(BossTokenType.SYMBOL_COMPARE_LT))
+        return parse_comparison( BossCmdCompareLT(t,lhs,parse_add_subtract) )
+      elseIf (consume(BossTokenType.SYMBOL_COMPARE_GT))
+        return parse_comparison( BossCmdCompareGT(t,lhs,parse_add_subtract) )
+      elseIf (consume(BossTokenType.SYMBOL_COMPARE_LE))
+        return parse_comparison( BossCmdCompareLE(t,lhs,parse_add_subtract) )
+      elseIf (consume(BossTokenType.SYMBOL_COMPARE_GE))
+        return parse_comparison( BossCmdCompareGE(t,lhs,parse_add_subtract) )
+      endIf
+      }#
+      return lhs
+
+    method parse_add_subtract( lhs=parse_multiply_divide_mod:BossCmd )->BossCmd
+      local t = peek
+      if (consume(BossTokenType.SYMBOL_PLUS))
+        return parse_add_subtract( BossCmdAdd(t,lhs,parse_multiply_divide_mod) )
+      elseIf (consume(BossTokenType.SYMBOL_MINUS))
+        return parse_add_subtract( BossCmdSubtract(t,lhs,parse_multiply_divide_mod) )
+      else
+        return lhs
+      endIf
+
+    method parse_multiply_divide_mod( lhs=parse_pre_unary:BossCmd )->BossCmd
+      local t = peek
+      if (consume(BossTokenType.SYMBOL_TIMES))
+        return parse_multiply_divide_mod( BossCmdMultiply(t,lhs,parse_pre_unary) )
+      elseIf (consume(BossTokenType.SYMBOL_SLASH))
+        return parse_multiply_divide_mod( BossCmdDivide(t,lhs,parse_pre_unary) )
+      elseIf (consume(BossTokenType.SYMBOL_PERCENT))
+        return parse_multiply_divide_mod( BossCmdMod(t,lhs,parse_pre_unary) )
+      else
+        return lhs
+      endIf
+
+    method parse_pre_unary->BossCmd
+      local t = peek
+      if (consume(BossTokenType.NOT)) return BossCmdNot( t, parse_pre_unary )
+      return parse_access
+
+    method parse_access( lhs=parse_term:BossCmd )->BossCmd
+      if (consume(BossTokenType.SYMBOL_DOT))
+        return parse_access( parse_cmd_access(lhs) )
+      else
+        return lhs
+      endIf
+
+    method parse_cmd_access( context=null:BossCmd )->BossCmd
+      local t = peek
+      local result = BossCmdAccess( t, context, read_id )
+      local arg_t = peek
+
+      if (consume(BossTokenType.SYMBOL_OPEN_PAREN))
+        ensure result.args
+        if (not consume(BossTokenType.SYMBOL_CLOSE_PAREN))
+          result.add_arg( parse_expression )
+          while (consume(BossTokenType.SYMBOL_COMMA)) result.add_arg( parse_expression )
+          must_consume( BossTokenType.SYMBOL_CLOSE_PAREN )
+        endIf
+      endIf
+
+      return result
+
+    method parse_term->BossCmd
+      local t = peek
+      if (consume(BossTokenType.SYMBOL_OPEN_PAREN))
+        local expr = parse_expression
+        must_consume( BossTokenType.SYMBOL_CLOSE_PAREN )
+        return expr
+      elseIf (next_is_id)
+        return parse_access( parse_cmd_access )
+      elseIf (next_is(BossTokenType.INT32))
+        return BossCmdLiteralReal64( t, read->Int32 )
+      elseIf (consume(BossTokenType.TRUE))
+        return BossCmdLiteralLogical( t, true )
+      elseIf (consume(BossTokenType.FALSE))
+        return BossCmdLiteralLogical( t, false )
+      elseIf (next_is(BossTokenType.STRING))
+        return BossCmdLiteralString( t, read_string )
+      else
+        throw t.error( "Syntax error: unexpected '$'." (t) )
+      endIf
+
+endClass
+

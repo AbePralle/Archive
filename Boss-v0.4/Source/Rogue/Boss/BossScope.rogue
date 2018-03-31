@@ -1,0 +1,10 @@
+module Boss
+
+class BossScope
+  PROPERTIES
+    vm        : BossVM
+    this_type : BossType
+
+  METHODS
+    method init( vm, this_type )
+endClass

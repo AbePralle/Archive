@@ -1,0 +1,4 @@
+module Boss
+
+class BossMethod
+endClass
