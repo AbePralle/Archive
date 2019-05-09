@@ -1,0 +1,82 @@
+$include "ScanTableBuilder.rogue"
+
+enum TokenType
+  EOL
+  IDENTIFIER
+  STRING
+endEnum
+
+local builder = BossScanTableBuilder()
+
+class BossScanTableBuilder : ScanTableBuilder
+  METHODS
+    method init
+      start.link( '\n', TokenType.EOL->Int32 ).accept
+
+      local id = ScanState( TokenType.IDENTIFIER->Int32 ).[accept]
+      start.link_alpha( id )
+      id.[ link_alpha(id), link_numeric(id) ]
+
+      block
+        local string_start = start.link( '"', TransitionActions.CONSUME )
+        local string_ch = ScanState()
+        string_start.advance( string_ch )
+        string_ch.[ link_alpha(string_ch), link_numeric(string_ch) ]
+        string_ch.link( '"', TokenType.STRING->Int32 ).accept
+      endBlock
+
+    method tokenize_another( scanner:Scanner, builder:StringBuilder )
+      builder.clear
+      if (not tokenize(start,scanner,0,builder)) throw Error( "Syntax error: " + scanner.peek
+
+    method tokenize( node:ScanNode, scanner:Scanner, lookahead:Int32, builder:StringBuilder )
+      if (scanner.has_another(lookahead+1))
+        local ch = scanner.peek( lookahead )
+        builder.print( ch )
+        ++lookahead
+
+        forEach (transition in node.transitions from ARBITRARY_LINKS)
+          if (transition.character == ch) TODO
+        endForEach
+      endIf
+
+endClass
+
+
+#{
+  public BossScanTableBuilder()
+  {
+    {
+      ScanState stringStart   = root.link( '"', 0, 0, CONSUME | ADVANCE );
+      ScanState stringCh      = addState( 0, 0, 0 );
+      stringStart.defaultLink = stringCh;
+
+      ScanState backslashEscape = stringCh.link( '\\', 0, 0, 0 );
+      backslashEscape.link( 'n', '\n', 0, CONSUME | EMIT ).advance( stringCh );
+      backslashEscape.link( 'r', '\r', 0, CONSUME | EMIT ).advance( stringCh );
+      backslashEscape.link( '"', '"',  0, CONSUME | EMIT ).advance( stringCh );
+
+      stringCh.defaultLink = stringCh;
+
+      stringCh.link( '"', 0, 0, ACCEPT | CONSUME );
+    }
+  }
+
+  public ScanState addState( int type, int option, int flags )
+  {
+    ScanState state = new ScanState( this, type, option, flags );
+    states.add( state );
+    return state;
+  }
+
+  public ScanState define( char ch, int type, int option, int flags )
+  {
+    ScanState state = root.findLink( ch );
+    if (state == null) state = addState( type, option, flags );
+    root.inputs.add( ch );
+    root.targetStates.add( state );
+    return state;
+  }
+}
+
+}#

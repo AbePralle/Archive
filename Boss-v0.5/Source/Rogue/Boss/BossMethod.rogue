@@ -1,0 +1,137 @@
+module Boss
+  uses ParseKit<<Boss>>
+
+class BossMethod
+  PROPERTIES
+    vm              : BossVM
+    module_context  : BossModule
+    type_context    : BossType
+    return_type     : BossType
+    t               : Token
+    name            : String
+    signature       : String
+    statements      = CmdStatements()
+
+    min_args        : Int32
+    max_args        : Int32
+
+    locals          = BossLocal[]
+    parameter_count : Int32
+
+    is_resolved     : Logical
+
+  METHODS
+    method init( t, module_context, name )
+      # 'routine' initializer
+      vm = module_context.vm
+
+    #{
+    method init( type_context, t, name )
+      #global_index = type_context.vm.methods.count
+      vm = type_context.vm
+      }#
+
+      #{
+    method reset
+      statements.clear
+      locals.clear
+      param_count = 0
+      }#
+
+    method add_local( t:Token, name:String, initial_value:Cmd, type:BossType )
+      local index = locals.count
+      locals.add( BossLocal(t,name,initial_value,type,index) )
+
+    method add_parameter( t:Token, name:String, initial_value:Cmd, type:BossType )
+      ++parameter_count
+
+      add_local( t, name, initial_value, type )
+
+      if (is_instance_method) max_args = locals.count - 1  # omit 'this'
+      else                    max_args = locals.count
+      if (not initial_value) min_args = max_args
+
+      #{
+    method call( arg_count:Int32 )
+      local vm    = type_context.vm
+      local stack = vm.stack
+      local old_fp = vm.fp
+      vm.fp = stack.count - (arg_count+1)
+
+      while (arg_count > param_count)
+        stack.remove_last
+        --arg_count
+      endWhile
+      while (arg_count < param_count)
+        stack.add( UndefinedBossValue )
+        ++arg_count
+      endWhile
+
+      loop( locals.count - param_count )
+        stack.add( UndefinedBossValue )
+      endLoop
+
+      stack[ vm.fp ] = execute
+      stack.discard_from( vm.fp+1 )
+      vm.fp = old_fp
+
+    method execute->BossValue
+        local vm = type_context.vm
+        local result = statements.execute( vm )
+        which (vm.status)
+          case BossVM.STATUS_RETURNING
+            vm.status = BossVM.STATUS_NORMAL
+            return result
+          others
+            return result
+        endWhich
+        }#
+
+    method is_instance_method->Logical
+      return false  # FIXME
+
+    method is_routine->Logical
+      return (type_context is null)
+
+    method resolve
+      if (is_resolved) return
+      is_resolved = true
+
+      module_context.resolve
+      if (type_context) type_context.resolve
+
+      forEach (v in locals)
+        require v.type
+        v.type = v.type.resolved
+      endForEach
+
+      if (return_type) return_type = return_type.resolved
+
+      local scope = BossScope( this )
+      forEach (i in 0..<parameter_count)
+        scope.locals.add( locals[i] )
+      endForEach
+
+      statements.resolve( scope )
+
+      loop (max_args) scope.locals.remove_last
+
+    method signature->String
+      if (@signature) return @signature
+      use builder = StringBuilder.pool
+        builder.print( name )
+        builder.print( '(' )
+        forEach (index in 0..<parameter_count)
+          if (index > 0) builder.print( ',' )
+          local param = locals[ index ]
+          builder.print( param.type.name )
+        endForEach
+        builder.print( ')' )
+        @signature = builder->String
+      endUse
+      return @signature
+
+    method to->String
+      return name
+
+endClass

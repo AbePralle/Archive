@@ -1,0 +1,103 @@
+module Boss
+  uses ParseKit<<Boss>>
+
+class BossModule
+  PROPERTIES
+    vm            : BossVM
+    filepath      : String
+    name          : String
+
+    is_resolved   = false
+
+    implicit_imports = BossModule[]
+    explicit_imports = LookupList<<BossModule>>()
+
+    global_vars   = LookupList<<BossVar>>()
+    global_data   = Int64[]
+
+  #{
+    global_types  = LookupList<<Int32>>()
+    local_types   = LookupList<<Int32>>()
+    globals       = LookupList<<BossValue>>()
+    locals        = LookupList<<BossValue>>()  # subset of global_vars
+  }#
+
+    types         = LookupList<<BossType>>()
+    routines      = BossMethods()
+
+    statements    = CmdStatements()
+
+  METHODS
+    method init( vm, name, filepath )
+
+    method execute( command:String, origin="[Native Code]":String )
+      local scope = BossScope( this )
+
+      local statements = CmdStatements()
+      BossParser().[ set_source(origin,command) ].parse_multi_line_statements( statements )
+
+      resolve
+      statements.resolve( scope )
+      statements.execute( vm )
+
+    method evaluate( command:String, origin="[Native Code]":String, required_type:BossType )
+      # Result is left on stack
+      local scope = BossScope( this )
+
+      local statements = CmdStatements()
+      BossParser().[ set_source(origin,command) ].parse_multi_line_statements( statements )
+
+      if (statements.is_empty)
+        local t = Token( TokenType.EOI, origin, 0, 0 )
+        throw t.error( "Expression does not evaluate to required type $." (required_type) )
+      elseIf (statements.count > 1)
+        local t = Token( TokenType.EOI, origin, 0, 0 )
+        throw t.error( "Cannot evaluate() multiple commands." )
+      endIf
+
+      local expression = statements.remove_last
+
+      expression.require_type( scope, required_type )
+      resolve
+      expression = expression.resolved( scope )
+      expression.execute( vm )
+
+    method evaluate_int32( command:String, origin="[Native Code]":String )->Int32
+      evaluate( command, origin, vm.type_Int32 )
+      return vm.pop_int32
+
+    method find_type( name:String )->BossType
+      return types[ name ]
+
+    method get_type( t:Token, name:String, attributes=0:Int32 )->BossType
+      local type = types[ name ]
+      if (type)
+        if (attributes) type.attributes |= attributes
+        return type
+      endIf
+
+      type = BossType( this, t, name, attributes )
+      types[ name ] = type
+      return type
+
+    method import( m:BossModule, as_name=null:String )
+      if (as_name) explicit_imports[ as_name ] = m
+      else         implicit_imports.add( m )
+
+    method resolve
+      if (is_resolved) return
+      is_resolved = true
+
+      (forEach in types).resolve
+
+      routines.resolve
+
+      local scope = BossScope( this )
+      statements.resolve( scope )
+      statements.execute( vm )
+
+    method to->String
+      return name
+
+endClass
+

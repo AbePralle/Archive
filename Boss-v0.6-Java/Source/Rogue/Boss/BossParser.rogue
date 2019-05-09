@@ -1,0 +1,470 @@
+module Boss
+uses ParseKit<<Boss>>
+
+#==============================================================================
+# BossParser
+#==============================================================================
+class BossParser : Parser
+  PROPERTIES
+    parse_expression : ParseRule
+    this_module      : BossModule
+    this_method      : BossMethod
+
+  METHODS
+    method init
+      local rule = add( ParseRule("expression" ) )
+
+      rule = add_nested( BinaryParseRule("compare") )
+      rule.on( "==",  <<CmdCompareEQ>> )
+      rule.on( "!=",  <<CmdCompareNE>> )
+      rule.on( "<=",  <<CmdCompareLE>> )
+      rule.on( "<",   <<CmdCompareLT>> )
+      rule.on( ">=",  <<CmdCompareGE>> )
+      rule.on( ">",   <<CmdCompareGT>> )
+
+      # <<, >>, >>>
+      rule = add_nested( BinaryParseRule("bit_shift") )
+      rule.on( "<<",  <<CmdLeftShift>> )
+      rule.on( ">>",  <<CmdRightShift>> )
+      rule.on( ">>>", <<CmdRightShiftX>> )
+
+      # ~
+      rule = add_nested( BinaryParseRule("bitwise_xor") )
+      rule.on( "~", <<CmdBitwiseXor>> )
+
+      # |
+      rule = add_nested( BinaryParseRule("bitwise_or") )
+      rule.on( "|", <<CmdBitwiseOr>> )
+
+      # &
+      rule = add_nested( BinaryParseRule("bitwise_and") )
+      rule.on( "&", <<CmdBitwiseAnd>> )
+
+      # +, -
+      rule = add_nested( BinaryParseRule("add_subtract") )
+      rule.on( "+", <<CmdAdd>> )
+
+      rule.on( "-", <<CmdSubtract>> )
+
+      # *, /, %
+      rule = add_nested( BinaryParseRule("multiply_divide_mod") )
+      rule.on( "*", <<CmdMultiply>> )
+      rule.on( "/", <<CmdDivide>> )
+      rule.on( "%", <<CmdMod>> )
+
+      # ^
+      rule = add_nested( BinaryParseRule("power") )
+      rule.on( "^", <<CmdPower>> )
+
+      # ++, --
+      rule = add_nested( PostUnaryParseRule("post_unary") )
+      rule.on( "++", <<CmdPostIncrement>> )
+      rule.on( "--", <<CmdPostDecrement>> )
+
+      # -, !, ++, --
+      rule = add_nested( PreUnaryParseRule("pre_unary") )
+      rule.on( "-", <<CmdNegate>> )
+      rule.on( "!", <<CmdBitwiseNot>> )
+      rule.on( "++", <<CmdPreIncrement>> )
+      rule.on( "--", <<CmdPreDecrement>> )
+
+      # .
+      rule = add_nested( ContextParseRule("member") )
+      rule.on( ".",
+        function( parser:BossParser, context:Cmd )->Cmd
+          return parser.parse_access( context )
+        endFunction
+      )
+
+      # term
+      rule = add_nested( ParseRule("term") )
+      rule.on( "integer",
+        function( parser:BossParser )->Cmd
+          local t = parser.read
+          return CmdLiteralInt32(t,t->Int32)
+        endFunction
+      )
+      rule.on( "(",
+        function( parser:BossParser )->Cmd
+          parser.must_consume( TokenType.SYMBOL_OPEN_PAREN )
+          local result = parser.parse_expression()
+          parser.must_consume( TokenType.SYMBOL_CLOSE_PAREN )
+          return result
+        endFunction
+      )
+      rule.on( "identifier",
+        function (parser:BossParser )->Cmd
+          local t = parser.read
+          return CmdAccess( t, t->String, parser.parse_args )
+        endFunction
+      )
+      rule.on( "string",
+        function (parser:BossParser )->Cmd
+          local t = parser.read
+          return CmdLiteralString( t, t->String )
+        endFunction
+      )
+      rule.on( "null",      <<CmdLiteralNull>> )
+      rule.on( "undefined", <<CmdLiteralUndefined>> )
+      rule.on_default( (parser) => throw parser.peek.error( "Syntax error: unexpected $." (parser.peek.description) ) )
+
+    method consume_end_commands->Logical
+      local consumed_any = false
+      while (consume_eols or consume(TokenType.SYMBOL_SEMICOLON)) consumed_any = true
+      return consumed_any
+
+    method must_consume_end_command
+      if (next_is_end_command or next_is_eol or next_is(TokenType.EOI)) read; return
+      throw peek.error( "';' or End of Line expected." )
+
+    method must_consume_eols
+      must_consume( TokenType.EOL )
+      while (consume(TokenType.EOL)) noAction
+
+    method next_is_end_command->Logical
+      return next_is(TokenType.EOL) or next_is(TokenType.SYMBOL_SEMICOLON)
+
+    method next_is_eol->Logical
+      return next_is(TokenType.EOL)
+
+    method next_is_identifier->Logical
+      return next_is( TokenType.IDENTIFIER )
+
+    method next_is_single_line_elseIf_or_else->Logical
+      local start_pos = reader.position
+      if (consume(TokenType.KEYWORD_ELSE_IF))
+        parse_expression()
+        local result = not next_is_eol
+        reader.position = start_pos
+        return result
+      elseIf (consume(TokenType.KEYWORD_ELSE))
+        local result = not next_is_eol
+        reader.position = start_pos
+        return result
+      else
+        return false
+      endIf
+
+    method next_is_statement->Logical [macro]
+      return (not this.peek.type.is_structural)
+
+    method parse( this_module, source:String )
+      set_source( this_module.filepath, source )
+
+      loop
+        if (parse_component) nextIteration
+
+        if (parse_multi_line_statements(this_module.statements)) nextIteration
+
+        escapeLoop
+      endLoop
+
+    method parse_access( context:Cmd )->Cmd
+      local t = read
+      local name = read_identifier
+      local args = parse_args
+      return CmdAccess( t, context, name, args )
+
+    method parse_args( &allow_no_parens )->CmdArgs
+      if (next_is_end_command) return null
+
+      local has_open_paren = consume( TokenType.SYMBOL_OPEN_PAREN )
+      if (not has_open_paren and not allow_no_parens) return null
+
+      local args = CmdArgs()
+      if (has_open_paren and consume(TokenType.SYMBOL_CLOSE_PAREN)) return args
+
+      consume_eols
+      local first = true
+      while (first or consume(TokenType.SYMBOL_COMMA))
+        consume_eols
+        first = false
+        args.add( parse_expression() )
+        if (has_open_paren) consume_eols
+      endWhile
+
+      if (has_open_paren) must_consume( TokenType.SYMBOL_CLOSE_PAREN )
+      return args
+
+    method parse_component->Logical
+      consume_eols
+      #{
+      if (next_is(TokenType.KEYWORD_CLASS))
+        parse_class
+        return true
+      endIf
+      }#
+
+      if (next_is(TokenType.KEYWORD_ROUTINE))
+        local t = read # 'routine'
+        local m = BossMethod( t, this_module, read_identifier )
+        parse_method( m )
+        must_consume( TokenType.KEYWORD_END_ROUTINE )
+        this_module.routines.add( m )
+        return true
+      endIf
+
+      return false
+
+    method parse_class
+      #{
+      local t = read
+      local name = read_identifier
+      scope.this_type = scope.this_module.get_type( t, name )
+      if (scope.this_type.is_defined) throw t.error( "A class named $ is already defined." )
+      while (parse_category) noAction
+      must_consume( TokenType.KEYWORD_END_CLASS )
+      }#
+
+    method parse_category->Logical
+      consume_eols
+      #{
+      if (consume(TokenType.KEYWORD_PROPERTIES))
+        while (parse_property) noAction
+        return true
+
+      elseIf (consume(TokenType.KEYWORD_METHODS))
+        consume_eols
+        local t = peek
+        while (consume(TokenType.KEYWORD_METHOD))
+          parse_method( t )
+          t = peek
+        endWhile
+        return true
+
+      endIf
+      }#
+
+      return false
+
+    method parse_property->Logical
+      #{
+      consume_eols
+      if (not next_is_identifier) return false
+
+      while (next_is_identifier)
+        local t = peek
+        local name = read_identifier
+        if (scope.this_type.properties.contains(name))
+          throw t.error( "A property named '$' already exists." (name) )
+        endIf
+        local initial_value : Cmd
+        if (consume(TokenType.SYMBOL_EQUALS))
+          initial_value = parse_expression()
+        endIf
+        scope.this_type.properties[ name ] = BossProperty( t, scope.this_type, name, initial_value, scope.this_type.properties.count )
+        consume_eols
+        consume( TokenType.SYMBOL_COMMA )
+        consume_eols
+      endWhile
+
+      return true
+      }#
+      return false
+
+
+    method parse_method( m:BossMethod )
+      if (consume(TokenType.SYMBOL_OPEN_PAREN))
+        if (not next_is(TokenType.SYMBOL_CLOSE_PAREN))
+          consume_eols
+          local first = true
+          while (first or consume(TokenType.SYMBOL_COMMA))
+            first = false
+            consume_eols
+            local param_t = peek
+            local param_name = read_identifier
+            local initial_value : Cmd
+            if (consume(TokenType.SYMBOL_EQUALS))
+              initial_value = parse_expression()
+            endIf
+            local param_type : BossType
+            if (consume(TokenType.SYMBOL_COLON))
+              param_type = parse_type
+            endIf
+            m.add_parameter( param_t, param_name, initial_value, param_type )
+            consume_eols
+          endWhile
+        endIf
+        must_consume( TokenType.SYMBOL_CLOSE_PAREN )
+      endIf
+
+      #{
+      if (consume(TokenType.SYMBOL_ARROW))
+        m.return_type = parse_type
+      endIf
+      }#
+
+      consume( TokenType.SYMBOL_COLON )   # optional
+
+      this_method = m
+      parse_multi_line_statements( m.statements )
+      this_method = null
+
+    method parse_type->BossType
+      local t = peek
+      local name = read_identifier
+      return this_module.get_type( t, name )
+
+    method parse_statements( statements:CmdStatements, end_type:TokenType )
+      if (consume_eols)
+        # multi-line while
+        parse_multi_line_statements( statements )
+        must_consume( end_type )
+      else
+        # single-line while
+        parse_single_line_statements( statements )
+        consume_eols
+      endIf
+
+    method parse_multi_line_statements( statements:CmdStatements )->Logical
+      consume_end_commands
+      local found_any = false
+      while (next_is_statement)
+        parse_statement( statements, &allow_control_structures )
+        must_consume_end_command
+        consume_end_commands
+        found_any = true
+      endWhile
+      return found_any
+
+    method parse_single_line_statements( statements:CmdStatements )
+      while (next_is_statement)
+        parse_statement( statements, &!allow_control_structures )
+        if (not consume(TokenType.SYMBOL_SEMICOLON)) must_consume_end_command; return
+        while (consume(TokenType.SYMBOL_SEMICOLON)) noAction
+
+        # Don't let a trailing ';' act as a next-line continuation.
+        if (next_is_end_command) escapeWhile
+      endWhile
+
+      if (not consume(TokenType.EOL))
+        if (next_is_statement)
+          must_consume( TokenType.EOL )  # force an error
+        endIf
+      endIf
+
+    method parse_statement( statements:CmdStatements, &allow_control_structures )
+      local t = peek
+
+      if (allow_control_structures)
+        if (consume(TokenType.KEYWORD_IF))
+          statements.add( parse_if(t) )
+          return
+        endIf
+
+        if (consume(TokenType.KEYWORD_WHILE))
+          local cmd_while = CmdWhile( t, parse_expression() )
+          statements.add( cmd_while )
+          if (next_is_end_command)
+            parse_multi_line_statements( cmd_while.statements )
+            must_consume( TokenType.KEYWORD_END_WHILE )
+          else
+            parse_single_line_statements( cmd_while.statements )
+            must_consume_eols
+          endIf
+          return
+        endIf
+      endIf
+
+      if (consume(TokenType.KEYWORD_RETURN))
+        if (next_is_end_command) statements.add( CmdReturnUndefined(t) )
+        else                     statements.add( CmdReturnValue(t, parse_expression()) )
+        return
+      endIf
+
+      if (consume(TokenType.KEYWORD_LOCAL))
+        local name = read_identifier
+        local expr : Cmd
+        if (consume(TokenType.SYMBOL_EQUALS)) expr = parse_expression()
+        local type = null : BossType
+        if (consume(TokenType.SYMBOL_COLON)) type = parse_type
+        statements.add( CmdLocalDeclaration(t,name,expr,type) )
+        return
+      endIf
+
+      if (consume(TokenType.KEYWORD_PRINTLN))
+        statements.add( CmdPrintln(t,parse_args(&allow_no_parens)) )
+        return
+      endIf
+
+      if (consume(TokenType.KEYWORD_GLOBAL))
+        local name = read_identifier
+        local expr : Cmd
+        if (consume(TokenType.SYMBOL_EQUALS)) expr = parse_expression()
+        local type = null : BossType
+        if (consume(TokenType.SYMBOL_COLON)) type = parse_type
+        statements.add( CmdGlobalDeclaration(t,name,expr,type) )
+        return
+      endIf
+
+      #{
+      if (consume(TokenType.KEYWORD_IMPORT))
+        if (next_is_identifier or next_is(TokenType.STRING))
+          scope.vm.import( t, read->String )
+          return
+        else
+          throw t.error( "Module name or filename expected." )
+        endIf
+      endIf
+      }#
+
+      local expr = parse_expression()
+      if (consume(TokenType.SYMBOL_EQUALS))
+        statements.add( CmdAssign(t,expr,parse_expression()) )
+      else
+        statements.add( expr )
+      endIf
+
+    method parse_if( t:Token )->Cmd
+      local condition = parse_expression()
+      if (next_is_eol)
+        local statements = CmdStatements()
+        parse_multi_line_statements( statements )
+        local nested_t = peek
+        if (consume(TokenType.KEYWORD_ELSE_IF))
+          local result = CmdIfElse( t, condition, statements, CmdStatements(parse_if(nested_t)) )
+          must_consume( TokenType.KEYWORD_END_IF )
+          return result
+        elseIf (consume(TokenType.KEYWORD_ELSE))
+          local else_statements = CmdStatements()
+          parse_multi_line_statements( else_statements )
+          local result = CmdIfElse( t, condition, statements, else_statements )
+          must_consume( TokenType.KEYWORD_END_IF )
+          return result
+        else
+          local result = CmdIf( t, condition, statements )
+          must_consume( TokenType.KEYWORD_END_IF )
+          return result
+        endIf
+
+      else
+        local statements = CmdStatements()
+        parse_single_line_statements( statements )
+        must_consume_eols
+
+        if (next_is_single_line_elseIf_or_else)
+          local nested_t = peek
+          if (consume(TokenType.KEYWORD_ELSE_IF))
+            return CmdIfElse( t, condition, statements, CmdStatements(parse_if(nested_t)) )
+          else
+            must_consume( TokenType.KEYWORD_ELSE )
+            local else_statements = CmdStatements()
+            parse_single_line_statements( else_statements )
+            must_consume_eols
+            return CmdIfElse( t, condition, statements, else_statements )
+          endIf
+
+        else
+          return CmdIf( t, condition, statements )
+        endIf
+
+      endIf
+
+    method read_identifier->String
+      if (not next_is(TokenType.IDENTIFIER))
+        throw peek.error( "Identifier expected." )
+      endIf
+      return read->String
+endClass
+
+

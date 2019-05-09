@@ -1,0 +1,58 @@
+uses Boss
+uses ParseKit<<Boss>>
+
+BossConsole()
+
+class BossConsole
+  PROPERTIES
+    vm = BossVM() : BossVM
+
+  METHODS
+    method init
+      try
+        vm.load( "Test" )
+      catch (err:BossError)
+        err.print
+      endTry
+
+      #vm.load( "[Console]", "import Test" )
+
+      #{
+      if (System.command_line_arguments.count)
+        local literals = String[]
+        local any_files = false
+        forEach (arg in System.command_line_arguments)
+          if (File.exists(arg))
+            if (not vm.parse(arg)) return
+            any_files = true
+          else
+            literals.add( arg )
+          endIf
+        endForEach
+        if (literals.count)
+          if (not vm.parse("[Console]",literals.join(" "))) return
+        endIf
+        execute
+      else
+        repl
+      endIf
+
+    method execute( cmd:String, &show_result )
+      if (vm.parse("[Console]",cmd)) execute( &=show_result )
+
+    method execute( &show_result )
+      try
+        local result = vm.execute
+        if (show_result and result.exists)
+          println result
+        endIf
+      catch (err:BossError)
+        err.print
+      endTry
+
+    method repl
+      loop
+        execute( Console.input("Boss> "), &show_result )
+      endLoop
+      }#
+endClass

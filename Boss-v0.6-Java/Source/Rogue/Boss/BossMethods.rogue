@@ -1,0 +1,130 @@
+module Boss
+uses ParseKit<<Boss>>
+
+class BossMethods
+  PROPERTIES
+    by_name     = StringTable<<BossMethod[]>>()
+    all_methods = BossMethod[]
+
+  METHODS
+    method add( m:BossMethod )
+      ensure by_name[ m.name ]
+      by_name[ m.name ].add( m )
+      all_methods.add( m )
+
+    method resolve_call( scope:BossScope, access:CmdAccess, &error_on_fail )->Cmd
+      local m = find_method( scope, access, &=error_on_fail )
+      if (not m) return null
+
+      if (m.is_routine)
+        return CmdCallRoutine( access.t, m, access.args ).resolved( scope )
+      else
+        throw access.t.error( "TODO: BossMethods.resolve_call()" );
+      endIf
+
+    method find_method( scope:BossScope, access:CmdAccess, &error_on_fail )->BossMethod
+      local candidates = BossMethodCandidates( this, scope, access, &=error_on_fail )
+      if (candidates.is_empty) return null  # no match, error already thrown if error_on_fail is true
+
+      local arg_count = select{ access.args:access.args.count || 0 }
+
+      forEach (candidate in candidates)
+        if (arg_count >= candidate.min_args and arg_count <= candidate.max_args) candidates.keep( candidate )
+      endForEach
+      if (not candidates.refine_candidates) return null
+
+      if (candidates.found_match) return candidates.match
+
+      if (error_on_fail) throw candidates.error( access.t )
+      return null
+
+    method resolve
+      (forEach in all_methods).resolve
+endClass
+
+
+class BossMethodCandidates
+  PROPERTIES
+    methods       : BossMethods
+    scope         : BossScope
+    access        : CmdAccess
+    candidates    = BossMethod[]
+    matches       = BossMethod[]
+    error_on_fail : Logical
+
+  METHODS
+    method init( methods, scope, access, error_on_fail )
+      local name_matches = methods.by_name[ access.name ]
+      if (name_matches)
+        candidates.add( name_matches )
+      else
+        if (error_on_fail) throw error( access.t )
+      endIf
+
+    method access_signature->String
+      use builder = StringBuilder.pool
+        builder.[ print access.name, print '(' ]
+        if (access.args)
+          forEach (arg at index in access.args)
+            if (index > 0) builder.print ','
+            builder.print( arg.type(scope) )
+          endForEach
+        endIf
+        builder.print ')'
+        return builder->String
+      endUse
+
+    method count->Int32
+      return candidates.count
+
+    method error( t:Token )->BossError
+      local builder = StringBuilder()
+
+      which (candidates.count)
+        case 0
+          builder.print( "No such method " )
+          if (access.args) builder.print( "$" (access_signature) )
+          else             builder.print( 'or variable "$"' (access.name) )
+          builder.println( " exists in the current scope." )
+        case 1
+          builder.println "Call to $ has arguments that are incompatible with the best candidate:\n" (access_signature)
+          builder.println "  " + candidates.first.signature
+        others
+          builder.println "No exact match for ambiguous call to $. Candidates:\n" (access_signature)
+          builder.println "  $" ((forEach in candidates).signature)
+      endWhich
+      throw access.t.error( builder )
+
+    method found_match->Logical
+      return candidates.count == 1
+
+    method get( index:Int32 )->BossMethod
+      return candidates[ index ]
+
+    method is_empty->Logical
+      return candidates.is_empty
+
+    method keep( m:BossMethod )
+      matches.add( m )
+
+    method match->BossMethod
+      return candidates.first
+
+    method refine_candidates->Logical
+      if (matches.count)
+        candidates.[ clear ].add( matches )
+        matches.clear
+        return true
+      else
+        if (error_on_fail)
+          throw error( access.t )
+        else
+          return false
+        endIf
+      endIf
+
+    method to->String
+      local result = candidates->String
+      if (matches.count) result += " (matches:$)" (matches)
+      return result
+endClass

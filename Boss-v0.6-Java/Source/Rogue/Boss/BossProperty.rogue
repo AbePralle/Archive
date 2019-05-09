@@ -1,0 +1,20 @@
+module Boss
+  uses ParseKit<<Boss>>
+
+  #{
+class BossProperty
+  PROPERTIES
+    type_context  : BossType
+    t             : Token
+    name          : String
+    initial_value : Cmd
+    index         : Int32
+
+  METHODS
+    method init( t, type_context, name, initial_value, index )
+
+    method to->String
+      return name
+endClass
+
+}#

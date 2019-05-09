@@ -1,0 +1,686 @@
+module Boss
+  uses ParseKit<<Boss>>
+
+#==============================================================================
+# Cmd Nodes (Parse Tree / AST)
+#==============================================================================
+augment Cmd
+  METHODS
+    method execute( vm:BossVM )
+      throw UnsupportedOperationError()
+endAugment
+
+augment CmdStatements
+  METHODS
+    method execute( vm:BossVM )
+      forEach (statement in this)
+        statement.execute( vm )
+      endForEach
+endAugment
+
+augment CmdArgs
+  METHODS
+    method execute( vm:BossVM )
+      (forEach in this).execute(vm)
+endAugment
+
+augment CmdUnary
+endAugment
+
+augment CmdDiscardResult
+  METHODS
+    method execute( vm:BossVM )
+      operand.execute( vm )
+      vm.stack.remove_last
+endAugment
+
+augment CmdDiscardCompoundResult
+  METHODS
+    method execute( vm:BossVM )
+      operand.execute( vm )
+      vm.stack.discard_from( vm.stack.count - slot_count )
+endAugment
+
+augment BossCmdUnary
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return $SYMBOL operand.execute( vm )
+    }#
+endAugment
+
+augment CmdBinary
+endAugment
+
+augment CmdBinaryOp
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return left.execute( vm ) $SYMBOL right.execute( vm )
+    }#
+endAugment
+
+augment CmdLiteralUndefined
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return UndefinedBossValue
+    }#
+endAugment
+
+augment CmdLiteralNull
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return NullBossValue
+    }#
+endAugment
+
+augment CmdLiteralInt32
+  METHODS
+    method execute( vm:BossVM )
+      vm.push( value )
+endAugment
+
+augment CmdLiteralString
+  METHODS
+    method execute( vm:BossVM )
+      vm.push( index )
+endAugment
+
+augment CmdAdd
+endAugment
+
+augment CmdAddInt32
+  METHODS
+    method execute( vm:BossVM )
+      left.execute( vm )
+      local result = vm.pop_int32
+      right.execute( vm )
+      vm.stack.last += result
+endAugment
+
+augment CmdSubtract
+endAugment
+
+augment CmdMultiply
+endAugment
+
+augment CmdDivide
+endAugment
+
+augment CmdMod
+endAugment
+
+augment CmdPower
+endAugment
+
+augment CmdCompareEQ
+endAugment
+
+augment CmdCompareNE
+endAugment
+
+augment CmdCompareLE
+endAugment
+
+augment CmdCompareLT
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return left.execute( vm ) < right.execute( vm )
+    }#
+endAugment
+
+augment CmdCompareGE
+endAugment
+
+augment CmdCompareGT
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return left.execute( vm ) > right.execute( vm )
+    }#
+endAugment
+
+augment CmdBitwiseXor
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return left.execute(vm)->Int64 ~ right.execute(vm)->Int64
+    }#
+endAugment
+
+augment CmdBitwiseOr
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return left.execute(vm)->Int64 | right.execute(vm)->Int64
+    }#
+endAugment
+
+augment CmdBitwiseAnd
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return left.execute(vm)->Int64 & right.execute(vm)->Int64
+    }#
+endAugment
+
+augment CmdLeftShift
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return left.execute(vm)->Int64 :<<: right.execute(vm)->Int64
+    }#
+endAugment
+
+augment CmdRightShift
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return left.execute(vm)->Int64 :>>: right.execute(vm)->Int64
+    }#
+endAugment
+
+augment CmdRightShiftX
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return left.execute(vm)->Int64 :>>>: right.execute(vm)->Int64
+    }#
+endAugment
+
+augment CmdNegate
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return -operand.execute( vm )->Real64
+    }#
+endAugment
+
+augment CmdPreIncrement
+endAugment
+
+augment CmdPreDecrement
+endAugment
+
+augment CmdPostIncrement
+endAugment
+
+augment CmdPostDecrement
+endAugment
+
+augment CmdBitwiseNot
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return !operand.execute( vm )->Int64
+    }#
+endAugment
+
+augment CmdAssign
+endAugment
+
+augment CmdAccess
+  METHODS
+    method execute( vm:BossVM )
+      throw t.error( "[INTERNAL] Unresolved access: " + name )
+endAugment
+
+augment CmdReadContext
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local value = context.execute( vm )
+      local obj = value->Object as BossObject
+      local type = vm.type_of( value )
+      if (not type) return UndefinedBossValue
+
+      local slot = cached_method_slot
+      if (slot >= 0)
+        if (slot < type.methods.count)
+          local m = type.methods[slot]
+          if (m.id == element_id)
+            vm.push( value )
+            m.call( 0 )
+            return vm.pop
+          endIf
+        endIf
+      endIf
+
+      slot = cached_property_slot
+      if (slot >= 0)
+        if (slot < type.properties.count and type.properties[slot].id == element_id)
+          return obj.properties[ slot ]
+        endIf
+      endIf
+
+      cached_method_slot = type.locate_method( element_id )
+      if (cached_method_slot >= 0)
+        vm.push( value )
+        type.methods[ cached_method_slot ].call( 0 )
+        return vm.pop
+      endIf
+
+      cached_property_slot = type.locate_property( element_id )
+      if (cached_property_slot >= 0) return obj.properties[ cached_property_slot ]
+
+      return UndefinedBossValue
+    }#
+endAugment
+
+augment CmdWriteContext
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local new_value = this.new_value.execute( vm )
+      local context_value = context.execute( vm )
+      local obj = context_value->Object as BossObject
+      local type = vm.type_of( context_value )
+      if (not type) return UndefinedBossValue
+
+      local slot = cached_method_slot
+      if (slot >= 0)
+        if (slot < type.methods.count)
+          local m = type.methods[slot]
+          if (m.id == element_id)
+            vm.push( context_value )
+            vm.push( new_value )
+            m.call( 1 )
+            return vm.pop
+          endIf
+        endIf
+      endIf
+
+      slot = cached_property_slot
+      if (slot >= 0)
+        if (slot < type.properties.count and type.properties[slot].id == element_id)
+          obj.properties[ slot ] = new_value
+          return UndefinedBossValue
+        endIf
+      endIf
+
+      cached_method_slot = type.locate_method( element_id )
+      if (cached_method_slot >= 0)
+        vm.push( context_value )
+        vm.push( new_value )
+        type.methods[ cached_method_slot ].call( 1 )
+        return vm.pop
+      endIf
+
+      cached_property_slot = type.locate_property( element_id )
+      if (cached_property_slot >= 0)
+        obj.properties[ cached_property_slot ] = new_value
+      endIf
+
+      return UndefinedBossValue
+    }#
+endAugment
+
+augment CmdReadThisProperty
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local obj = vm.stack[ vm.fp ].object as BossObject
+      if (obj is null) return UndefinedBossValue
+      return obj.properties[ property_index ]
+    }#
+endAugment
+
+augment CmdWriteThisProperty
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local result = new_value.execute( vm )
+      local obj = vm.stack[ vm.fp ].object as BossObject
+      if (obj) obj.properties[ property_index ] = result
+      return result
+    }#
+endAugment
+
+augment CmdThisPropertyAddLiteralAndAssign
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local obj = vm.stack[ vm.fp ].object as BossObject
+      if (obj is null) return UndefinedBossValue
+      local result = obj.properties[ property_index ] + delta
+      obj.properties[ property_index ] = result
+      return result
+    }#
+endAugment
+
+augment CmdThisPropertyPostIncrement
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local obj = vm.stack[ vm.fp ].object as BossObject
+      if (obj is null) return UndefinedBossValue
+      local result = obj.properties[ property_index ]
+      obj.properties[ property_index ] = result + delta
+      return result
+    }#
+endAugment
+
+augment CmdContextAddLiteralAndAssign
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local value = context.execute( vm )
+      local obj = value->Object as BossObject
+      local type = vm.type_of( value )
+      if (not type) return UndefinedBossValue
+
+      local slot = cached_property_slot
+      if (slot >= 0)
+        if (slot < type.properties.count and type.properties[slot].id == element_id)
+          local result = obj.properties[ slot ] + delta
+          obj.properties[ slot ] = result
+          return result
+        endIf
+      endIf
+
+      cached_property_slot = type.locate_property( element_id )
+      if (cached_property_slot >= 0)
+        local result = obj.properties[ cached_property_slot ] + delta
+        obj.properties[ cached_property_slot ] = result
+        return result
+      endIf
+
+      return UndefinedBossValue
+    }#
+endAugment
+
+augment CmdContextPostIncrement
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local value = context.execute( vm )
+      local obj = value->Object as BossObject
+      local type = vm.type_of( value )
+      if (not type) return UndefinedBossValue
+
+      local slot = cached_property_slot
+      if (slot >= 0)
+        if (slot < type.properties.count and type.properties[slot].id == element_id)
+          local result = obj.properties[ slot ]
+          obj.properties[ slot ] = result + delta
+          return result
+        endIf
+      endIf
+
+      cached_property_slot = type.locate_property( element_id )
+      if (cached_property_slot >= 0)
+        local result = obj.properties[ cached_property_slot ]
+        obj.properties[ cached_property_slot ] = result + delta
+        return result
+      endIf
+
+      return UndefinedBossValue
+    }#
+
+    #{
+    method resolved( scope:BossVM )->Cmd
+      context = context.resolved( scope )
+      element_id = scope.id( name )
+      return this
+      }#
+endAugment
+
+augment CmdContextCall
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local value = context.execute( vm )
+      local type = vm.type_of( value )
+
+      local slot = cached_method_slot
+      if (slot >= 0)
+        if (slot < type.methods.count)
+          local m = type.methods[slot]
+          if (m.id == method_id)
+            vm.push( value )
+            if (args.count)
+              args.execute( vm )
+              m.call( args.count )
+            else
+              m.call( 0 )
+            endIf
+            return vm.pop
+          endIf
+        endIf
+      endIf
+
+      cached_method_slot = type.locate_method( method_id )
+      if (cached_method_slot >= 0)
+        vm.push( value )
+        if (args.count)
+          args.execute( vm )
+          type.methods[ cached_method_slot ].call( args.count )
+        else
+          type.methods[ cached_method_slot ].call( 0 )
+        endIf
+        return vm.pop
+      endIf
+
+      return UndefinedBossValue
+    }#
+endAugment
+
+augment CmdGlobalCall
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      vm.push( vm.type_Global.get_singleton )
+      if (args) args.execute( vm )
+      m.call( arg_count )
+      return vm.pop
+    }#
+endAugment
+
+augment CmdReadGlobal
+  METHODS
+    method execute( vm:BossVM )
+      vm.stack.add( v.context_module.global_data[v.slot] )
+endAugment
+
+augment CmdWriteGlobal
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local result = new_value.execute( vm )
+      vm.global_vars[ index ] = result
+      return result
+    }#
+endAugment
+
+augment CmdReadLocal
+  METHODS
+    method execute( vm:BossVM )
+      vm.push( vm.stack[vm.fp+index] )
+endAugment
+
+augment CmdReadLocalCompound
+  METHODS
+    method execute( vm:BossVM )
+      loop (slot_count)
+        vm.push( vm.stack[vm.fp+index] )
+        ++index
+      endLoop
+endAugment
+
+augment CmdLocalAddLiteralAndAssign
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local result = vm.stack[ vm.fp+index ] + delta
+      vm.stack[ vm.fp+index ] = result
+      return result
+    }#
+endAugment
+
+augment CmdLocalPostIncrement
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local result = vm.stack[ vm.fp+index ]
+      vm.stack[ vm.fp+index ] = result + delta
+      return result
+    }#
+endAugment
+
+augment CmdWriteLocal
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local result = new_value.execute( vm )
+      vm.stack[ vm.fp+index ] = result
+      return result
+    }#
+endAugment
+
+
+augment CmdGlobalDeclaration
+  METHODS
+    method execute( vm:BossVM )
+      noAction
+endAugment
+
+
+augment CmdLocalDeclaration
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      vm.stack[ vm.fp+index ] = initial_value.execute( vm )
+      return UndefinedBossValue
+    }#
+endAugment
+
+augment CmdCreateObject
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local obj = BossObject( type )
+      local result = BossValue( obj )
+      obj.initialize
+      if (args.count)
+        vm.push( result )
+        forEach (arg in args) vm.push( arg.execute(vm) )
+        vm.call( vm.id_init, args.count )
+      endIf
+      return result
+    }#
+endAugment
+
+augment CmdReturnUndefined
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      vm.status = BossVM.STATUS_RETURNING
+      return UndefinedBossValue
+    }#
+endAugment
+
+augment CmdReturnValue
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local result = result.execute( vm )
+      vm.status = BossVM.STATUS_RETURNING
+      return result
+    }#
+endAugment
+
+
+augment CmdPrintln
+  METHODS
+    method execute( vm:BossVM )
+      if (resolved_args)
+        (forEach in resolved_args).execute( vm )
+      endIf
+      println
+endAugment
+
+augment CmdPrintInt32
+  METHODS
+    method execute( vm:BossVM )
+      operand.execute( vm )
+      print vm.pop_int32
+endAugment
+
+augment CmdPrintString
+  METHODS
+    method execute( vm:BossVM )
+      operand.execute( vm )
+      print vm.pop_string
+endAugment
+
+
+augment CmdControlStructure
+endAugment
+
+
+augment CmdIf
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      if (condition.execute(vm)->Logical) return statements.execute( vm )
+      return UndefinedBossValue
+    }#
+endAugment
+
+
+augment CmdIfElse
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      if (condition.execute(vm)->Logical) return statements.execute( vm )
+      else                                return else_statements.execute( vm )
+    }#
+endAugment
+
+
+augment CmdWhile
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      local result = UndefinedBossValue
+      while (condition.execute(vm)->Logical)
+        result = statements.execute( vm )
+        if (vm.status) return result
+      endWhile
+      return result
+    }#
+endAugment
+
+augment CmdThis
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return vm.stack[ vm.fp ]
+    }#
+endAugment
+
+#{
+augment CmdThisCall
+  METHODS
+    #{
+    method execute( vm:BossVM )
+      return "argc:$" (vm.
+    }#
+endAugment
+}#
+
+augment CmdCallRoutine
+  METHODS
+    method execute( vm:BossVM )
+      local old_fp = vm.fp
+      vm.fp = vm.stack.count
+
+      if (args) args.execute( vm )
+      m.statements.execute( vm )
+
+      vm.fp = old_fp
+endAugment
+

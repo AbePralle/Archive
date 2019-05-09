@@ -1,0 +1,57 @@
+module Boss
+  uses ParseKit<<Boss>>
+
+class BossScope
+  PROPERTIES
+    vm             : BossVM
+    this_module    : BossModule
+    this_type      : BossType
+    this_method    : BossMethod
+    previous_scope : BossScope
+
+    locals         = BossLocal[]
+
+  METHODS
+    method init( this_module )
+      vm = this_module.vm
+
+    method init( this_method )
+      this_type = this_method.type_context  # may be null
+      this_module = this_method.module_context
+      vm = this_module.vm
+
+    #method init( this_method )
+      #this_type = this_method.type_context
+
+    method resolve_access( access:CmdAccess )->Cmd
+      if (not access.args)
+        # Could be a local, instance, or global variable access
+        block
+          forEach (v in locals step -1)
+            if (v.name == access.name)
+              if (v.type.slot_count == 1)
+                return CmdReadLocal( access.t, v ).resolved( this )
+              else
+                return CmdReadLocalCompound( access.t, v ).resolved( this )
+              endIf
+            endIf
+          endForEach
+        endBlock
+
+        block
+          local v = this_module.global_vars[ access.name ]
+          if (v)
+            if (v.type.slot_count == 1)
+              return CmdReadGlobal( access.t, v ).resolved( this )
+            else
+              return CmdReadGlobalCompound( access.t, v ).resolved( this )
+            endIf
+          endIf
+        endBlock
+      endIf
+
+      # Maybe a method or routine
+      return this_module.routines.resolve_call( this, access, &error_on_fail )
+
+      #throw access.t.error( 'No such method or variable: "$".' (access.name) )
+endClass

@@ -1,0 +1,13 @@
+#==============================================================================
+# BossError.rogue
+#==============================================================================
+module Boss
+uses ParseKit<<Boss>>
+
+class BossError : ParseError
+  METHODS
+    method print
+      Console.error.println this->String
+endClass
+
+

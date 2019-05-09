@@ -1,0 +1,129 @@
+module Boss
+  uses ParseKit<<Boss>>
+
+#==============================================================================
+# BossVM
+#==============================================================================
+class BossVM
+  PROPERTIES
+    stack = Int64[]
+    fp    : Int32
+
+    is_resolved : Logical
+
+    modules     = LookupList<<BossModule>>()
+    module_list = BossModule[]
+
+    default_module : BossModule
+
+    internal_t  = Token( TokenType.EOI, "[BossVM]", 0, 0 )
+
+    type_Int32  : BossType
+    type_String : BossType
+
+    strings = StringLookupList()
+
+  METHODS
+    method init
+      type_Int32  = define_type( "Int32",  BossType.IS_PRIMITIVE )
+      type_String = define_type( "String", BossType.IS_STRING )
+
+    method create_module( name:String, filepath:String )->BossModule
+      is_resolved = false
+      local m = BossModule( this, name, filepath )
+      module_list.add( m )
+      if (default_module) m.import( default_module )
+      return m
+
+    method define_type( name:String, attributes=0:Int32, slot_count=1:Int32 )->BossType
+      attributes |= BossType.IS_DEFINED
+      if (not default_module)
+        default_module = create_module( "boss", "[BossVM]" )
+        modules//boss = default_module
+      endIf
+      local type = default_module.get_type( internal_t, name, BossType.IS_DEFINED )
+      type.slot_count = slot_count
+      return type
+
+    method execute( command:String, origin="[Native Code]":String )
+      default_module.execute( command, origin )
+
+    method evaluate_int32( command:String, origin="[Native Code]":String )->Int32
+      return default_module.evaluate_int32( command, origin )
+
+    method load( filepath:String )->BossModule
+      return load( internal_t, filepath )
+
+    method load( t:Token, filepath:String )->BossModule
+      local module_name = filepath
+      local m = modules[ module_name ]
+      if (m) return m
+
+      if (module_name.ends_with(".boss",&ignore_case))
+        module_name = module_name.before_suffix( ".boss", &ignore_case )
+      else
+        filepath = filepath + ".boss"
+      endIf
+
+      if (not File.exists(filepath)) throw t.error( "No such file: " + filepath )
+
+      local abs_filepath = File.absolute_filepath( filepath )
+      m = modules[ abs_filepath ]
+      if (m) return m
+
+      m = create_module( module_name, abs_filepath )
+      modules[ module_name ] = m
+      modules[ filepath ] = m
+      modules[ abs_filepath ] = m
+
+      parse( m, File.load_as_string(abs_filepath) )
+
+      resolve
+
+      return m
+
+
+    method parse( filename:String, source:String )->BossModule
+      local m = create_module( filename.before_suffix(".boss",&ignore_case), filename )
+      parse( m, source )
+      return m
+
+    method parse( m:BossModule, source:String )
+      BossParser().parse( m, source )
+
+    method parse_expression( filename:String, source:String )->Cmd
+      return BossParser().[ set_source(filename,source) ].parse_expression()
+
+    method pop_and_add( slot_count:Int32, list:Int64[] )
+      if (slot_count == 1)
+        list.add( stack.remove_last )
+      else
+        local i1 = stack.count - slot_count
+        forEach (delta in 0..<slot_count) list.add( stack[i1+delta] )
+      endIf
+
+    method pop_int32->Int32 [macro]
+      return this.stack.remove_last->Int32
+
+    method pop_string->String
+      return strings[ stack.remove_last->Int32 ]
+
+    method push( value:Int32 ) [macro]
+      this.stack.add( value )
+
+    method push( value:String )
+      strings.add( value )
+      stack.add( strings.locate(value).value )
+
+      #{
+    method push( value:BossValue )
+      stack.add( value )
+      }#
+
+    method resolve
+      if (is_resolved) return
+
+      is_resolved = true
+      (forEach in module_list).resolve
+endClass
+

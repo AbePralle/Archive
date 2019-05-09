@@ -1,0 +1,13 @@
+module Boss
+  uses ParseKit<<Boss>>
+
+class BossObject
+  PROPERTIES
+    vm   : BossVM
+    data : Real64[]
+
+  METHODS
+    method init( vm )
+endClass
+
+

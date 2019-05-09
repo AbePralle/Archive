@@ -1,0 +1,61 @@
+module Boss
+  uses ParseKit<<Boss>>
+
+class BossType
+  DEFINITIONS
+    IS_DEFINED   = (1:<<:0)
+    IS_RESOLVED  = (1:<<:1)
+
+    TYPE_MASK    = (0x3:<<:2)
+    IS_PRIMITIVE = (0x0:<<:2)
+    IS_CLASS     = (0x1:<<:2)
+    IS_STRING    = (0x2:<<:2)
+
+  PROPERTIES
+    vm             : BossVM
+    module_context : BossModule
+    t              : Token
+    name           : String
+    attributes     : Int32
+    slot_count     : Int32
+    is_resolved    : Logical
+
+  METHODS
+    method init( module_context, t, name, attributes=0 )
+      vm = module_context.vm
+
+    method has_attribute( attr:Int32 )->Logical [macro]
+      return (this.attributes & attr)->Logical
+
+    method is_defined->Logical [macro]
+      return this.has_attribute( BossType.IS_DEFINED )
+
+    method is_resolved->Logical [macro]
+      return this.has_attribute( BossType.IS_RESOLVED )
+
+    method resolve [macro]
+      this.resolved
+
+    method resolved->BossType
+      if (is_resolved) return this
+
+      if (not is_defined)
+        # No such type defined in this module. Check implicit imports.
+        forEach (m in module_context.implicit_imports step -1)
+          local type = m.find_type( name )
+          if (type and type.is_defined) return type
+        endForEach
+        throw t.error( 'Use of undefined type "$".' (name) )
+      endIf
+
+      attributes |= IS_RESOLVED
+
+      return this
+
+    method to->String
+      return name
+endClass
+
+#class BossTypeReference( t:Token, name:String )
+#endClass
+

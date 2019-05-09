@@ -1,0 +1,30 @@
+module Boss
+  uses ParseKit<<Boss>>
+
+class BossVar
+  PROPERTIES
+    context_module : BossModule
+    t              : Token
+    name           : String
+    initial_value  : Cmd
+    type           : BossType
+
+    slot           : Int32
+
+  METHODS
+    method init( context_module, t, name, initial_value, type )
+
+    method resolve( scope:BossScope )
+      if (initial_value)
+        initial_value = initial_value.resolved( scope ).require_value( scope )
+        if (type is null) type = initial_value.require_type( scope )
+      else
+        if (type is null) throw t.error( 'Variable declaration must have an initial value ("$ = 0") or a type ("$ : Int32").' (name,name) )
+      endIf
+
+      initial_value.execute( context_module.vm )
+
+      slot = context_module.global_data.count
+      context_module.vm.pop_and_add( type.slot_count, context_module.global_data )
+
+endClass

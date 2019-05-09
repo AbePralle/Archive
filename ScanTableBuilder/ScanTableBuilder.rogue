@@ -1,0 +1,105 @@
+# Version 1.0
+
+enum StateFlags
+  NONE    = 0
+  ACCEPT  = 1  # State can be accepted as a token       (%001)
+  DISCARD = 3  # State can be accepted but then discard (%011)
+  ADVANCE = 4  # Immediately follow [DEFAULT_LINK] without consuming an input
+endEnum
+
+enum TransitionActions
+  NONE    =   0
+  CONSUME =   8  # Remove the transition input character from the result
+  EMIT    =  16  # Emit additional character with transition 'value'
+  CLEAR   =  32  # Clear converted value accumulator
+  CONVERT =  64  # accumulator = (accumulator * 'value') + input character in base 'type'
+  OUTPUT  = 128  # Output accumulator as additional character
+endEnum
+
+class Transition( character:Character, actions:TransitionActions, value:Int32, target_state:ScanState )
+  METHODS
+    method init
+endClass
+
+class ScanState
+  DEFINITIONS
+    DEFAULT_LINK    = 0
+    ALPHA_LINK      = 1
+    NUMERIC_LINK    = 2
+    ARBITRARY_LINKS = 3
+
+  PROPERTIES
+    type        : Int32      # Arbitrary type if this state accepted
+    option      : Int32      # Arbitrary option if this state accepted
+    flags       : StateFlags # State flags
+    index       : Int32      # For scan table generation
+    transitions = Transition[]
+
+  METHODS
+    method init( type=0, option=0, flags=StateFlags.NONE )
+      transitions.add( null ).add( null ).add( null )  # DEFAULT, ALPHA, NUMERIC link slots
+
+    method accept->ScanState
+      flags |= StateFlags.ACCEPT
+      return this
+
+    method advance( target_state:ScanState )
+      flags |= StateFlags.ADVANCE
+      link_default( target_state )
+
+    method discard
+      flags |= StateFlags.DISCARD
+
+    method find_link( ch:Character )->ScanState
+      forEach (t in transitions from ARBITRARY_LINKS)
+        if (t.character == ch) return t.target_state
+      endForEach
+      return null
+
+    method link( ch:Character, type:Int32, option=0:Int32 )->ScanState
+      return link( ch, TransitionActions.NONE, 0, type, option )
+
+    method link( ch:Character, action:TransitionActions, value=0:Int32, type=0:Int32, option=0:Int32 )->ScanState
+      local state = find_link( ch )
+      if (state)
+        state.type   |= type
+        state.option |= option
+        state.flags  |= flags
+        return state
+      else
+        return new_link( ch, action, value, type, option )
+      endIf
+
+    method link( symbol:String, action=0:TransitionActions, value=0:Int32, type=0:Int32, option=0:Int32 )->ScanState
+      local cur = this
+      local result : ScanState
+      forEach (ch at index in symbol)
+        cur = link( ch, action, value )
+        if (index == 0) result = cur
+      endForEach
+      cur.type   |= type
+      cur.option |= option
+      cur.flags  |= flags
+      return result
+
+    method link_alpha( target_state:ScanState )
+      transitions[ ALPHA_LINK ] = Transition( 0, TransitionActions.NONE, 0, target_state )
+
+    method link_default( target_state:ScanState )
+      transitions[ DEFAULT_LINK ] = Transition( 0, TransitionActions.NONE, 0, target_state )
+
+    method link_numeric( target_state:ScanState )
+      transitions[ NUMERIC_LINK ] = Transition( 0, TransitionActions.NONE, 0, target_state )
+
+    method new_link( ch:Character, action=0:TransitionActions, value=0:Int32, type=0:Int32, option=0:Int32 )->ScanState
+      local state = ScanState( type, option )
+      transitions.add( Transition(ch,action,value,state) )
+      return state
+
+endClass
+
+class ScanTableBuilder
+  PROPERTIES
+    start = ScanState()
+endClass
+

@@ -1,0 +1,449 @@
+module Boss
+  uses ParseKit<<Boss>>
+
+#==============================================================================
+# Cmd Nodes (Parse Tree / AST)
+#==============================================================================
+augment Cmd
+  METHODS
+    method exit_scope( scope:BossScope )
+      noAction
+
+    method require_value( scope:BossScope )->Cmd
+      local this_type = this.type( scope )
+      if (this_type is null) throw t.error( "Value expected." )
+      return this
+
+    method require_type( scope:BossScope )->BossType
+      local this_type = this.type( scope )
+      if (this_type is null) throw t.error( "Value expected." )
+      return this_type
+
+    method require_type( scope:BossScope, type:BossType )->Cmd
+      local this_type = this.type( scope )
+      if (this_type is null or this_type is not type)
+        throw t.error( "Expression does not evaluate to required type $." (type) )
+      endIf
+      return this
+
+    method type( scope:BossScope )->BossType
+      return null
+endAugment
+
+augment CmdStatements
+  METHODS
+    method init
+
+    method init( cmd:Cmd )
+      add( cmd )
+endAugment
+
+
+augment CmdArgs
+endAugment
+
+augment CmdUnary
+endAugment
+
+class CmdDiscardResult : CmdUnary
+endClass
+
+class CmdDiscardResultCompound( t, operand, slot_count:Int32 ) : CmdDiscardResult
+endClass
+
+class BossCmdUnary<<$SYMBOL>> : CmdUnary
+  METHODS
+    method op->String
+      return $string($SYMBOL)
+endClass
+
+augment CmdBinary
+  METHODS
+    method type( scope:BossScope )->BossType
+      local lhs_type = left.type( scope )
+      if (lhs_type is null) return null
+
+      local rhs_type = right.type( scope )
+      if (rhs_type is null) return null
+
+      if (lhs_type is not rhs_type) return null
+      return lhs_type
+endAugment
+
+class CmdBinaryOp<<$SYMBOL>> : CmdBinary
+  METHODS
+    method op->String
+      return $string($SYMBOL)
+endClass
+
+class CmdLiteral : Cmd
+endClass
+
+class CmdLiteralUndefined( t ) : CmdLiteral
+endClass
+
+class CmdLiteralNull( t ) : CmdLiteral
+endClass
+
+class CmdLiteralInt32( t, value:Int32 ) : CmdLiteral
+  METHODS
+    method to->String
+      return value
+
+    method type( scope:BossScope )->BossType
+      return scope.vm.type_Int32
+endClass
+
+class CmdLiteralString : CmdLiteral
+  PROPERTIES
+    value : String
+    index : Int32
+
+  METHODS
+    method init( t, value )
+
+    method to->String
+      return value
+
+    method type( scope:BossScope )->BossType
+      return scope.vm.type_String
+endClass
+
+class CmdAdd : CmdBinaryOp<<+>>
+endClass
+
+class CmdAddInt32 : CmdAdd
+  METHODS
+    method type( scope:BossScope )->BossType
+      return scope.vm.type_Int32
+endClass
+
+class CmdSubtract : CmdBinaryOp<<->>
+endClass
+
+class CmdMultiply : CmdBinaryOp<<*>>
+endClass
+
+class CmdDivide : CmdBinary
+  METHODS
+    method op->String
+      return "/"
+endClass
+
+class CmdMod : CmdBinary
+  METHODS
+    method op->String
+      return "%"
+endClass
+
+class CmdPower : CmdBinaryOp<<^>>
+  METHODS
+endClass
+
+class CmdCompareEQ : CmdBinaryOp<< == >>
+endClass
+
+class CmdCompareNE : CmdBinaryOp<< != >>
+endClass
+
+class CmdCompareLE : CmdBinaryOp<< <= >>
+endClass
+
+class CmdCompareLT : CmdBinary
+  METHODS
+    method op->String
+      return "<"
+endClass
+
+class CmdCompareGE : CmdBinaryOp<< >= >>
+endClass
+
+class CmdCompareGT : CmdBinary
+  METHODS
+    method op->String
+      return ">"
+endClass
+
+class CmdBitwiseXor : CmdBinary
+  METHODS
+    method op->String
+      return "~"
+endClass
+
+class CmdBitwiseOr : CmdBinary
+  METHODS
+    method op->String
+      return "|"
+endClass
+
+class CmdBitwiseAnd : CmdBinary
+  METHODS
+    method op->String
+      return "&"
+endClass
+
+class CmdLeftShift : CmdBinary
+  METHODS
+    method op->String
+      return ":<<:"
+endClass
+
+class CmdRightShift : CmdBinary
+  METHODS
+    method op->String
+      return ":>>:"
+endClass
+
+class CmdRightShiftX : CmdBinary
+  METHODS
+    method op->String
+      return ":>>>:"
+endClass
+
+class CmdNegate : BossCmdUnary<<->>
+  METHODS
+    method op->String
+      return "-"
+endClass
+
+class CmdPreIncrement : CmdUnary
+  METHODS
+    method op->String
+      return "++"
+endClass
+
+class CmdPreDecrement : CmdUnary
+  METHODS
+    method op->String
+      return "--"
+endClass
+
+class CmdPostIncrement : CmdUnary
+  METHODS
+    method op->String
+      return "++"
+endClass
+
+class CmdPostDecrement : CmdUnary
+  METHODS
+    method op->String
+      return "--"
+endClass
+
+class CmdBitwiseNot : CmdUnary
+  METHODS
+    method op->String
+      return "!"
+endClass
+
+class CmdAssign( t, left:Cmd, right:Cmd ) : Cmd
+  METHODS
+    method to->String
+      return "$ = $" (left,right)
+endClass
+
+class CmdAccess( t, context:Cmd, name:String, args:CmdArgs ) : Cmd
+  METHODS
+    method init( t )
+      name = t->String
+
+    method init( t, name, args )
+
+    method to->String
+      return name
+endClass
+
+class CmdReadContext( t, context:Cmd, name:String, element_id=0:Int32 ) : Cmd
+  METHODS
+    method to->String
+      return name
+endClass
+
+class CmdWriteContext( t, context:Cmd, name:String, new_value:Cmd, element_id=0:Int32 ) : Cmd
+  METHODS
+    method to->String
+      return name
+endClass
+
+class CmdReadThisProperty( t, property_index:Int32 ) : Cmd
+endClass
+
+class CmdWriteThisProperty( t, property_index:Int32, new_value:Cmd ) : Cmd
+endClass
+
+class CmdThisPropertyAddLiteralAndAssign( t, property_index:Int32, delta:Real64 ) : Cmd
+endClass
+
+class CmdThisPropertyPostIncrement( t, property_index:Int32, delta:Real64 ) : Cmd
+endClass
+
+class CmdContextAddLiteralAndAssign( t, context:Cmd, name:String, delta:Real64, element_id=0:Int32 ) : Cmd
+  METHODS
+    method to->String
+      return name
+endClass
+
+class CmdContextPostIncrement( t, context:Cmd, name:String, delta:Real64, element_id=0:Int32 ) : Cmd
+  METHODS
+    method to->String
+      return name
+endClass
+
+class CmdContextCall( t, context:Cmd, name:String, args:CmdArgs, method_id=0:Int32 ) : Cmd
+  METHODS
+    method to->String
+      return "$.$$" (context,name,args)
+endClass
+
+#{
+class CmdGlobalCall( t, m:BossMethod, args:CmdArgs ) : Cmd
+  PROPERTIES
+    arg_count : Int32
+
+  METHODS
+    method to->String
+      return "$$" (m.name,select{args:args->String || "()"})
+endClass
+}#
+
+class CmdReadGlobal( t, v:BossVar ) : Cmd
+  METHODS
+    method type( scope:BossScope )->BossType
+      return v.type
+endClass
+
+class CmdReadGlobalCompound : Cmd
+  PROPERTIES
+    v          : BossVar
+    slot_count : Int32
+
+  METHODS
+    method init( t, v )
+      slot_count = v.type.slot_count
+
+    method type( scope:BossScope )->BossType
+      return v.type
+endClass
+
+class CmdWriteGlobal( t, name:String, index:Int32, new_value:Cmd ) : Cmd
+endClass
+
+class CmdReadLocal : Cmd
+  PROPERTIES
+    v     : BossLocal
+    index : Int32
+
+  METHODS
+    method init( t, v )
+      index = v.index
+
+    method type( scope:BossScope )->BossType
+      return v.type
+endClass
+
+class CmdReadLocalCompound : Cmd
+  PROPERTIES
+    v          : BossLocal
+    index      : Int32
+    slot_count : Int32
+
+  METHODS
+    method init( t, v )
+      index = v.index
+      slot_count = v.type.slot_count
+
+    method type( scope:BossScope )->BossType
+      return v.type
+endClass
+
+class CmdLocalAddLiteralAndAssign( t, name:String, index:Int32, delta:Real64 ) : Cmd
+endClass
+
+class CmdLocalPostIncrement( t, name:String, index:Int32, delta:Real64 ) : Cmd
+endClass
+
+class CmdWriteLocal( t, name:String, index:Int32, new_value:Cmd ) : Cmd
+endClass
+
+
+class CmdGlobalDeclaration( t, name:String, initial_value:Cmd, of_type:BossType ) : Cmd
+endClass
+
+
+class CmdLocalDeclaration( t, name:String, initial_value:Cmd, of_type:BossType ) : Cmd
+  METHODS
+    #{
+    method exit_scope( vm:BossVM )
+      require vm.locals.count
+      vm.locals.remove_last
+
+    method resolved( scope:BossVM )->Cmd
+      if (index == -1)
+        local v = scope.find_local( name )
+        if (v.exists)
+          throw t.error( 'A local variable named "$" already exists.' (name) )
+        else
+          if (initial_value) initial_value = initial_value.resolved( scope )
+          else               initial_value = CmdLiteralUndefined(t)
+          index = scope.this_method.add_local( t, name, initial_value )
+        endIf
+      endIf
+      scope.locals.add( scope.this_method.locals[index-1] )
+      return this
+      }#
+endClass
+
+class CmdCreateObject( t, type:BossType, args:CmdArgs ) : Cmd
+endClass
+
+class CmdReturnUndefined( t ) : Cmd
+endClass
+
+class CmdReturnValue( t, result:Cmd ) : Cmd
+endClass
+
+
+class CmdPrintln( t, args:CmdArgs ) : Cmd
+  PROPERTIES
+    resolved_args : Cmd[]
+endClass
+
+class CmdPrintInt32( t, operand:Cmd ) : Cmd
+endClass
+
+class CmdPrintString( t, operand:Cmd ) : Cmd
+endClass
+
+
+class CmdControlStructure( t ) : Cmd
+  PROPERTIES
+    statements : CmdStatements
+
+endClass
+
+
+class CmdIf( t, condition:Cmd, statements ) : CmdControlStructure
+endClass
+
+
+class CmdIfElse( t, condition:Cmd, statements, else_statements:CmdStatements ) : CmdControlStructure
+endClass
+
+
+class CmdWhile( t, condition:Cmd, statements=CmdStatements() ) : CmdControlStructure
+endClass
+
+class CmdThis : Cmd
+endClass
+
+#{
+class CmdThisCall
+endClass
+}#
+
+class CmdCallRoutine( t, m:BossMethod, args:CmdArgs ) : Cmd
+  METHODS
+    method type( scope:BossScope )->BossType
+      return m.return_type
+endClass
+
