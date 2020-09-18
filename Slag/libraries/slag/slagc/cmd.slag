@@ -1,0 +1,4160 @@
+#=====================================================================
+#  cmd.slag
+#
+#  History:
+#    2008.09.13 - Created by Abe Pralle for v2 compiler.
+#    2009.12.15 - Revamped by Abe Pralle for v3 compiler.
+#=====================================================================
+
+[include "type_info.slag"]
+
+class Cmd
+  CLASS_PROPERTIES
+    no_action(null) : Cmd
+      # Placeholder constant
+
+  PROPERTIES
+    t : Token
+
+  METHODS
+    method init( t )
+
+    method type.TypeInfo
+      return null
+
+    method is_statement_list.Logical
+      return false
+
+    method error( String mesg ).SlagError
+      if (t?) return t.error(mesg)
+      return SlagError( "[Internal]", mesg )
+
+    method to_String.String
+      return "$()(...)" (type_name)
+
+    method finalize_calls.Cmd
+      println( ">>>" + Context.this_method.full_signature )
+      throw Error( "finalize_calls() not defined for " + type_name )
+
+    method finalize_structure_info
+      println( ">>>" + Context.this_method.full_signature )
+      throw Error( "finalize_structure_info() not defined for " + type_name )
+
+    method group_dynamic_methods
+      println( ">>>" + Context.this_method.full_signature )
+      throw Error( "group_dynamic_methods() not defined for " + type_name )
+
+    method resolve.Cmd
+      println( ">>>" + Context.this_method.full_signature )
+      throw Error( "resolve() not defined for " + type_name )
+
+    method optimize.Cmd
+      return this
+
+    method to_inline( CmdList arg_list ).Cmd
+      println( ">>>" + Context.this_method.full_signature )
+      throw Error( "to_inline() not defined for " + type_name )
+
+    method no_side_effects.Logical
+      # True if this expression has no side effects
+      return (this instanceOf CmdThisReference) ...
+          or (this instanceOf CmdSingletonReference) or (this instanceOf CmdVarAccess) ...
+          or (this instanceOf CmdLiteralPrimitive or this instanceOf CmdLiteralString)
+
+
+endClass
+
+class CmdStatementList : Cmd
+  PROPERTIES
+    statements   : Cmd[]
+
+  METHODS
+    method init( t, Int32 num_statements )
+      statements = Cmd[](num_statements)
+
+    method init( t, statements )
+
+    method init( Cmd statement )
+      t = statement.t
+      statements = Cmd[](1)
+      statements.add( statement )
+
+    method create_duplicate.Cmd
+      local CmdStatementList result( t, statements.count )
+      forEach (s in statements) result.add( duplicate(s) )
+      return result
+
+    method is_statement_list.Logical
+      return true
+
+    method count.Int32
+      return statements.count
+
+    method add( Cmd cmd )
+      statements.add( cmd )
+
+    method insert( Cmd cmd )
+      statements.insert( cmd )
+
+    method trim_to_count.CmdStatementList
+      statements.(ArrayList<<Cmd>>).trim_to_count
+      return this
+
+    method to_String.String
+      local StringBuilder buffer()
+      forEach (stmt in statements)
+        buffer.println( "  $" (stmt) )
+      endForEach
+      return buffer.to_String
+
+    method resolve.Cmd
+      local var work_list = duplicate(statements)
+      statements.clear
+      forEach (cmd in work_list)
+        local var result = cmd.resolve
+        if (result?)
+          if (result.is_statement_list) statements.add( result.(CmdStatementList).statements )
+          else statements.add(result)
+        endIf
+      endForEach
+      return this
+
+    method finalize_calls.Cmd
+      local var work_list = duplicate(statements)
+      statements.clear
+      forEach (cmd in work_list)
+        local var result = cmd.finalize_calls
+        if (result?)
+          if (result.is_statement_list) statements.add( result.(CmdStatementList).statements )
+          else statements.add(result)
+        endIf
+      endForEach
+      return this
+
+    method finalize_structure_info
+      forEach (cmd in statements) cmd.finalize_structure_info
+
+    method group_dynamic_methods
+      forEach (cmd in statements) cmd.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      return statements.first.to_inline(arg_list)
+
+endClass
+
+class CmdList : ArrayList<<Cmd>>
+  METHODS
+    method init( Int32 capacity=2 )
+      prior.init(capacity)
+
+    method init( Cmd cmd )
+      init
+      add(cmd)
+
+    method init( Cmd cmd1, Cmd cmd2 )
+      init
+      add(cmd1)
+      add(cmd2)
+
+    method init( Cmd cmd1, Cmd cmd2, Cmd cmd3 )
+      init
+      add(cmd1)
+      add(cmd2)
+      add(cmd3)
+
+    method create_duplicate.CmdList
+      local CmdList new_list( count )
+      forEach (cmd in this) new_list.add( duplicate(cmd) )
+      return new_list
+
+    method resolve
+      forEach (index of this) data[index] = (data[index] coerceAs Cmd).resolve
+
+    method finalize_calls
+      forEach (index of this) data[index] = (data[index] coerceAs Cmd).finalize_calls
+
+    method finalize_structure_info
+      forEach (index of this) (data[index] coerceAs Cmd).finalize_structure_info
+
+    method group_dynamic_methods
+      forEach (index of this) (data[index] coerceAs Cmd).group_dynamic_methods
+
+    method to_inline( CmdList arg_list )
+      forEach (index of this) data[index] = (data[index] coerceAs Cmd).to_inline(arg_list)
+
+endClass
+
+class CmdStructureControl : Cmd
+  PROPERTIES
+    id : Int32
+
+  METHODS
+    method init( t, id )
+
+    method to_String.String
+      return "$ $" (type_name,id)
+
+    method resolve.Cmd
+      id = Context.id_remap_table[id]
+      return this
+
+    method finalize_calls.Cmd
+      return this
+
+    method finalize_structure_info
+      Context.referenced_structures.add( id )
+
+    method group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      return this
+endClass
+
+class CmdStructure : Cmd
+  PROPERTIES
+    id   : Int32
+    body : CmdStatementList
+    referenced : Logical
+      # Used to omit some labels during code generation.
+
+  METHODS
+    method init( t, id, body=null )
+
+    method to_String.String
+      local StringBuilder buffer()
+      buffer.println( "$::$ (...)" (type_name,id) )
+      buffer.print( body )
+      buffer.println( "end $::$" (type_name,id) )
+      return buffer.to_String
+
+    method remap_id
+      local var old_id = id
+      local var new_id = SlagParser.unique_id
+      Context.id_remap_table[old_id] = new_id
+      id = new_id
+      local var entry = Context.next_iteration_injections.find(old_id)
+      if (entry?) Context.next_iteration_injections[new_id] = entry.value
+      #local var i = Context.foreach_fixups.index_of(old_id)
+      #if (i >= 0) 
+      #Context.foreach_fixups[i] = new_id
+      #endIf
+
+    method finalize_calls.Cmd
+      body.finalize_calls
+      return this
+
+    method finalize_structure_info
+      Context.this_method.supports_inlining = false
+      body.finalize_structure_info
+      if (Context.referenced_structures.contains(id)) referenced = true
+
+    method group_dynamic_methods
+      body.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      body.to_inline(arg_list)
+      return this
+endClass
+
+class CmdStatement : Cmd
+  METHODS
+    method finalize_calls.Cmd
+      return this
+
+    method finalize_structure_info
+
+    method group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      return this
+endClass
+
+class CmdStatementWithOperand : Cmd
+  PROPERTIES
+    operand : Cmd
+
+  METHODS
+    method finalize_calls.Cmd
+      operand .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      operand.finalize_structure_info
+
+    method group_dynamic_methods
+      operand.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      operand .= to_inline(arg_list)
+      return this
+endClass
+
+class CmdUnary : Cmd
+  PROPERTIES
+    operand : Cmd
+
+  METHODS
+    method init( t, operand )
+
+    method type.TypeInfo
+      return operand.type
+
+    method to_String.String
+      return "$()($)" (type_name,operand)
+
+    method finalize_calls.Cmd
+      operand .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      operand.finalize_structure_info
+
+    method group_dynamic_methods
+      operand.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      operand .= to_inline(arg_list)
+      return this
+endClass
+
+
+class CmdBinary : Cmd
+  PROPERTIES
+    lhs, rhs : Cmd
+
+  METHODS
+    method init( t, lhs, rhs )
+
+    method type.TypeInfo
+      return lhs.type
+
+    method to_String.String
+      return "$()($,$)" (type_name,lhs,rhs)
+
+    method finalize_calls.Cmd
+      lhs .= finalize_calls
+      rhs .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      lhs.finalize_structure_info
+      rhs.finalize_structure_info
+
+    method group_dynamic_methods
+      lhs.group_dynamic_methods
+      rhs.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      lhs .= to_inline(arg_list)
+      rhs .= to_inline(arg_list)
+      return this
+endClass
+
+
+class CmdEscape : CmdStructureControl
+  METHODS
+    method create_duplicate.Cmd
+      return CmdEscape(t,id)
+endClass
+
+class CmdNextIteration : CmdStructureControl
+  METHODS
+    method create_duplicate.Cmd
+      return CmdNextIteration(t,id)
+
+    method resolve.Cmd
+      id = Context.id_remap_table[id]
+      local var entry = Context.next_iteration_injections.find(id)
+      if (entry?)
+        local CmdStatementList code(t,2)
+        code.add( duplicate(entry.value).resolve )
+        code.add( this )
+        return code
+      else
+        return this
+      endIf
+endClass
+
+class CmdReturnNil : CmdStatement
+  PROPERTIES
+    handled_foreach_fixup : Logical
+
+  METHODS
+    method init( t, handled_foreach_fixup=false )
+
+    method create_duplicate.Cmd
+      return CmdReturnNil(t,handled_foreach_fixup)
+
+    method resolve.Cmd
+      if (Context.this_method.return_type?)
+        throw t.error( "Missing return value." )
+      endIf
+
+      if (Context.foreach_fixups.count? and not handled_foreach_fixup)
+        handled_foreach_fixup = true
+        local CmdStatementList statements(t,Context.foreach_fixups.count+1)
+        forEach (id in Context.foreach_fixups)
+          statements.add( CmdMemberAccess( t, CmdConstruct(t,".list$"(id)), 
+            CmdConstruct(t,"discard",  
+            CmdList(CmdConstruct(t,".write_pos$"(id)), CmdSub(t,CmdConstruct(t,".read_pos$"(id)),CmdLiteralInt32(t,1)))) ) )
+        endForEach
+        statements.add( this )
+        return statements.resolve
+      endIf
+
+      return this
+
+endClass
+
+class CmdReturnValue : CmdStatementWithOperand
+  PROPERTIES
+    handled_foreach_fixup : Logical
+
+  METHODS
+    method init( t, operand, handled_foreach_fixup=false )
+
+    method create_duplicate.Cmd
+      return CmdReturnValue(t,duplicate(operand),handled_foreach_fixup)
+
+    method to_String.String
+      return "return $" (operand)
+
+    method resolve.Cmd
+      if (Context.this_method.return_type is null)
+        throw operand.error( "Current method does not return a value." )
+      endIf
+
+      if (Context.foreach_fixups.count? and not handled_foreach_fixup)
+        handled_foreach_fixup = true
+        local CmdStatementList statements(t,Context.foreach_fixups.count+1)
+        forEach (id in Context.foreach_fixups)
+          statements.add( CmdMemberAccess( t, CmdConstruct(t,".list$"(id)), 
+            CmdConstruct(t,"discard",  
+            CmdList(CmdConstruct(t,".write_pos$"(id)), CmdSub(t,CmdConstruct(t,".read_pos$"(id)),CmdLiteralInt32(t,1)))) ) )
+        endForEach
+        statements.add( this )
+        return statements.resolve
+      endIf
+
+      operand .= resolve
+      local var operand_type = SlagAnalyzer.require_value(operand)
+      if (not operand_type.instance_of(Context.this_method.return_type))
+        local var fixed = false
+        local var return_type = Context.this_method.return_type
+        block
+          if (operand_type.is_primitive and return_type.is_primitive)
+            if (operand_type.is_logical or return_type.is_logical) escapeBlock
+            local var common_type = SlagAnalyzer.determine_common_data_type( ...
+              operand_type, return_type )
+            if (common_type isNot return_type) escapeBlock
+            operand = SlagAnalyzer.create_cast( operand, return_type ).resolve
+            fixed = true
+          endIf
+        endBlock
+
+        if (not fixed)
+          throw error( "Return value must be instanceOf $ (found $)." ...
+            (Context.this_method.return_type,operand_type) )
+        endIf
+      endIf
+      return this
+
+    method to_inline( CmdList arg_list ).Cmd
+      return operand.to_inline(arg_list)
+endClass
+
+class CmdBlock : CmdStructure
+  METHODS
+    method create_duplicate.CmdBlock
+      return CmdBlock( t, id, duplicate(body) )
+
+    method resolve.Cmd
+      remap_id
+      body.resolve
+      return this
+
+endClass
+
+class CmdTry : CmdStructure
+  PROPERTIES
+    catches(1) : CmdCatch[]
+
+  METHODS
+    method create_duplicate.Cmd
+      local CmdTry result( t, id, duplicate(body) )
+      forEach (c in catches) result.catches.add( duplicate(c) )
+      return result
+
+    method resolve.Cmd
+      remap_id
+      body.resolve
+
+      forEach (index of catches) 
+        local var c = catches[index]
+        c.resolve
+        forEach (c2 in catches.from(index+1))
+          if (c2.var_info.type.instance_of(c.var_info.type))
+            throw c2.t.prior_error( //Exceptions of type "$" are already caught by previous catch ($).//...
+              (c2.var_info.type.name,c.var_info.type.name), c.t )
+          endIf
+        endForEach
+      endForEach
+      return this
+
+    method finalize_calls.Cmd
+      body.finalize_calls
+      forEach (c in catches) c.finalize_calls
+      return this
+
+    method finalize_structure_info
+      Context.this_method.supports_inlining = false
+      body.finalize_structure_info
+      forEach (c in catches) c.finalize_structure_info
+      if (Context.referenced_structures.contains(id)) referenced = true
+
+    method group_dynamic_methods
+      body.group_dynamic_methods
+      forEach (c in catches) c.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      body.to_inline(arg_list)
+      forEach (c in catches) c.to_inline(arg_list)
+      return this
+
+    method to_String.String
+      local StringBuilder buffer()
+      buffer.println( "try " + id )
+      buffer.println( body )
+      forEach (c in catches)
+        buffer.println( "catch ($ $)" (c.var_info.type.name,c.var_info.name) )
+        buffer.println( c.body )
+      endForEach
+      buffer.println( "endTry" )
+      return buffer.to_String
+endClass
+
+class CmdCatch : Cmd
+  PROPERTIES
+    var_info : LocalVarInfo
+    body : CmdStatementList
+
+  METHODS
+    method init( t, var_info, body )
+
+    method create_duplicate.Cmd
+      return CmdCatch( t, var_info, duplicate(body) )
+
+    method resolve.Cmd
+      local var ctype = var_info.type
+      ctype.resolve
+      if (not ctype.instance_of(TypeManager.type_exception))
+        throw t.error( "Catch type must be instanceOf Exception." )
+      endIf
+      body.resolve
+      return this
+
+    method finalize_calls.Cmd
+      body.finalize_calls
+      return this
+
+    method finalize_structure_info
+Context.this_method.supports_inlining = false
+      ++Context.this_method.num_catches
+      Context.this_method.qualifiers |= Qualifiers.qual_contains_throw
+      body.finalize_structure_info
+
+    method group_dynamic_methods
+      body.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      body.to_inline(arg_list)
+      return this
+endClass
+
+class CmdThrow : CmdStatementWithOperand
+  METHODS
+    method init( t, operand )
+
+    method create_duplicate.Cmd
+      return CmdThrow( t, duplicate(operand) )
+
+    method to_String.String
+      return "throw($)" (operand)
+
+    method resolve.Cmd
+      operand .= resolve
+      SlagAnalyzer.require_type( operand, TypeManager.type_exception )
+      return this
+
+    method finalize_calls.Cmd
+      operand .= finalize_calls
+      return this
+
+    method finalize_structure_info
+Context.this_method.supports_inlining = false
+      operand.finalize_structure_info
+      Context.this_method.qualifiers |= Qualifiers.qual_contains_throw
+
+    method to_inline( CmdList arg_list ).Cmd
+      operand .= to_inline(arg_list)
+      return this
+endClass
+
+class CmdIf : CmdStructure
+  PROPERTIES
+    condition  : Cmd
+    elseifs(1) : CmdElseIf[]
+    else_cmd   : CmdStatementList
+
+  METHODS
+    method init( t, id, condition )
+    method init( t, id, condition, body )
+
+    method create_duplicate.Cmd
+      local CmdIf result( t, id, duplicate(condition), duplicate(body) )
+      forEach (elif in elseifs) result.elseifs.add( duplicate(elif) )
+      result.else_cmd = duplicate(else_cmd)
+      return result
+
+    method to_String.String
+      local StringBuilder buffer()
+      buffer.println( "$::$ ($)" (type_name,id,condition) )
+      buffer.print( body )
+      forEach (elseif in elseifs) buffer.print(elseif)
+      if (else_cmd?) buffer.println( "else" ); buffer.print(else_cmd)
+      buffer.println( "end $::$" (type_name,id) )
+      return buffer.to_String
+
+    method contains_constant_conditions.Logical
+      if (condition instanceOf CmdLiteralLogical) return true
+      forEach (elseif in elseifs) 
+        if (elseif.condition instanceOf CmdLiteralLogical) return true
+      endForEach
+      return false
+
+    method resolve.Cmd
+      remap_id
+
+      condition .= resolve
+      SlagAnalyzer.require_logical(condition)
+      body.resolve
+      forEach (e in elseifs) e.resolve
+      if (else_cmd?) else_cmd.resolve; SlagAnalyzer.require_logical(condition)
+      return optimize
+
+    method optimize.Cmd
+      loop
+        if (condition instanceOf CmdLiteralLogical)
+          if (condition.(CmdLiteralLogical).value)
+            return CmdBlock( t, id, body )
+          else
+            if (elseifs.count?) 
+              local var new_head = elseifs.remove_first
+              condition = new_head.condition
+              body = new_head.body
+              nextIteration
+            elseIf (else_cmd?) 
+              return CmdBlock( t, id, else_cmd )
+            else 
+              return null
+            endIf
+          endIf
+        endIf
+
+        local var index = 0
+        while (index < elseifs.count)
+          if (elseifs[index].condition instanceOf CmdLiteralLogical)
+            if (elseifs[index].condition.(CmdLiteralLogical).value)
+              # always true elseif becomes else
+              else_cmd = elseifs[index].body
+              elseifs.discard_from(index)
+              return this
+            else
+              # always false elseif is removed
+              elseifs.remove(index)
+              nextIteration
+            endIf
+          endIf
+          ++index
+        endWhile
+        return this
+
+      endLoop
+
+    method finalize_calls.Cmd
+      condition .= finalize_calls
+      body.finalize_calls
+      forEach (e in elseifs) e.finalize_calls
+      if (else_cmd?) else_cmd.finalize_calls
+      return this
+
+    method finalize_structure_info
+      Context.this_method.supports_inlining = false
+      condition.finalize_structure_info
+      body.finalize_structure_info
+      forEach (e in elseifs) e.finalize_structure_info
+      if (else_cmd?) else_cmd.finalize_structure_info
+      if (Context.referenced_structures.contains(id)) referenced = true
+
+    method group_dynamic_methods
+      condition.group_dynamic_methods
+      body.group_dynamic_methods
+      forEach (e in elseifs) e.group_dynamic_methods
+      if (else_cmd?) else_cmd.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      condition .= to_inline(arg_list)
+      body.to_inline(arg_list)
+      forEach (e in elseifs) e.to_inline(arg_list)
+      if (else_cmd?) else_cmd.to_inline(arg_list)
+      return this
+endClass
+
+class CmdElseIf : Cmd
+  PROPERTIES
+    condition : Cmd
+    body      : CmdStatementList
+
+  METHODS
+    method init( t, condition, body=null )
+
+    method create_duplicate.Cmd
+      return CmdElseIf( t, duplicate(condition), duplicate(body) )
+
+    method to_String.String
+      local StringBuilder buffer()
+      buffer.println( "elseIf ($)" (condition) )
+      buffer.print( body )
+      return buffer.to_String
+
+    method resolve.Cmd
+      condition .= resolve
+      SlagAnalyzer.require_logical(condition)
+      body.resolve
+      return this
+
+    method finalize_calls.Cmd
+      condition .= finalize_calls
+      body.finalize_calls
+      return this
+
+    method finalize_structure_info
+Context.this_method.supports_inlining = false
+      condition.finalize_structure_info
+      body.finalize_structure_info
+
+    method group_dynamic_methods
+      condition.group_dynamic_methods
+      body.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      condition .= to_inline(arg_list)
+      body.to_inline(arg_list)
+      return this
+endClass
+
+class CmdLoop : CmdStructure
+  METHODS
+    method create_duplicate.Cmd
+      return CmdLoop( t, id, duplicate(body) )
+
+    method resolve.Cmd
+      remap_id
+      body.resolve
+      return this
+endClass
+
+class CmdWhile : CmdStructure
+  PROPERTIES
+    condition : Cmd
+
+  METHODS
+    method init( t, id, condition )
+    method init( t, id, condition, body )
+
+    method create_duplicate.Cmd
+      return CmdWhile( t, id, duplicate(condition), duplicate(body) )
+
+    method to_String.String
+      local StringBuilder buffer()
+      buffer.println( "while::$ ($)" (id,condition) )
+      buffer.print( body )
+      buffer.println( "  endWhile::$" (id) )
+      return buffer.to_String
+
+    method resolve.Cmd
+      remap_id
+      condition .= resolve
+      SlagAnalyzer.require_logical(condition)
+      body.resolve
+      return optimize
+
+    method optimize.Cmd
+      if (condition instanceOf CmdLiteralLogical)
+        if (condition.(CmdLiteralLogical).value) return CmdLoop( t, id, body )
+        else return null
+      endIf
+      return this
+
+    method finalize_calls.Cmd
+      condition .= finalize_calls
+      body.finalize_calls
+      return this
+
+    method finalize_structure_info
+      Context.this_method.supports_inlining = false
+      condition.finalize_structure_info
+      body.finalize_structure_info
+      if (Context.referenced_structures.contains(id)) referenced = true
+
+    method group_dynamic_methods
+      condition.group_dynamic_methods
+      body.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      condition .= to_inline(arg_list)
+      body.to_inline(arg_list)
+      return this
+endClass
+
+class CmdContingent : CmdStructure
+  PROPERTIES
+    satisfied_body   : CmdStatementList
+    unsatisfied_body : CmdStatementList
+
+  METHODS
+    method create_duplicate.Cmd
+      local CmdContingent result( t, id, duplicate(body) )
+      result.satisfied_body = duplicate(satisfied_body)
+      result.unsatisfied_body = duplicate(unsatisfied_body)
+      return result
+
+    method to_String.String
+      local StringBuilder buffer()
+      buffer.println( "contingent::$" (id) )
+      buffer.println( body )
+      if (satisfied_body?) 
+        buffer.println( "satisfied" )
+        buffer.println( satisfied_body )
+      endIf
+      if (unsatisfied_body?) 
+        buffer.println( "unsatisfied" )
+        buffer.println( unsatisfied_body )
+      endIf
+      buffer.println( "endContingent::$" (id) )
+      return buffer.to_String
+
+    method resolve.Cmd
+      remap_id
+      body.resolve
+      if (satisfied_body?) satisfied_body.resolve
+      if (unsatisfied_body?) unsatisfied_body.resolve
+      return this
+
+    method finalize_calls.Cmd
+      body.finalize_calls
+      if (satisfied_body?) satisfied_body.finalize_calls
+      if (unsatisfied_body?) unsatisfied_body.finalize_calls
+      return this
+
+    method finalize_structure_info
+      Context.this_method.supports_inlining = false
+      body.finalize_structure_info
+      if (satisfied_body?) satisfied_body.finalize_structure_info
+      if (unsatisfied_body?) unsatisfied_body.finalize_structure_info
+      if (Context.referenced_structures.contains(id)) referenced = true
+
+    method group_dynamic_methods
+      body.group_dynamic_methods
+      if (satisfied_body?) satisfied_body.group_dynamic_methods
+      if (unsatisfied_body?) unsatisfied_body.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      body.to_inline(arg_list)
+      if (satisfied_body?) satisfied_body.to_inline(arg_list)
+      if (unsatisfied_body?) unsatisfied_body.to_inline(arg_list)
+      return this
+
+endClass
+
+
+class CmdContingentControl : CmdStatementWithOperand
+  PROPERTIES
+    id : Int32
+
+  METHODS
+    method init( t, operand, id )
+
+    method to_String.String
+      return "$::$ ($)" (type_name,id,operand)
+
+    method resolve.Cmd
+      id = Context.id_remap_table[id]
+      operand .= resolve
+      SlagAnalyzer.require_logical(operand)
+      return this
+
+    method finalize_calls.Cmd
+      operand .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      Context.this_method.supports_inlining = false
+      operand.finalize_structure_info
+      Context.referenced_structures.add( id )
+
+    method to_inline( CmdList arg_list ).Cmd
+      operand .= to_inline(arg_list)
+      return this
+endClass
+
+
+class CmdNecessary : CmdContingentControl
+  METHODS
+    method create_duplicate.Cmd
+      return CmdNecessary( t, duplicate(operand), id )
+endClass
+
+class CmdSufficient : CmdContingentControl
+  METHODS
+    method create_duplicate.Cmd
+      return CmdSufficient( t, duplicate(operand), id )
+endClass
+
+class CmdBreakpoint : CmdStatement
+  PROPERTIES
+    id : Int32
+
+  METHODS
+    method init( t, id )
+
+    method create_duplicate.Cmd
+      return CmdBreakpoint(t,id)
+
+    method to_String.String
+      return "CmdBreakpoint($)" (id)
+
+    method resolve.Cmd
+      return this
+endClass
+
+class CmdTerm : Cmd
+  METHODS
+    method resolve.Cmd
+      return this
+
+    method finalize_calls.Cmd
+      return this
+
+    method finalize_structure_info
+
+    method group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      return this
+endClass
+
+class CmdLiteralString : CmdTerm
+  PROPERTIES
+    index : Int32
+    value : String
+
+  METHODS
+    method init( t, value, index=-1 )
+
+    method create_duplicate.Cmd
+      return CmdLiteralString( t, value, index )
+
+    method type.TypeInfo
+      return TypeInfo.type_string
+
+    method to_String.String
+      return //CmdLiteralString("$")// (value)
+
+    method resolve.Cmd
+      if (index == -1) index = TypeManager.strings[value]
+      return this
+endClass
+
+class CmdLiteralPrimitive : CmdTerm
+  METHODS
+    method name.String
+      return type_name.after_first("Literal")
+endClass
+
+class CmdLiteralInt64 : CmdLiteralPrimitive
+  PROPERTIES
+    value : Int64
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.Cmd
+      return CmdLiteralInt64( t, value )
+
+    method type.TypeInfo
+      return TypeInfo.type_int64
+
+endClass
+
+class CmdLiteralInt32 : CmdLiteralPrimitive
+  PROPERTIES
+    value : Int32
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.Cmd
+      return CmdLiteralInt32( t, value )
+
+    method type.TypeInfo
+      return TypeInfo.type_int32
+
+    method to_String.String
+      return "$()($)" (name,value)
+endClass
+
+class CmdLiteralChar : CmdLiteralPrimitive
+  PROPERTIES
+    value : Char
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.Cmd
+      return CmdLiteralChar( t, value )
+
+    method type.TypeInfo
+      return TypeInfo.type_char
+
+    method to_String.String
+      return "$()('$')" (name,value)
+endClass
+
+class CmdLiteralByte : CmdLiteralPrimitive
+  PROPERTIES
+    value : Byte
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.Cmd
+      return CmdLiteralByte( t, value )
+
+    method type.TypeInfo
+      return TypeInfo.type_byte
+
+    method to_String.String
+      return "$()($)" (name,value)
+endClass
+
+class CmdLiteralReal64 : CmdLiteralPrimitive
+  PROPERTIES
+    value : Real64
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.Cmd
+      return CmdLiteralReal64( t, value )
+
+    method type.TypeInfo
+      return TypeInfo.type_real64
+
+    method to_String.String
+      return "$()($)" (name,value)
+endClass
+
+class CmdLiteralReal32 : CmdLiteralPrimitive
+  PROPERTIES
+    value : Real32
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.Cmd
+      return CmdLiteralReal32( t, value )
+
+    method type.TypeInfo
+      return TypeInfo.type_real32
+
+    method to_String.String
+      return "$()($)" (name,value)
+endClass
+
+class CmdLiteralLogical : CmdLiteralPrimitive
+  PROPERTIES
+    value : Logical
+
+  METHODS
+    method init( t, value )
+
+    method create_duplicate.Cmd
+      return CmdLiteralLogical( t, value )
+
+    method type.TypeInfo
+      return TypeInfo.type_logical
+
+    method to_String.String
+      return "$()($)" (name,value)
+endClass
+
+class CmdLiteralNull : CmdTerm
+  METHODS
+    method init( t )
+
+    method create_duplicate.Cmd
+      return CmdLiteralNull( t )
+
+    method type.TypeInfo
+      return TypeInfo.type_null
+
+    method to_String.String
+      return "null"
+endClass
+
+class CmdThisReference : CmdTerm
+  PROPERTIES
+    of_type : TypeInfo
+
+  METHODS
+    method init( t, of_type )
+
+    method create_duplicate.Cmd
+      return CmdThisReference( t, of_type )
+
+    method type.TypeInfo
+      return of_type
+
+    method to_String.String
+      return "$()($)" (type_name,of_type.name)
+      
+    method resolve.Cmd
+      return this
+
+    method finalize_structure_info
+      ++Context.this_method.context_read_count
+
+    method to_inline( CmdList arg_list ).Cmd
+      if (not arg_list.first.type.instance_of(of_type))
+        return CmdCoerceAs( t, arg_list.first, of_type )
+      else
+        return arg_list.first
+      endIf
+endClass
+
+class CmdSingletonReference : CmdTerm
+  PROPERTIES
+    of_type : TypeInfo
+
+  METHODS
+    method init( t, of_type )
+      if (of_type is null) throw Error("null of_type")
+
+    method create_duplicate.Cmd
+      return CmdSingletonReference( t, of_type )
+
+    method type.TypeInfo
+      return of_type
+
+    method to_String.String
+      return "$()($)" (type_name,of_type.name)
+
+    method resolve.Cmd
+      if (of_type.is_managed)
+        return CmdMemberAccess( t,
+          CmdSingletonReference( t, TypeManager[of_type.manager_name] ),
+          CmdConstruct( t, "get" ) ).resolve
+      endIf
+      return this
+
+    method finalize_calls.Cmd
+      if (not of_type.is_singleton)
+        throw t.error( "$ is not a singleton - create a new object with $()() "
+          "or create a list with $[]()." (of_type,of_type,of_type) )
+      endIf
+      return this
+
+    method to_inline( CmdList arg_list ).Cmd
+      return this
+endClass
+
+class CmdSingletonWrite : Cmd
+  PROPERTIES
+    of_type   : TypeInfo
+    new_value : Cmd
+
+  METHODS
+    method init( t, of_type, new_value )
+
+    method create_duplicate.Cmd
+      return CmdSingletonWrite( t, of_type, duplicate(new_value) )
+
+    method to_String.String
+      return "$()($,$)" (type_name,of_type.name,new_value)
+
+    method resolve.Cmd
+      of_type.resolve
+      if (of_type.is_managed)
+        return CmdMemberAccess( t,
+          CmdSingletonReference( t, TypeManager[of_type.manager_name] ),
+          CmdConstruct( t, "set", CmdList(new_value) ) ).resolve
+      endIf
+
+      new_value .= resolve
+      SlagAnalyzer.require_type( new_value, of_type )
+      return this
+
+    method finalize_calls.Cmd
+      new_value .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      new_value.finalize_structure_info
+
+    method group_dynamic_methods
+      new_value.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      new_value .= to_inline(arg_list)
+      return this
+endClass
+
+class CmdVarAccess : Cmd
+endClass
+
+class CmdMemberVarAccess : CmdVarAccess
+  # Placeholder type.
+  PROPERTIES
+    context  : Cmd
+    var_info : PropertyInfo
+
+  METHODS
+    method finalize_calls.Cmd
+      context .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      context.finalize_structure_info
+
+    method group_dynamic_methods
+      context.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      context .= to_inline(arg_list)
+      return this
+endClass
+
+class CmdMemberVarRead : CmdMemberVarAccess
+  # Placeholder type.
+  METHODS
+    method init( t, context, var_info )
+
+    method type.TypeInfo
+      return var_info.type
+endClass
+
+class CmdPropertyRead : CmdMemberVarRead
+  METHODS
+    method create_duplicate.Cmd
+      return CmdPropertyRead( t, duplicate(context), var_info )
+
+    method to_String.String
+      return "CmdPropertyRead($,$#$)" (context,var_info.name,var_info.index)
+
+    method resolve.Cmd
+      # context already resolved
+      return this
+endClass
+
+class CmdCompoundPropertyRead : CmdMemberVarRead
+  METHODS
+    method create_duplicate.Cmd
+      return CmdCompoundPropertyRead( t, duplicate(context), var_info )
+
+    method to_String.String
+      return "CmdCompoundPropertyRead($,$)" (context,var_info.name)
+
+    method resolve.Cmd
+      # context already resolved
+      return this
+endClass
+
+class CmdLocalVarAccess : CmdVarAccess
+  PROPERTIES
+    var_info : MethodVarInfo
+
+  METHODS
+    METHODS
+    method init( t, var_info )
+
+    method to_String.String
+      return "CmdLocalVarRead($#$)" (var_info.name,var_info.index)
+
+    method resolve.Cmd
+      return this
+
+    method finalize_calls.Cmd
+      return this
+
+    method finalize_structure_info
+
+    method group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      return this
+endClass
+
+class CmdLocalVarRead : CmdLocalVarAccess
+  METHODS
+    method init( t, var_info )
+
+    method create_duplicate.Cmd
+      return CmdLocalVarRead( t, var_info )
+
+    method type.TypeInfo
+      return var_info.type
+
+    method to_String.String
+      return "CmdLocalVarRead($#$)" (var_info.name,var_info.index)
+
+    method finalize_structure_info
+      ++var_info.read_count
+      if (var_info.index >= Context.this_method.parameters.count)
+        Context.this_method.supports_inlining = false
+      endIf
+      #println( "  [$] $ read count:$" (var_info.index,var_info.name,var_info.read_count) )
+
+    method to_inline( CmdList arg_list ).Cmd
+      #println( "arg_list: " )
+      #forEach (arg in arg_list) println( "  $" (arg) )
+      return arg_list[ var_info.index + 1 ]
+endClass
+
+class CmdPropertyWrite : CmdMemberVarAccess
+  PROPERTIES
+    new_value : Cmd
+
+  METHODS
+    method init( t, context, var_info, new_value )
+
+    method create_duplicate.Cmd
+      return CmdPropertyWrite( t, duplicate(context), var_info, duplicate(new_value) )
+
+    method to_String.String
+      return "CmdPropertyWrite($,$#$,$)" (context,var_info.name,var_info.index,new_value)
+
+    method resolve.Cmd
+      SlagAnalyzer.require_type( new_value, var_info.type )
+      return optimize
+
+    method optimize.Cmd
+      # Transform "a = a + b" into "a += b", "a++", or "a--"
+      if (new_value instanceOf CmdBinary)
+        local var value = new_value.(CmdBinary)
+        local var lhs = value.lhs
+        if (lhs instanceOf CmdPropertyRead)
+          local var read_cmd = lhs.(CmdPropertyRead)
+          if (read_cmd.context instanceOf CmdThisReference and read_cmd.var_info is var_info)
+            local var type = value.type
+
+            if (type is TypeInfo.type_int32 or type is TypeInfo.type_real64)
+              local var right = value.rhs
+
+              if (value instanceOf CmdAdd) 
+                if (right instanceOf CmdLiteralInt32 and right.(CmdLiteralInt32).value == 1)
+                  return CmdThisPropertyIncrement( t, var_info )
+                elseIf (right instanceOf CmdLiteralReal64 and right.(CmdLiteralReal64).value == 1)
+                  return CmdThisPropertyIncrement( t, var_info )
+                elseIf (right instanceOf CmdLiteralInt32 and right.(CmdLiteralInt32).value == -1)
+                  return CmdThisPropertyDecrement( t, var_info )
+                elseIf (right instanceOf CmdLiteralReal64 and right.(CmdLiteralReal64).value == -1)
+                  return CmdThisPropertyDecrement( t, var_info )
+                else
+                  return CmdThisPropertyAddAndAssign( t, var_info, right )
+                endIf
+
+              elseIf (value instanceOf CmdSub) 
+                if (right instanceOf CmdLiteralInt32 and right.(CmdLiteralInt32).value == 1)
+                  return CmdThisPropertyDecrement( t, var_info )
+                elseIf (right instanceOf CmdLiteralReal64 and right.(CmdLiteralReal64).value == 1)
+                  return CmdThisPropertyDecrement( t, var_info )
+                elseIf (right instanceOf CmdLiteralInt32 and right.(CmdLiteralInt32).value == -1)
+                  return CmdThisPropertyIncrement( t, var_info )
+                elseIf (right instanceOf CmdLiteralReal64 and right.(CmdLiteralReal64).value == -1)
+                  return CmdThisPropertyIncrement( t, var_info )
+                else
+                  return CmdThisPropertySubAndAssign( t, var_info, right )
+                endIf
+
+              else
+                if (value instanceOf CmdMul) return CmdThisPropertyMulAndAssign( t, var_info, right )
+                if (value instanceOf CmdDiv) return CmdThisPropertyDivAndAssign( t, var_info, right )
+                if (value instanceOf CmdMod and type is TypeInfo.type_int32) 
+                  return CmdThisPropertyModAndAssign( t, var_info, right )
+                endIf
+              endIf
+            endIf
+          endIf
+        endIf
+      endIf
+
+      return this
+
+    method finalize_calls.Cmd
+      context .= finalize_calls
+      new_value .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      context.finalize_structure_info
+      new_value.finalize_structure_info
+
+    method group_dynamic_methods
+      context.group_dynamic_methods
+      new_value.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      context   .= to_inline(arg_list)
+      new_value .= to_inline(arg_list)
+      return this
+endClass
+
+class CmdLocalVarWrite : CmdLocalVarAccess
+  PROPERTIES
+    new_value    : Cmd
+
+  METHODS
+    method init( t, var_info, new_value)
+
+    method create_duplicate.Cmd
+      return CmdLocalVarWrite( t, var_info, duplicate(new_value) )
+
+    method to_String.String
+      return "CmdLocalVarWrite($,$)" (var_info.name,new_value)
+
+    method resolve.Cmd
+      # new_value alrady resolved.
+      SlagAnalyzer.require_type( new_value, var_info.type )
+      return optimize
+
+    method optimize.Cmd
+      # Transform "a = a + b" into "a += b" or "++a", ditto with subtraction
+      if (new_value instanceOf CmdBinary)
+        local var value = new_value.(CmdBinary)
+        local var left = value.lhs
+        local var left_type = left.type
+        if (left instanceOf CmdLocalVarRead and left.(CmdLocalVarRead).var_info is var_info ...
+          and (left_type is TypeInfo.type_int32 or left_type is TypeInfo.type_real64))
+          local var right = value.rhs
+          if (value instanceOf CmdAdd) 
+            if (right instanceOf CmdLiteralInt32 and right.(CmdLiteralInt32).value == 1)
+              return CmdLocalVarIncrement( t, var_info )
+            elseIf (right instanceOf CmdLiteralReal64 and right.(CmdLiteralReal64).value == 1.0)
+              return CmdLocalVarIncrement( t, var_info )
+            elseIf (right instanceOf CmdLiteralInt32 and right.(CmdLiteralInt32).value == -1)
+              return CmdLocalVarDecrement( t, var_info )
+            elseIf (right instanceOf CmdLiteralReal64 and right.(CmdLiteralReal64).value == -1.0)
+              return CmdLocalVarDecrement( t, var_info )
+            else
+              return CmdLocalVarAddAndAssign( t, var_info, right )
+            endIf
+          endIf
+          if (value instanceOf CmdSub) 
+            if (right instanceOf CmdLiteralInt32 and right.(CmdLiteralInt32).value == 1)
+              return CmdLocalVarDecrement( t, var_info )
+            elseIf (right instanceOf CmdLiteralReal64 and right.(CmdLiteralReal64).value == 1.0)
+              return CmdLocalVarDecrement( t, var_info )
+            elseIf (right instanceOf CmdLiteralInt32 and right.(CmdLiteralInt32).value == -1)
+              return CmdLocalVarIncrement( t, var_info )
+            elseIf (right instanceOf CmdLiteralReal64 and right.(CmdLiteralReal64).value == -1.0)
+              return CmdLocalVarIncrement( t, var_info )
+            else
+              return CmdLocalVarSubAndAssign( t, var_info, right )
+            endIf
+          endIf
+          if (value instanceOf CmdMul) return CmdLocalVarMulAndAssign( t, var_info, right )
+          if (value instanceOf CmdDiv) return CmdLocalVarDivAndAssign( t, var_info, right )
+          if (value instanceOf CmdMod and left_type is TypeInfo.type_int32) 
+            return CmdLocalVarModAndAssign( t, var_info, right )
+          endIf
+        endIf
+      endIf
+
+      return this
+
+    method finalize_calls.Cmd
+      new_value .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      Context.this_method.supports_inlining = false
+      new_value.finalize_structure_info
+
+    method group_dynamic_methods
+      new_value.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      new_value .= to_inline(arg_list)
+      return this
+endClass
+
+class CmdCall : Cmd
+  PROPERTIES
+    method_info  : MethodInfo
+    args         : CmdList
+
+  METHODS
+    method type.TypeInfo
+      return method_info.return_type
+
+    method args_to_String.String
+      return args.format("($[,$])")
+
+endClass
+
+class CmdContextCall : CmdCall
+  PROPERTIES
+    context : Cmd
+
+  METHODS
+    method init( t, context, method_info )
+      args = CmdList(1)
+
+    method init( t, context, method_info, args )
+
+    method resolve.Cmd
+      context .= resolve
+      args.resolve
+      return this
+
+    method finalize_structure_info
+      context.finalize_structure_info
+      args.finalize_structure_info
+
+    method group_dynamic_methods
+      context.group_dynamic_methods
+      args.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      context .= to_inline(arg_list)
+      args.to_inline(arg_list)
+      return this
+endClass
+
+class CmdDynamicCall : CmdContextCall
+  METHODS
+    method create_duplicate.Cmd
+      return CmdDynamicCall( t, duplicate(context), method_info, duplicate(args) )
+
+    method to_String.String
+      return "CmdDynamicCall(#$,$,$,$)" (method_info.group.index,context,method_info.full_signature,args_to_String)
+
+    method resolve.Cmd
+      # Context and args are already resolved.
+      context .= resolve
+      args.resolve
+      method_info.resolve
+      return this
+
+    method finalize_calls.Cmd
+      context .= finalize_calls
+      args.finalize_calls
+
+      # try to turn this call into a static call
+      local var context_type = context.type
+      contingent
+        sufficient (method_info.group.count == 0)
+          # This can happen when there is an aspect call but no objects
+          # were ever created that could handle that call (will be
+          # a null-pointer exception at runtime if it ever gets called).
+
+        if (method_info.group.count == 1)
+          method_info = method_info.group.methods.first
+          sufficient (true)
+        endIf
+
+        necessary  (method_info.type_context.is_class)
+        sufficient (method_info.overrides.count == 0)
+        if (not context_type.is_extended)
+          if (method_info.type_context isNot context_type)
+            # Grab overridden version of method
+            local var new_m = context_type.find_method(method_info.signature)
+            if (new_m?) method_info = new_m
+          endIf
+          sufficient(true)
+        endIf
+
+        necessary (false)
+
+      satisfied
+        return CmdStaticCall( t, context, method_info, args ).inline_check
+
+      unsatisfied
+        method_info.called = true
+        return this
+      endContingent
+
+    method group_dynamic_methods
+      context.group_dynamic_methods
+      args.group_dynamic_methods
+
+      if (method_info.group is null)
+        local String vsig
+        if (method_info.return_type?)
+          if (method_info.return_type.is_reference) vsig = method_info.signature + ".Object"
+          else vsig = "$.$" (method_info.signature,method_info.return_type.name)
+        else
+          vsig = method_info.signature
+        endIf
+
+        local var entry = TypeManager.method_groups.find(vsig)
+        if (entry?) entry.value.add(method_info)
+        else TypeManager.method_groups[vsig] = MethodGroup(vsig,method_info)
+
+        add_overrides_to_group( method_info, method_info.group )
+      endIf
+
+    method add_overrides_to_group( MethodInfo m, MethodGroup group )
+      forEach (m2 in m.overrides) add_overrides_to_group(m2,group)
+      group.add(m)
+endClass
+
+class CmdStaticCall : CmdContextCall
+  METHODS
+    method create_duplicate.Cmd
+      return CmdStaticCall( t, duplicate(context), method_info, duplicate(args) )
+
+    method to_String.String
+      return "$()($,$,$)" (type_name,context,method_info.full_signature,args_to_String)
+
+    method resolve.Cmd
+      context .= resolve
+      args.resolve
+      method_info.resolve
+      return this
+
+    method finalize_calls.Cmd
+      context .= finalize_calls
+      args.finalize_calls
+      return inline_check
+
+    method inline_check.Cmd
+      if (method_info.supports_inlining and method_info isNot Context.this_method)
+        if (method_info.inlining_lock) throw SlagError(t,"inline fail")
+        method_info.inlining_lock = true
+
+        local CmdList arg_list(args.count+1)
+        arg_list.add( context )
+        arg_list.add( args )
+
+        try
+          local Cmd result = duplicate(method_info.body)
+          result = result.to_inline(arg_list)
+          method_info.inlining_lock = false
+          if (method_info.return_type?) return CmdCoerceAs( t, result, method_info.return_type )
+          else return result
+        catch (SlagError err)
+          method_info.supports_inlining = false
+        endTry
+      endIf
+      method_info.called = true
+      return this
+endClass
+
+class CmdNewObject : CmdCall
+  PROPERTIES
+    of_type : TypeInfo
+
+  METHODS
+    method init( t, of_type, method_info )
+      args = CmdList(1)
+
+    method init( t, of_type, method_info, args )
+
+    method create_duplicate.Cmd
+      return CmdNewObject( t, of_type, method_info, duplicate(args) )
+
+    method type.TypeInfo
+      return of_type
+
+    method to_String.String
+      return "$()($,\n  $ ($),\n  $)" (type_name,of_type.name,method_info.name,method_info.index,args_to_String)
+
+    method resolve.Cmd
+      args.resolve
+      method_info.resolve
+      of_type.resolve
+      return validate
+
+    method validate.Cmd
+      return this
+
+    method finalize_calls.Cmd
+      method_info.called = true
+      args.finalize_calls
+
+      forEach (m in of_type.methods)
+        if (m.is_abstract and m.resolved)
+          local StringBuilder buffer()
+          buffer.println( "Can't create a new object because class $ contains the following abstract methods:\n" (of_type) );
+          forEach (m2 in of_type.methods)
+            if (m2.is_abstract) buffer.println( "  $" (m2.signature) )
+          endForEach
+          throw t.error( buffer.to_String )
+        endIf
+      endForEach
+
+      return this
+
+    method finalize_structure_info
+      args.finalize_structure_info
+
+    method group_dynamic_methods
+      args.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      args.to_inline(arg_list)
+      return this
+endClass
+
+class CmdNewCompound : Cmd
+  PROPERTIES
+    of_type : TypeInfo
+    args    : CmdList
+
+  METHODS
+    method init( t, of_type )
+      args = CmdList(1)
+
+    method init( t, of_type, args )
+
+    method create_duplicate.Cmd
+      return CmdNewCompound ( t, of_type, duplicate(args) )
+
+    method type.TypeInfo
+      return of_type
+
+    method to_String.String
+      return "$()($,$)" (type_name,of_type.name,args.format("($[,$])"))
+
+    method resolve.Cmd
+      return this
+
+    method finalize_calls.Cmd
+      args.finalize_calls
+      return this
+
+    method finalize_structure_info
+      args.finalize_structure_info
+
+    method group_dynamic_methods
+      args.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      args.to_inline(arg_list)
+      return this
+endClass
+
+class CmdCast : CmdUnary
+  PROPERTIES
+    to_type : TypeInfo
+
+  METHODS
+    method init( t, operand, to_type )
+
+    method create_duplicate.CmdCast
+      return CmdCast( t, duplicate(operand), to_type )
+    
+    method type.TypeInfo
+      return to_type
+
+    method to_String.String
+      return "$()(to:$,$)" (type_name,to_type.name,operand)
+
+    method resolve.Cmd
+      operand .= resolve
+      local var operand_type = SlagAnalyzer.require_value( operand )
+      to_type.resolve
+
+      return SlagAnalyzer.create_cast( operand, to_type )
+endClass
+
+
+class CmdNarrowingCast : CmdCast
+  METHODS
+    method create_duplicate.CmdNarrowingCast
+      return CmdNarrowingCast( t, duplicate(operand), to_type )
+
+    method resolve.Cmd
+      # Already resolved.
+      return this
+endClass
+
+class CmdWideningCast : CmdCast
+  METHODS
+    method create_duplicate.CmdWideningCast
+      return CmdWideningCast( t, duplicate(operand), to_type )
+
+    method resolve.Cmd
+      # Already resolved.
+      return this
+endClass
+
+class CmdAs : CmdUnary
+  PROPERTIES
+    as_type : TypeInfo
+
+  METHODS
+    method init( t, operand, as_type )
+    
+    method create_duplicate.CmdAs
+      return CmdAs( t, duplicate(operand), as_type )
+
+    method type.TypeInfo
+      return as_type
+
+    method to_String.String
+      return "$()($,$)" (type_name,operand,as_type)
+
+    method resolve.Cmd
+      operand .= resolve
+      local var operand_type = operand.type
+      as_type.resolve
+
+      if (operand_type is as_type) return operand
+
+      if (operand_type.is_primitive xor as_type.is_primitive)
+        throw t.error("'as' requires that both types be references or both types be primitives.")
+      endIf
+
+      if (as_type.is_primitive)
+        # Int32/Real32 and Int64/Real64 may be directly converted between at zero cost.
+        # Other types require casts.
+        if (as_type is TypeManager.type_real64)
+          if (operand_type is TypeManager.type_int64) return this
+          if (operand_type is TypeManager.type_real32)
+            return SlagAnalyzer.create_cast(operand,TypeManager.type_real64).resolve
+          else
+            operand = SlagAnalyzer.create_cast(operand,TypeManager.type_int64).resolve
+            return this
+          endIf
+
+        elseIf (as_type is TypeManager.type_int64)
+          if (operand_type is TypeManager.type_real64) return this
+          if (operand_type is TypeManager.type_real32)
+            operand = SlagAnalyzer.create_cast(operand,TypeManager.type_real64).resolve
+            return this
+          else
+            return SlagAnalyzer.create_cast(operand,TypeManager.type_int64).resolve
+          endIf
+
+        elseIf (as_type is TypeManager.type_real32)
+          if (operand_type is TypeManager.type_int32) return this
+          if (operand_type is TypeManager.type_real64)
+            return SlagAnalyzer.create_cast(operand,TypeManager.type_real32).resolve
+          else
+            operand = SlagAnalyzer.create_cast(operand,TypeManager.type_int32).resolve
+            return this
+          endIf
+
+        elseIf (as_type is TypeManager.type_int32)
+          if (operand_type is TypeManager.type_real32) return this
+          if (operand_type is TypeManager.type_real64)
+            operand = SlagAnalyzer.create_cast(operand,TypeManager.type_real32).resolve
+            return this
+          else
+            return SlagAnalyzer.create_cast(operand,TypeManager.type_int32).resolve
+          endIf
+
+        else
+          # Must be a logical or an integer less than 32 bits.
+          return SlagAnalyzer.create_cast(operand,as_type).resolve
+
+        endIf
+      else
+        if (operand_type.instance_of(as_type))
+          return CmdWideningCast(t,operand)
+        else
+          return this
+        endIf
+      endIf
+endClass
+
+class CmdCoerceAs : CmdUnary
+  PROPERTIES
+    as_type : TypeInfo
+
+  METHODS
+    method init( t, operand, as_type )
+    
+    method create_duplicate.CmdCoerceAs
+      return CmdCoerceAs( t, duplicate(operand), as_type )
+
+    method type.TypeInfo
+      return as_type
+
+    method to_String.String
+      return "$()($,$)" (type_name,operand,as_type)
+
+    method resolve.Cmd
+      operand .= resolve
+      as_type.resolve
+      return this
+
+    method finalize_calls.Cmd
+      local var coerce_operand = operand as CmdCoerceAs
+      if (coerce_operand?) operand = coerce_operand.operand
+      operand .= finalize_calls
+      return this
+endClass
+
+class CmdCmpInstanceOf : CmdUnary
+  PROPERTIES
+    of_type : TypeInfo
+
+  METHODS
+    method init( t, operand, of_type )
+    
+    method create_duplicate.CmdCmpInstanceOf
+      return CmdCmpInstanceOf( t, duplicate(operand), of_type )
+
+    method type.TypeInfo
+      return TypeInfo.type_logical
+
+    method to_String.String
+      return "$()($,$)" (type_name,operand,of_type)
+
+    method resolve.Cmd
+      operand .= resolve
+      local var operand_type = SlagAnalyzer.require_value(operand)
+      of_type.resolve
+      if (operand_type.instance_of(of_type))
+        return CmdLiteralLogical( t, true )
+      else
+        SlagAnalyzer.require_reference(t,operand_type)
+        return this
+      endIf
+endClass
+
+class CmdNegate : CmdUnary
+  METHODS
+    method create_duplicate.CmdNegate
+      return CmdNegate( t, duplicate(operand) )
+
+    method resolve.Cmd
+      operand .= resolve
+      local var operand_type = SlagAnalyzer.require_value(operand)
+      operand_type = SlagAnalyzer.determine_compatible_op_type( t, operand_type, operand_type )
+
+      # Possibly convert to op-() call.
+      if (operand_type.is_reference)
+        return SlagAnalyzer.resolve_call( t, operand_type, operand, "op-", null )
+          # in visit CmdNegate
+      elseIf (operand_type.is_compound)
+        return SlagAnalyzer.resolve_call( t, operand_type, null, "op-", CmdList(operand) )
+          # in visit CmdNegate
+      else
+        operand = SlagAnalyzer.create_cast( operand, operand_type )
+        return this
+      endIf
+endClass
+
+class CmdNot : CmdUnary
+  METHODS
+    method create_duplicate.CmdNot
+      return CmdNot( t, duplicate(operand) )
+
+    method resolve.Cmd
+      operand .= resolve
+      local var operand_type = SlagAnalyzer.require_value(operand)
+      operand_type = SlagAnalyzer.determine_compatible_op_type( t, operand_type, operand_type )
+
+      # Possibly convert to op!() call.
+      if (operand_type.is_reference)
+        return SlagAnalyzer.resolve_call( t, operand_type, operand, "op!", null )
+          # in visit CmdNegate
+      elseIf (operand_type.is_compound)
+        return SlagAnalyzer.resolve_call( t, operand_type, null, "op!", CmdList(operand) )
+          # in visit CmdNegate
+      else
+        SlagAnalyzer.require_standard_integer_or_logical( t, operand_type )
+        operand = SlagAnalyzer.create_cast( operand, operand_type )
+        return this
+      endIf
+endClass
+
+class CmdPrimitiveCast : CmdUnary
+  method resolve.Cmd
+    operand .= resolve
+    return optimize
+endClass
+
+class CmdCastToInt64 : CmdPrimitiveCast
+  METHODS
+    method create_duplicate.CmdCastToInt64
+      return CmdCastToInt64( t, duplicate(operand) )
+
+    method type.TypeInfo
+      return TypeInfo.type_int64
+
+    method optimize.Cmd
+      if (operand instanceOf CmdLiteralPrimitive)
+        if (operand instanceOf CmdLiteralInt64)   return operand
+        if (operand instanceOf CmdLiteralInt32)   return CmdLiteralInt64( t, operand.(CmdLiteralInt32).value )
+        if (operand instanceOf CmdLiteralReal64)  return CmdLiteralInt64( t, operand.(CmdLiteralReal64).value )
+        if (operand instanceOf CmdLiteralReal32)  return CmdLiteralInt64( t, operand.(CmdLiteralReal32).value )
+        if (operand instanceOf CmdLiteralChar)    return CmdLiteralInt64( t, operand.(CmdLiteralChar).value )
+        if (operand instanceOf CmdLiteralByte)    return CmdLiteralInt64( t, operand.(CmdLiteralByte).value )
+        if (operand instanceOf CmdLiteralLogical) return CmdLiteralInt64( t, Int64(operand.(CmdLiteralLogical).value) )
+      endIf
+      return this
+endClass
+
+class CmdCastToInt32 : CmdPrimitiveCast
+  METHODS
+    method create_duplicate.CmdCastToInt32
+      return CmdCastToInt32( t, duplicate(operand) )
+
+    method type.TypeInfo
+      return TypeInfo.type_int32
+
+    method optimize.Cmd
+      if (operand instanceOf CmdLiteralPrimitive)
+        if (operand instanceOf CmdLiteralInt64)   return CmdLiteralInt32( t, operand.(CmdLiteralInt64).value )
+        if (operand instanceOf CmdLiteralInt32)   return operand
+        if (operand instanceOf CmdLiteralReal64)  return CmdLiteralInt32( t, operand.(CmdLiteralReal64).value )
+        if (operand instanceOf CmdLiteralReal32)  return CmdLiteralInt32( t, operand.(CmdLiteralReal32).value )
+        if (operand instanceOf CmdLiteralChar)    return CmdLiteralInt32( t, operand.(CmdLiteralChar).value )
+        if (operand instanceOf CmdLiteralByte)    return CmdLiteralInt32( t, operand.(CmdLiteralByte).value )
+        if (operand instanceOf CmdLiteralLogical) return CmdLiteralInt32( t, Int32(operand.(CmdLiteralLogical).value) )
+      endIf
+      return this
+endClass
+
+class CmdCastToChar : CmdPrimitiveCast
+  METHODS
+    method create_duplicate.CmdCastToChar
+      return CmdCastToChar( t, duplicate(operand) )
+
+    method type.TypeInfo
+      return TypeInfo.type_char
+
+    method optimize.Cmd
+      if (operand instanceOf CmdLiteralPrimitive)
+        if (operand instanceOf CmdLiteralInt64)   return CmdLiteralChar( t, operand.(CmdLiteralInt64).value )
+        if (operand instanceOf CmdLiteralInt32)   return CmdLiteralChar( t, operand.(CmdLiteralInt32).value )
+        if (operand instanceOf CmdLiteralReal64)  return CmdLiteralChar( t, operand.(CmdLiteralReal64).value )
+        if (operand instanceOf CmdLiteralReal32)  return CmdLiteralChar( t, operand.(CmdLiteralReal32).value )
+        if (operand instanceOf CmdLiteralChar)    return operand
+        if (operand instanceOf CmdLiteralByte)    return CmdLiteralChar( t, operand.(CmdLiteralByte).value )
+        if (operand instanceOf CmdLiteralLogical) return CmdLiteralChar( t, Char(operand.(CmdLiteralLogical).value) )
+      endIf
+      return this
+endClass
+
+class CmdCastToByte : CmdPrimitiveCast
+  METHODS
+    method create_duplicate.CmdCastToByte
+      return CmdCastToByte( t, duplicate(operand) )
+
+    method type.TypeInfo
+      return TypeInfo.type_byte
+
+    method optimize.Cmd
+      if (operand instanceOf CmdLiteralPrimitive)
+        if (operand instanceOf CmdLiteralInt64)   return CmdLiteralByte( t, operand.(CmdLiteralInt64).value )
+        if (operand instanceOf CmdLiteralInt32)   return CmdLiteralByte( t, operand.(CmdLiteralInt32).value )
+        if (operand instanceOf CmdLiteralReal64)  return CmdLiteralByte( t, operand.(CmdLiteralReal64).value )
+        if (operand instanceOf CmdLiteralReal32)  return CmdLiteralByte( t, operand.(CmdLiteralReal32).value )
+        if (operand instanceOf CmdLiteralChar)    return CmdLiteralByte( t, operand.(CmdLiteralChar).value )
+        if (operand instanceOf CmdLiteralByte)    return operand
+        if (operand instanceOf CmdLiteralLogical) return CmdLiteralByte( t, Byte(operand.(CmdLiteralLogical).value) )
+      endIf
+      return this
+endClass
+
+class CmdCastToReal64 : CmdPrimitiveCast
+  METHODS
+    method create_duplicate.CmdCastToReal64
+      return CmdCastToReal64( t, duplicate(operand) )
+
+    method type.TypeInfo
+      return TypeInfo.type_real64
+
+    method optimize.Cmd
+      if (operand instanceOf CmdLiteralPrimitive)
+        if (operand instanceOf CmdLiteralInt64)   return CmdLiteralReal64( t, operand.(CmdLiteralInt64).value )
+        if (operand instanceOf CmdLiteralInt32)   return CmdLiteralReal64( t, operand.(CmdLiteralInt32).value )
+        if (operand instanceOf CmdLiteralReal64)  return operand
+        if (operand instanceOf CmdLiteralReal32)  return CmdLiteralReal64( t, operand.(CmdLiteralReal32).value )
+        if (operand instanceOf CmdLiteralChar)    return CmdLiteralReal64( t, operand.(CmdLiteralChar).value )
+        if (operand instanceOf CmdLiteralByte)    return CmdLiteralReal64( t, operand.(CmdLiteralByte).value )
+        if (operand instanceOf CmdLiteralLogical) return CmdLiteralReal64( t, Real64(operand.(CmdLiteralLogical).value) )
+      endIf
+      return this
+endClass
+
+class CmdCastToReal32 : CmdPrimitiveCast
+  METHODS
+    method create_duplicate.CmdCastToReal32
+      return CmdCastToReal32( t, duplicate(operand) )
+
+    method type.TypeInfo
+      return TypeInfo.type_real32
+
+    method optimize.Cmd
+      if (operand instanceOf CmdLiteralPrimitive)
+        if (operand instanceOf CmdLiteralInt64)   return CmdLiteralReal32( t, operand.(CmdLiteralInt64).value )
+        if (operand instanceOf CmdLiteralInt32)   return CmdLiteralReal32( t, operand.(CmdLiteralInt32).value )
+        if (operand instanceOf CmdLiteralReal64)  return CmdLiteralReal32( t, operand.(CmdLiteralReal64).value )
+        if (operand instanceOf CmdLiteralReal32)  return operand
+        if (operand instanceOf CmdLiteralChar)    return CmdLiteralReal32( t, operand.(CmdLiteralChar).value )
+        if (operand instanceOf CmdLiteralByte)    return CmdLiteralReal32( t, operand.(CmdLiteralByte).value )
+        if (operand instanceOf CmdLiteralLogical) return CmdLiteralReal32( t, Real32(operand.(CmdLiteralLogical).value) )
+      endIf
+      return this
+
+endClass
+
+class CmdCastToLogical : CmdPrimitiveCast
+  METHODS
+    method create_duplicate.CmdCastToLogical
+      return CmdCastToLogical( t, duplicate(operand) )
+
+    method type.TypeInfo
+      return TypeInfo.type_logical
+
+    method optimize.Cmd
+      if (operand instanceOf CmdLiteralPrimitive)
+        if (operand instanceOf CmdLiteralInt64) return CmdLiteralLogical( t,  Logical(operand.(CmdLiteralInt64).value) )
+        if (operand instanceOf CmdLiteralInt32) return CmdLiteralLogical( t,  Logical(operand.(CmdLiteralInt32).value) )
+        if (operand instanceOf CmdLiteralReal64) return CmdLiteralLogical( t, Logical(operand.(CmdLiteralReal64).value) )
+        if (operand instanceOf CmdLiteralReal32) return CmdLiteralLogical( t, Logical(operand.(CmdLiteralReal32).value) )
+        if (operand instanceOf CmdLiteralChar) return CmdLiteralLogical( t,   Logical(operand.(CmdLiteralChar).value) )
+        if (operand instanceOf CmdLiteralByte) return CmdLiteralLogical( t,   Logical(operand.(CmdLiteralByte).value) )
+        if (operand instanceOf CmdLiteralLogical) return operand
+      endIf
+      return this
+endClass
+
+class CmdCompare : CmdBinary
+  METHODS
+    method create_duplicate.Cmd
+      return CmdCompare( t, duplicate(lhs), duplicate(rhs) )
+
+    method type.TypeInfo
+      return TypeInfo.type_logical
+
+    method resolve.Cmd
+      local var call = SlagAnalyzer.prep_binary_operator(this,"op<>")
+      if (call?) return call
+      return SlagAnalyzer.resolve_call( t, Context.this_type, null, "sign", 
+        CmdList(CmdSub(t,lhs,rhs)) )
+endClass
+
+class CmdCmpRelative<<$CmdType,$op_compare,$op_callcmp,$op_callcmpto,$cmd>> : CmdCompare
+  METHODS
+    method create_duplicate.Cmd
+      return $CmdType( t, duplicate(lhs), duplicate(rhs) )
+
+    method resolve.Cmd
+      local var call = SlagAnalyzer.prep_binary_operator( this, "op<>" )
+      if (lhs instanceOf CmdLiteralString and rhs instanceOf CmdLiteralString)
+        return CmdLiteralLogical( t, lhs.(CmdLiteralString).value $op_compare rhs.(CmdLiteralString).value )
+      endIf
+      if (call?)
+        SlagAnalyzer.require_int32(call)
+        return $op_callcmp( call.t, call, CmdLiteralInt32(t,$op_callcmpto) ).optimize
+      endIf
+
+      SlagAnalyzer.cast_operands_to_standard_numerical(this)
+      return optimize
+
+    method optimize.Cmd
+      if (lhs instanceOf CmdLiteralPrimitive and rhs instanceOf CmdLiteralPrimitive)
+        # fold constants
+        local var type = lhs.type
+        if (type is TypeInfo.type_int64)
+          return CmdLiteralLogical(t,lhs.(CmdLiteralInt64).value  $op_compare rhs.(CmdLiteralInt64).value )
+        elseIf (type is TypeInfo.type_int32)
+          return CmdLiteralLogical(t,lhs.(CmdLiteralInt32).value  $op_compare rhs.(CmdLiteralInt32).value )
+        elseIf (type is TypeInfo.type_real64)
+          return CmdLiteralLogical(t,lhs.(CmdLiteralReal64).value $op_compare rhs.(CmdLiteralReal64).value )
+        elseIf (type is TypeInfo.type_real32)
+          return CmdLiteralLogical(t,lhs.(CmdLiteralReal32).value $op_compare rhs.(CmdLiteralReal32).value )
+        endIf
+      endIf
+
+      return this
+endClass
+
+
+class CmdCmpEquivalance<<$CmdType,$op_compare,$invert,$cmd>> : CmdCompare
+  METHODS
+    method create_duplicate.Cmd
+      return $CmdType( t, duplicate(lhs), duplicate(rhs) )
+
+    method resolve.Cmd
+      local var call = SlagAnalyzer.prep_binary_operator( this, "op==" )
+      if (lhs instanceOf CmdLiteralString and rhs instanceOf CmdLiteralString)
+        return CmdLiteralLogical( t, lhs.(CmdLiteralString).value $op_compare rhs.(CmdLiteralString).value )
+      endIf
+      if (call?)
+        if ($invert)
+          SlagAnalyzer.require_logical(call)
+          return CmdNot( call.t, call )
+        else
+          return call
+        endIf
+      endIf
+
+      SlagAnalyzer.cast_operands_to_standard_value_types(this)
+      return optimize
+
+    method optimize.Cmd
+      if (lhs instanceOf CmdLiteralPrimitive and rhs instanceOf CmdLiteralPrimitive)
+        # fold constants
+        local var type = lhs.type
+        if (type is TypeInfo.type_int64)
+          return CmdLiteralLogical(t,lhs.(CmdLiteralInt64).value   $op_compare rhs.(CmdLiteralInt64).value )
+        elseIf (type is TypeInfo.type_int32)
+          return CmdLiteralLogical(t,lhs.(CmdLiteralInt32).value   $op_compare rhs.(CmdLiteralInt32).value )
+        elseIf (type is TypeInfo.type_real64)
+          return CmdLiteralLogical(t,lhs.(CmdLiteralReal64).value  $op_compare rhs.(CmdLiteralReal64).value )
+        elseIf (type is TypeInfo.type_real32)
+          return CmdLiteralLogical(t,lhs.(CmdLiteralReal32).value  $op_compare rhs.(CmdLiteralReal32).value )
+        elseIf (type is TypeInfo.type_logical)
+          return CmdLiteralLogical(t,lhs.(CmdLiteralLogical).value $op_compare rhs.(CmdLiteralLogical).value )
+        endIf
+
+      elseIf (lhs instanceOf CmdLiteralLogical)
+        if (lhs.(CmdLiteralLogical).value) 
+          if ($invert) return CmdNot( t, rhs )
+          else         return rhs
+        endIf
+      elseIf (rhs instanceOf CmdLiteralLogical)
+        if (rhs.(CmdLiteralLogical).value) 
+          if ($invert) return CmdNot( t, lhs )
+          else         return lhs
+        endIf
+      endIf
+
+      return this
+endClass
+
+class CmdCmpEQ : CmdCmpEquivalance<<CmdCmpEQ,==,false,cmd_cmp_eq>>;
+class CmdCmpNE : CmdCmpEquivalance<<CmdCmpNE,!=, true,cmd_cmp_ne>>;
+class CmdCmpLE : CmdCmpRelative<<CmdCmpLE,<=,CmdCmpNE,gt,cmd_cmp_le>>;
+class CmdCmpLT : CmdCmpRelative<<CmdCmpLT,<, CmdCmpEQ,lt,cmd_cmp_lt>>;
+class CmdCmpGT : CmdCmpRelative<<CmdCmpGT,>, CmdCmpEQ,gt,cmd_cmp_gt>>;
+class CmdCmpGE : CmdCmpRelative<<CmdCmpGE,>=,CmdCmpNE,lt,cmd_cmp_ge>>;
+
+class CmdCmpIs : CmdCompare
+  METHODS
+    method create_duplicate.CmdCmpIs
+      return CmdCmpIs( t, duplicate(lhs), duplicate(rhs) )
+
+    method resolve.Cmd
+      lhs .= resolve
+      rhs .= resolve
+      local var lhs_type = SlagAnalyzer.require_value(lhs)
+      local var rhs_type = SlagAnalyzer.require_value(rhs)
+      if (not lhs_type.is_reference or not rhs_type.is_reference) return CmdCmpEQ( t, lhs, rhs ).resolve
+      if (lhs instanceOf CmdLiteralNull)
+        if (rhs instanceOf CmdLiteralNull) return CmdLiteralLogical( t, true )
+        return CmdCmpIsNull( t, rhs )
+      elseIf (rhs instanceOf CmdLiteralNull)
+        return CmdCmpIsNull( t, lhs )
+      endIf
+      return this
+endClass
+
+class CmdCmpIsNot : CmdCompare
+  METHODS
+    method create_duplicate.CmdCmpIsNot
+      return CmdCmpIsNot( t, duplicate(lhs), duplicate(rhs) )
+
+    method resolve.Cmd
+      lhs .= resolve
+      rhs .= resolve
+      local var lhs_type = SlagAnalyzer.require_value(lhs)
+      local var rhs_type = SlagAnalyzer.require_value(rhs)
+      if (not lhs_type.is_reference or not rhs_type.is_reference) return CmdCmpNE( t, lhs, rhs ).resolve
+      if (lhs instanceOf CmdLiteralNull)
+        if (rhs instanceOf CmdLiteralNull) return CmdLiteralLogical( t, false )
+        return CmdCmpIsNotNull( t, rhs )
+      elseIf (rhs instanceOf CmdLiteralNull)
+        return CmdCmpIsNotNull( t, lhs )
+      endIf
+      return this
+endClass
+
+class CmdCmpIsNull : CmdUnary
+  METHODS
+    method create_duplicate.CmdCmpIsNull
+      return CmdCmpIsNull( t, duplicate(operand) )
+
+    method type.TypeInfo
+      return TypeManager.type_logical
+
+    method resolve.Cmd
+      # Already resolved
+      return this
+endClass
+
+class CmdCmpIsNotNull : CmdUnary
+  METHODS
+    method create_duplicate.CmdCmpIsNotNull
+      return CmdCmpIsNotNull( t, duplicate(operand) )
+
+    method type.TypeInfo
+      return TypeManager.type_logical
+
+    method resolve.Cmd
+      # Already resolved
+      return this
+endClass
+
+class CmdMathOp<<$CmdType,$symbol,$op_assign,$cmd>> : CmdBinary
+  METHODS
+    method create_duplicate.Cmd
+      return $CmdType( t, duplicate(lhs), duplicate(rhs) )
+
+    method resolve.Cmd
+      local var call = SlagAnalyzer.prep_binary_operator(this,"op"+$symbol)
+      if (call?) return call
+      SlagAnalyzer.cast_operands_to_standard_numerical(this)
+      return optimize
+
+    method optimize.Cmd
+      if (lhs instanceOf CmdLiteralPrimitive and rhs instanceOf CmdLiteralPrimitive)
+        if (lhs instanceOf CmdLiteralInt64)
+          local var left = lhs.(CmdLiteralInt64)
+          local var right = rhs.(CmdLiteralInt64)
+          left.value $op_assign right.value
+          return lhs
+        elseIf (lhs instanceOf CmdLiteralInt32)
+          local var left = lhs.(CmdLiteralInt32)
+          local var right = rhs.(CmdLiteralInt32)
+          left.value $op_assign right.value
+          return lhs
+        elseIf (lhs instanceOf CmdLiteralReal64)
+          local var left = lhs.(CmdLiteralReal64)
+          local var right = rhs.(CmdLiteralReal64)
+          left.value $op_assign right.value
+          return lhs
+        elseIf (lhs instanceOf CmdLiteralReal32)
+          local var left = lhs.(CmdLiteralReal32)
+          local var right = rhs.(CmdLiteralReal32)
+          left.value $op_assign right.value
+          return lhs
+        endIf
+      endIf
+
+      return this
+endClass
+
+class CmdAdd : CmdMathOp<<CmdAdd,"+",+=,cmd_add>>;
+class CmdSub : CmdMathOp<<CmdSub,"-",-=,cmd_sub>>;
+
+class CmdMul : CmdMathOp<<CmdMul,"*",*=,cmd_mul>>
+  METHODS
+    method optimize.Cmd
+      if (rhs instanceOf CmdLiteralPrimitive)
+        if (lhs instanceOf CmdLiteralPrimitive)
+          return prior.optimize
+        else
+          # Bit shifts for literal RHS
+          if (rhs instanceOf CmdLiteralInt64)
+            local var value = rhs.(CmdLiteralInt64).value
+            if (value == 0) 
+              return CmdLiteralInt64( t, 0 )
+            elseIf (value > 0 and value.is_power_of_two)
+              return CmdLeftShifted( t, lhs, CmdLiteralInt32(t,value.min_bits-1) )
+            endIf
+
+          elseIf (rhs instanceOf CmdLiteralInt32)
+            local var value = rhs.(CmdLiteralInt32).value
+            if (value == 0) 
+              return CmdLiteralInt32( t, 0 )
+            elseIf (value > 0 and value.is_power_of_two)
+              return CmdLeftShifted( t, lhs, CmdLiteralInt32(t,value.min_bits-1) )
+            endIf
+          endIf
+        endIf
+
+      elseIf (lhs instanceOf CmdLiteralPrimitive)
+        # Bit shifts for literal LHS
+        if (lhs instanceOf CmdLiteralInt64)
+          local var value = lhs.(CmdLiteralInt64).value
+          if (value == 0) 
+            return CmdLiteralInt64( t, 0 )
+          elseIf (value > 0 and value.is_power_of_two)
+            return CmdLeftShifted( t, rhs, CmdLiteralInt32(t,value.min_bits-1) )
+          endIf
+
+        elseIf (lhs instanceOf CmdLiteralInt32)
+          local var value = lhs.(CmdLiteralInt32).value
+          if (value == 0) 
+            return CmdLiteralInt32( t, 0 )
+          elseIf (value > 0 and value.is_power_of_two)
+            return CmdLeftShifted( t, rhs, CmdLiteralInt32(t,value.min_bits-1) )
+          endIf
+        endIf
+      endIf
+
+      return this
+endClass
+
+class CmdDiv : CmdMathOp<<CmdDiv,"/",/=,cmd_div>>
+  METHODS
+    method optimize.Cmd
+      if (lhs instanceOf CmdLiteralPrimitive and rhs instanceOf CmdLiteralPrimitive)
+        if (lhs instanceOf CmdLiteralInt64 and rhs.(CmdLiteralInt64).value == 0)
+          throw rhs.error( "Illegal integer division by zero." )
+        elseIf (lhs instanceOf CmdLiteralInt32 and rhs.(CmdLiteralInt32).value == 0)
+          throw rhs.error( "Illegal integer division by zero." )
+        endIf
+        return prior.optimize
+      endIf
+      return this
+endClass
+
+class CmdMod : CmdMathOp<<CmdMod,"%",%=,cmd_mod>>
+  METHODS
+    method optimize.Cmd
+      if (lhs instanceOf CmdLiteralPrimitive and rhs instanceOf CmdLiteralPrimitive)
+        if (lhs instanceOf CmdLiteralInt64 and rhs.(CmdLiteralInt64).value == 0)
+          throw rhs.error( "Illegal integer division by zero." )
+        elseIf (lhs instanceOf CmdLiteralInt32 and rhs.(CmdLiteralInt32).value == 0)
+          throw rhs.error( "Illegal integer division by zero." )
+        endIf
+        return prior.optimize
+      endIf
+      return this
+endClass
+
+class CmdExp : CmdMathOp<<CmdExp,"^",^=,cmd_exp>>;
+
+class CmdBitwiseOp<<$CmdType,$symbol,$op_assign,$cmd>> : CmdBinary
+  METHODS
+    method create_duplicate.Cmd
+      return $CmdType( t, duplicate(lhs), duplicate(rhs) )
+
+    method resolve.Cmd
+      local var call = SlagAnalyzer.prep_binary_operator(this,"op"+$symbol)
+      if (call?) return call
+      SlagAnalyzer.cast_operands_to_standard_integer_or_logical(this)
+      return optimize
+
+    method optimize.Cmd
+      if (lhs instanceOf CmdLiteralPrimitive and rhs instanceOf CmdLiteralPrimitive)
+        if (lhs instanceOf CmdLiteralInt64)
+          local var left = lhs.(CmdLiteralInt64)
+          local var right = rhs.(CmdLiteralInt64)
+          left.value $op_assign right.value
+          return lhs
+        elseIf (lhs instanceOf CmdLiteralInt32)
+          local var left = lhs.(CmdLiteralInt32)
+          local var right = rhs.(CmdLiteralInt32)
+          left.value $op_assign right.value
+          return lhs
+        elseIf (lhs instanceOf CmdLiteralLogical)
+          local var left = lhs.(CmdLiteralLogical)
+          local var right = rhs.(CmdLiteralLogical)
+          left.value $op_assign right.value
+          return lhs
+        endIf
+      endIf
+      return this
+endClass
+
+class CmdAnd : CmdBitwiseOp<<CmdAnd,"&",&=,cmd_and>>;
+class CmdOr  : CmdBitwiseOp<<CmdOr, "|",|=,cmd_or>>;
+class CmdXor : CmdBitwiseOp<<CmdXor,"~",~=,cmd_xor>>;
+
+class CmdLazyAnd : CmdBinary
+  PROPERTIES
+    short_circuit_id : Int32
+
+  METHODS
+    method init( t, lhs, rhs )
+    method init( t, lhs, rhs, short_circuit_id )
+
+    method create_duplicate.Cmd
+      return CmdLazyAnd( t, duplicate(lhs), duplicate(rhs), short_circuit_id )
+
+    method resolve.Cmd
+      lhs .= resolve
+      rhs .= resolve
+      SlagAnalyzer.require_logical(lhs)
+      SlagAnalyzer.require_logical(rhs)
+      return optimize
+
+    method optimize.Cmd
+      if (lhs instanceOf CmdLiteralLogical)
+        local var left = lhs.(CmdLiteralLogical)
+        if (left.value) return rhs
+        else return lhs
+
+      elseIf (rhs instanceOf CmdLiteralLogical)
+        local var right = rhs.(CmdLiteralLogical)
+        if (right.value) return lhs
+        else return rhs
+      endIf
+
+      return this
+endClass
+
+class CmdLazyOr  : CmdBinary
+  PROPERTIES
+    short_circuit_id : Int32
+
+  METHODS
+    method init( t, lhs, rhs )
+    method init( t, lhs, rhs, short_circuit_id )
+
+    method create_duplicate.Cmd
+      return CmdLazyOr( t, duplicate(lhs), duplicate(rhs), short_circuit_id )
+
+    method resolve.Cmd
+      lhs .= resolve
+      rhs .= resolve
+      SlagAnalyzer.require_logical(lhs)
+      SlagAnalyzer.require_logical(rhs)
+      return optimize
+
+    method optimize.Cmd
+      if (lhs instanceOf CmdLiteralLogical)
+        local var left = lhs.(CmdLiteralLogical)
+        if (left.value) return lhs  # true or X  -> true
+        else return rhs            # false or X -> X
+
+      elseIf (rhs instanceOf CmdLiteralLogical)
+        local var right = rhs.(CmdLiteralLogical)
+        if (right.value) return rhs  # X or true  -> true
+        else return lhs            # X or false -> X
+      endIf
+
+      return this
+endClass
+
+class CmdBitwiseMovement<<$CmdType,$op,$cmd>> : CmdBinary
+  METHODS
+    method create_duplicate.Cmd
+      return $CmdType( t, duplicate(lhs), duplicate(rhs) )
+
+    method resolve.Cmd
+      lhs .= resolve
+      rhs .= resolve
+      SlagAnalyzer.require_standard_integer(lhs)
+      SlagAnalyzer.require_int32(rhs)
+      return optimize
+
+    method optimize.Cmd
+      if (lhs instanceOf CmdLiteralPrimitive and rhs instanceOf CmdLiteralPrimitive)
+        local var right = rhs.(CmdLiteralInt32)
+        if (lhs instanceOf CmdLiteralInt64)
+          local var left = lhs.(CmdLiteralInt64)
+          left.value = left.value.$op(right.value)
+          return lhs
+        elseIf (lhs instanceOf CmdLiteralInt32)
+          local var left = lhs.(CmdLiteralInt32)
+          left.value = left.value.$op(right.value)
+          return lhs
+        endIf
+      endIf
+      return this
+endClass
+
+class CmdLeftShifted   : CmdBitwiseMovement<<CmdLeftShifted,  left_shifted,cmd_left_shifted>>;
+class CmdRightShifted  : CmdBitwiseMovement<<CmdRightShifted, right_shifted,cmd_right_shifted>>;
+class CmdRightXShifted : CmdBitwiseMovement<<CmdRightXShifted,right_xshifted,cmd_right_xshifted>>;
+
+class CmdArrayCreate : Cmd
+  PROPERTIES
+    of_type   : TypeInfo
+    size_expr : Cmd
+
+  METHODS
+    method init( t, of_type, size_expr )
+
+    method create_duplicate.Cmd
+      return CmdArrayCreate( t, of_type, duplicate(size_expr) )
+
+    method type.TypeInfo
+      return of_type
+
+    method to_String.String
+      return "CmdArrayCreate($,$)" (of_type,size_expr)
+
+    method resolve.Cmd
+      of_type.resolve
+      size_expr .= resolve
+      SlagAnalyzer.require_int32( size_expr )
+
+      return this
+
+    method finalize_calls.Cmd
+      size_expr .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      size_expr.finalize_structure_info
+
+    method group_dynamic_methods
+      size_expr.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      size_expr .= to_inline(arg_list)
+      return this
+endClass
+
+class CmdArrayGet : Cmd
+  PROPERTIES
+    context    : Cmd
+    index_expr : Cmd
+
+  METHODS
+    method init( t, context, index_expr )
+
+    method create_duplicate.Cmd
+      return CmdArrayGet( t, duplicate(context), duplicate(index_expr) )
+
+    method type.TypeInfo
+      return context.type.element_type
+    
+    method to_String.String
+      return "CmdArrayGet($,$)" (context,index_expr)
+
+    method resolve.Cmd
+      context    .= resolve
+      SlagAnalyzer.require_type( context, TypeManager.type_generic_array ).resolve
+
+      index_expr .= resolve
+      SlagAnalyzer.require_int32( index_expr )
+
+      return this
+
+    method finalize_calls.Cmd
+      context .= finalize_calls
+      index_expr .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      context.finalize_structure_info
+      index_expr.finalize_structure_info
+
+    method group_dynamic_methods
+      context.group_dynamic_methods
+      index_expr.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      context    .= to_inline(arg_list)
+      index_expr .= to_inline(arg_list)
+      return this
+endClass
+
+class CmdArraySet : Cmd
+  PROPERTIES
+    context    : Cmd
+    index_expr : Cmd
+    value_expr : Cmd
+
+  METHODS
+    method init( t, context, index_expr, value_expr )
+
+    method create_duplicate.Cmd
+      return CmdArraySet( t, duplicate(context), duplicate(index_expr), duplicate(value_expr) )
+
+    method to_String.String
+      return "CmdArraySet($,$,$)" (context,index_expr,value_expr)
+
+    method resolve.Cmd
+      context    .= resolve
+      local var array_type = SlagAnalyzer.require_type( context, TypeManager.type_generic_array )
+      array_type.resolve
+
+      index_expr .= resolve
+      SlagAnalyzer.require_int32( index_expr )
+
+      value_expr .= resolve
+      SlagAnalyzer.require_type( value_expr, array_type.readable_type )
+      return this
+
+    method finalize_calls.Cmd
+      context .= finalize_calls
+      index_expr .= finalize_calls
+      value_expr .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      context.finalize_structure_info
+      index_expr.finalize_structure_info
+      value_expr.finalize_structure_info
+
+    method group_dynamic_methods
+      context.group_dynamic_methods
+      index_expr.group_dynamic_methods
+      value_expr.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      context    .= to_inline(arg_list)
+      index_expr .= to_inline(arg_list)
+      value_expr .= to_inline(arg_list)
+      return this
+endClass
+
+class CmdArrayDuplicate : Cmd
+  PROPERTIES
+    context    : Cmd
+
+  METHODS
+    method init( t, context )
+
+    method create_duplicate.Cmd
+      return CmdArrayDuplicate( t, duplicate(context) )
+
+    method type.TypeInfo
+      return context.type
+    
+    method to_String.String
+      return "CmdArrayDuplicate($)" (context)
+
+    method resolve.Cmd
+      context    .= resolve
+      SlagAnalyzer.require_type( context, TypeManager.type_generic_array ).resolve
+      return this
+
+    method finalize_calls.Cmd
+      context .= finalize_calls
+      return this
+
+    method finalize_structure_info
+      context.finalize_structure_info
+
+    method group_dynamic_methods
+      context.group_dynamic_methods
+
+    method to_inline( CmdList arg_list ).Cmd
+      context    .= to_inline(arg_list)
+      return this
+endClass
+
+
+# Optimization nodes
+class CmdModifyAndAssign<<$CmdType,$VarType,$cmd>> : CmdStatementWithOperand
+  PROPERTIES
+    var_info : $VarType
+
+  METHODS
+    method init( t, var_info, operand )
+
+    method create_duplicate.Cmd
+      return $CmdType( t, var_info, duplicate(operand) )
+
+    method to_String.String
+      return "$()($#$,$)" (type_name,var_info.name,var_info.index,operand)
+
+    method resolve.Cmd
+      return this
+
+    method finalize_structure_info
+      Context.this_method.supports_inlining = false
+endClass
+
+class CmdThisPropertyAddAndAssign ...
+  : CmdModifyAndAssign<<CmdThisPropertyAddAndAssign,PropertyInfo,cmd_this_property_add_and_assign>>;
+class CmdThisPropertySubAndAssign ...
+  : CmdModifyAndAssign<<CmdThisPropertySubAndAssign,PropertyInfo,cmd_this_property_sub_and_assign>>;
+class CmdThisPropertyMulAndAssign ...
+  : CmdModifyAndAssign<<CmdThisPropertyMulAndAssign,PropertyInfo,cmd_this_property_mul_and_assign>>;
+class CmdThisPropertyDivAndAssign ...
+  : CmdModifyAndAssign<<CmdThisPropertyDivAndAssign,PropertyInfo,cmd_this_property_div_and_assign>>;
+class CmdThisPropertyModAndAssign ...
+  : CmdModifyAndAssign<<CmdThisPropertyModAndAssign,PropertyInfo,cmd_this_property_mod_and_assign>>;
+
+class CmdLocalVarAddAndAssign : CmdModifyAndAssign<<CmdLocalVarAddAndAssign,MethodVarInfo,cmd_local_var_add_and_assign>>;
+class CmdLocalVarSubAndAssign : CmdModifyAndAssign<<CmdLocalVarSubAndAssign,MethodVarInfo,cmd_local_var_sub_and_assign>>;
+class CmdLocalVarMulAndAssign : CmdModifyAndAssign<<CmdLocalVarMulAndAssign,MethodVarInfo,cmd_local_var_mul_and_assign>>;
+class CmdLocalVarDivAndAssign : CmdModifyAndAssign<<CmdLocalVarDivAndAssign,MethodVarInfo,cmd_local_var_div_and_assign>>;
+class CmdLocalVarModAndAssign : CmdModifyAndAssign<<CmdLocalVarModAndAssign,MethodVarInfo,cmd_local_var_mod_and_assign>>;
+
+class CmdStepVar<<$CmdType,$VarType,$cmd>> : CmdStatement
+  PROPERTIES
+    var_info : $VarType
+
+  METHODS
+    method init( t, var_info )
+
+    method create_duplicate.Cmd
+      return $CmdType( t, var_info )
+
+    method to_String.String
+      return "$()($#$)" (type_name,var_info.name,var_info.index)
+
+    method resolve.Cmd
+      return this
+
+    method finalize_structure_info
+      Context.this_method.supports_inlining = false
+endClass
+
+class CmdThisPropertyIncrement : CmdStepVar<<CmdThisPropertyIncrement,PropertyInfo,cmd_this_property_increment>>;
+class CmdThisPropertyDecrement : CmdStepVar<<CmdThisPropertyDecrement,PropertyInfo,cmd_this_property_decrement>>;
+class CmdLocalVarIncrement     : CmdStepVar<<CmdLocalVarIncrement,MethodVarInfo,cmd_local_var_increment>>;
+class CmdLocalVarDecrement     : CmdStepVar<<CmdLocalVarDecrement,MethodVarInfo,cmd_local_var_decrement>>;
+
+#------------------------------------------------------------------------------
+#==============================================================================
+# The nodes below are converted during compilation and never show up in
+# the final program tree.
+#==============================================================================
+#------------------------------------------------------------------------------
+
+class CmdRange : Cmd
+  PROPERTIES
+    first, last, increment : Cmd
+
+  METHODS
+    method init( t, first, last, increment=null )
+
+    method type.TypeInfo
+      return first.type
+
+    method resolve_range( String range_name, Int32 default_increment ).Cmd
+      first .= resolve
+      last .= resolve
+
+      local var common_type = SlagAnalyzer.determine_common_data_type( first.type, last.type )
+      if (increment?)
+        increment .= resolve
+        common_type = SlagAnalyzer.determine_common_data_type( common_type, increment.type )
+      else
+        increment = CmdLiteralInt32( t, default_increment )
+      endIf
+
+      first = SlagAnalyzer.create_cast( first, common_type )
+      last = SlagAnalyzer.create_cast( last, common_type )
+      increment = SlagAnalyzer.create_cast( increment, common_type )
+
+      local var range_type = TypeManager.get_type_reference( t, range_name, common_type ) 
+      range_type.resolve
+      return CmdUnresolvedNewObject( t, range_type, CmdList(first,last,increment) ).resolve
+
+endClass
+
+class CmdRangeLE : CmdRange
+  method create_duplicate.CmdRangeLE
+    return CmdRangeLE( t, duplicate(first), duplicate(last), duplicate(increment) )
+
+  method resolve.Cmd
+    return resolve_range( "Range", 1 )
+endClass
+
+class CmdRangeLT : CmdRange
+  method create_duplicate.CmdRangeLT
+    return CmdRangeLT( t, duplicate(first), duplicate(last), duplicate(increment) )
+
+  method resolve.Cmd
+    return resolve_range( "RangeLT", 1 )
+endClass
+
+class CmdRangeGT : CmdRange
+  method create_duplicate.CmdRangeGT
+    return CmdRangeGT( t, duplicate(first), duplicate(last), duplicate(increment) )
+
+  method resolve.Cmd
+    return resolve_range( "RangeGT", -1 )
+endClass
+
+class CmdRangeGE : CmdRange
+  method create_duplicate.CmdRangeGE
+    return CmdRangeGE( t, duplicate(first), duplicate(last), duplicate(increment) )
+
+  method resolve.Cmd
+    return resolve_range( "RangeGE", -1 )
+endClass
+
+class CmdLogicalXor : CmdXor
+  method create_duplicate.CmdLogicalXor
+    return CmdLogicalXor( t, duplicate(lhs), duplicate(rhs) )
+
+  method resolve.Cmd
+    SlagAnalyzer.prep_binary_operator( this, null )
+    SlagAnalyzer.require_logical( lhs )
+    SlagAnalyzer.require_logical( rhs )
+    return CmdXor( t, lhs, rhs ).optimize
+endClass
+
+class CmdLogicalNot : CmdNot
+  method create_duplicate.CmdLogicalNot
+    return CmdLogicalNot( t, duplicate(operand) )
+
+  method resolve.Cmd
+    operand .= resolve
+    SlagAnalyzer.require_logical( operand )
+    return CmdNot( t, operand ).optimize
+endClass
+
+class CmdLogicalize : CmdUnary
+  method create_duplicate.CmdLogicalize
+    return CmdLogicalize( t, duplicate(operand) )
+
+  method resolve.Cmd
+    operand .= resolve
+
+    local var this_type = SlagAnalyzer.require_value(this)
+    if (this_type.is_reference)
+      return CmdCmpIsNot( t, operand, CmdLiteralNull(t) ).optimize
+    elseIf (this_type.is_compound)
+      return CmdCmpNE( t, operand, SlagAnalyzer.make_zero_value(t,this_type) ).resolve.optimize
+    elseIf (this_type.is_logical)
+      return CmdCmpEQ( t, operand, CmdLiteralLogical(t,true) ).optimize
+    else
+      return CmdCmpNE( t, operand, CmdLiteralInt32(t,0) ).resolve
+    endIf
+
+endClass
+
+class CmdConstruct : Cmd
+  PROPERTIES
+    type_or_id : TypeInfo
+    args : CmdList
+
+  METHODS
+    method init( t, type_or_id, args=null )
+
+    method init( t, String name, args=null )
+      type_or_id = TypeManager.get_type_reference( t, name )
+
+    method name.String
+      return type_or_id.name
+
+    method create_duplicate.CmdConstruct
+      return CmdConstruct( t, type_or_id, duplicate(args) )
+
+    method to_String.String
+      if (args?) return type_or_id.name + args.to_String
+      return type_or_id.name
+
+    method resolve.Cmd
+      if (type_or_id.name == "ThisType")
+        type_or_id = Context.this_type
+      elseIf (type_or_id.name == "delegate")
+        return CmdMemberAccess( t,
+          CmdThisReference(t,Context.this_type),
+          this ).resolve
+      endIf
+
+      if (type_or_id.is_valid_type) 
+        type_or_id.resolve
+        if (args?) 
+          return CmdUnresolvedNewObject( t, type_or_id, args ).resolve
+        elseIf (type_or_id.is_singleton)
+          return CmdSingletonReference( t, type_or_id ).resolve
+          #else
+          #throw error( "$ is not a singleton - create a new object with $()() "
+          #"or create a list with $[]()." (name,name,name) )
+        endIf
+      endIf
+
+      local var this_type = Context.this_type
+      if (name == "this")
+        if (args?)
+          throw error( "Syntax error - illegal parentheses on 'this'." )
+        endIf
+        return CmdThisReference( t, this_type )
+      endIf
+
+      if (not args? or args.count == 0)
+        # could be a local var or property access
+        if (Context.local_var_table[name]?)
+          return CmdLocalVarRead( t, Context.local_var_table[name] )
+
+        elseIf (this_type.get_methods.contains(name))
+          return SlagAnalyzer.resolve_call( t, this_type, null, name, args )
+            # in CmdConstruct::resolve()
+
+        elseIf (args is null)
+          local var result = SlagAnalyzer.create_property_get( t, null, null, name )
+          if (result?) return result
+        endIf
+      endIf
+
+      if (args?) args.resolve
+      return SlagAnalyzer.resolve_call( t, this_type, null, name, args )
+endClass
+
+class CmdUnresolvedNewObject : Cmd
+  PROPERTIES
+    of_type : TypeInfo
+    args    : CmdList
+
+  METHODS
+    method init( t, of_type, args )
+
+    method create_duplicate.CmdUnresolvedNewObject
+      return CmdUnresolvedNewObject( t, of_type, duplicate(args) )
+
+    method resolve.Cmd
+      of_type.resolve
+
+      if (of_type.is_primitive)
+        if (args.count != 1) throw error( "A cast requires exactly one argument." )
+        args.resolve
+        return SlagAnalyzer.create_cast( args.first, of_type, true )
+      endIf
+
+      if (of_type.is_aspect)
+        # Transform List<<T>>() calls into ArrayList<<T>>() calls.
+        if (of_type.name.begins_with("List<<"))
+          of_type = TypeManager.get_type_reference( t, "Array" + of_type.name )
+          of_type.resolve
+        endIf
+      endIf
+
+      Context.implicit_context.add( of_type )
+      try
+        args.resolve
+
+        if (of_type.instance_of(TypeInfo.type_manager_creates))
+          # e.g.  String(bytes) -> StringManager.create_from(bytes)
+          Context.implicit_context.remove_last
+          return CmdMemberAccess( t, 
+              CmdSingletonReference(t,TypeManager.types[of_type.manager_name]), 
+              CmdConstruct(t,"create_from",args) ).resolve
+        endIf
+
+
+        if (of_type.is_compound and args.count==1 and args.first.type is of_type)
+          # The compound of a compound is the compound
+          return args.first
+        endIf
+        local var call = SlagAnalyzer.resolve_call( t, of_type, null, "init", args ).(CmdDynamicCall)
+          # in visit NewObject
+        local var m = call.method_info
+
+        if (of_type.is_class)
+          if (of_type.is_array)
+            if (call.method_info.signature != "init(Int32)")
+              throw t.error("Arrays can only be created via calls to the standard init(Int32) initializer.")
+            endIf
+            if (of_type.properties.count?)
+              throw of_type.properties.first.t.error( "Arrays cannot have object properties." )
+            endIf
+            local var result = CmdArrayCreate( t, of_type, call.args.first )
+            Context.implicit_context.remove_last
+            return result
+
+          endIf
+
+          local var result = CmdNewObject( t, of_type, m, call.args ).validate
+          Context.implicit_context.remove_last
+          return result
+
+        else
+          # compound
+
+          contingent
+            if (call.args.count == 1 and call.args.first.type is of_type)
+              # Transform call e.g. Box(Box(x)) into Box(x)
+              Context.implicit_context.remove_last
+              return call.args.first
+            endIf
+
+            necessary (call.args.count == of_type.properties.count)
+            forEach (index of call.args)
+              necessary (call.args[index].type is of_type.properties[index].type)
+            endForEach
+
+          satisfied
+            # Low-level compound constructor
+            Context.implicit_context.remove_last
+            return CmdNewCompound( t, of_type, call.args )
+
+          unsatisfied
+            # High-level compound constructor
+            if (not m.return_type?)
+              throw m.t.error( "Compound initializer methods must return the compound type." )
+            endIf
+            Context.implicit_context.remove_last
+            return call
+          endContingent
+        endIf
+      catch (SlagError err)
+        Context.implicit_context.remove_last
+        throw err
+      endTry
+endClass
+
+class CmdMemberAccess : CmdUnary
+  PROPERTIES
+    member : CmdConstruct
+
+  METHODS
+    method init( t, operand, member )
+
+    method create_duplicate.CmdMemberAccess
+      return CmdMemberAccess( t, duplicate(operand), duplicate(member) )
+
+    method resolve.Cmd
+      local TypeInfo new_type
+      local var context_set_to_singleton = false
+      contingent
+        necessary (operand instanceOf CmdConstruct)
+        local var construct = operand.(CmdConstruct)
+        necessary (construct.args is null)
+        new_type = construct.type_or_id
+        necessary (new_type.is_valid_type)
+        new_type.resolve
+
+      satisfied
+        # May or may not be a singleton, but we'll let implicit singleton context
+        # pick up the call if it's not
+        operand = CmdSingletonReference( operand.t, new_type )
+        context_set_to_singleton = true
+      endContingent
+
+      if (member.type_or_id.is_valid_type) 
+        member.type_or_id.resolve
+        if (member.args?)
+          throw error( "Syntax error - right side of member access is a new object." )
+        else
+          throw error( //Syntax error - use "value.($)" to perform a cast.// (member.type_or_id) )
+        endIf
+      endIf
+
+      if (operand instanceOf CmdConstruct)
+        # Handle "prior" calls.
+        local var con = operand.(CmdConstruct)
+        if (con.name == "prior")
+          if (con.args?) throw con.error( "Syntax error - 'prior.method_name' expected." )
+          if (Context.this_type.base_class is null)
+            throw con.error( "No base class exists for 'prior' call in type '$'." (Context.this_type) )
+          endIf
+          local var args = member.args
+          if (args?) args.resolve
+          local var call = SlagAnalyzer.resolve_call( t, Context.this_type.base_class, 
+          CmdThisReference(t,Context.this_type.base_class), member.name, args )
+            # in visit CmdMemberAccess
+          if (call instanceOf CmdDynamicCall)
+            local var dyn = call.(CmdDynamicCall)
+            return CmdStaticCall( call.t, 
+            CmdThisReference(call.t,Context.this_type.base_class), dyn.method_info, dyn.args )
+          else
+            return call
+          endIf
+        endIf
+      endIf
+
+      if (not context_set_to_singleton) operand .= resolve
+      local var type_context = SlagAnalyzer.require_value( operand )
+      if (type_context.is_primitive)
+        # p.method(args) -> method( p, args )
+        if (not member.args?) member.args = CmdList(1)
+        member.args.insert( operand )
+        local CmdMemberAccess global_call( t, CmdSingletonReference(t,TypeManager.types["Global"]), member )
+        return global_call.resolve
+
+      elseIf (type_context.is_compound)
+        # c.method(args) -> c::type( method(c, args) )
+        if ((member.args is null or member.args.count == 0) ...
+            and type_context.find_property(member.name)?)
+          local var result = SlagAnalyzer.create_property_get( t, type_context, operand, member.name )
+          if (result?) return result
+        endIf
+
+        local var member_copy = duplicate(member)
+        if (operand notInstanceOf CmdSingletonReference)
+          if (not member_copy.args?) member_copy.args = CmdList(1)
+          member_copy.args.insert( operand )
+        endIf
+        return CmdMemberAccess(t, 
+          CmdSingletonReference(t,TypeManager.types[type_context.manager_name]), member_copy).resolve
+      endIf
+      SlagAnalyzer.require_reference( t, type_context )
+      if (not type_context?)
+        throw operand.error("Call context does not result in an expression.")
+      endIf
+      Context.implicit_context.add( type_context )
+
+      local var args = member.args
+      if (not args?)
+        # could be a property access
+        local var result = SlagAnalyzer.create_property_get( t, type_context, operand.resolve, member.name )
+        if (result?) 
+          Context.implicit_context.remove_last
+          return result
+        endIf
+      endIf
+
+      try
+        if (member.name == "delegate")
+          # obj.delegate(id) -> SpecializedDelegate__ParamType1_ParamType2__ReturnType<<[typeOf obj],id>>(obj)
+          if (args is null) throw t.error( "Method identifier expected as argument." )
+          local var m_name = args.first.(CmdLiteralString).value
+          local MethodInfo m = null
+          local var methods = type_context.methods_by_name[m_name]
+          if (methods.count == 0)
+            if (type_context.methods_by_signature.contains(m_name))
+              m = type_context.methods_by_signature[m_name]
+            endIf
+            if (m is null) throw t.error( //No such method "$" in class $.// (m_name,type_context) )
+          elseIf (methods.count == 1)
+            m = methods.first
+          elseIf (methods.count > 1)
+            throw t.error( //Ambiguous reference to method "$" (multiple methods match).  Add a signature, e.g. "Math.delegate(min)" becomes "Math.delegate(min(Int32,Int32))".// (m_name) )
+          endIf
+
+          local StringBuilder buffer()
+          buffer.print( "Delegate__" )
+          if (m.parameters.count?)
+            buffer.print( DelegateMaker.filter(m.parameters.first.type.name) )
+            forEach (p in m.parameters.from(1))
+              buffer.print( "_" + DelegateMaker.filter(p.type.name) )
+            endForEach
+          endIf
+          buffer.print( "__" )
+          if (m.return_type?) buffer.print( DelegateMaker.filter(m.return_type.name) )
+
+          local var delegate_type_name = buffer.to_String
+          if (not SlagParser.delegate_types.contains(delegate_type_name))
+            SlagParser.delegate_types.add( delegate_type_name )
+            buffer.clear
+            buffer.print( "call( " )
+            if (m.parameters.count?)
+              buffer.print( "$ a" (m.parameters.first.type.name) )
+              local var letter = 'b'
+              forEach (p in m.parameters.from(1))
+                buffer.print( ", $ $" (p.type.name,letter) )
+                ++letter
+              endForEach
+            endIf
+            buffer.print( " )" )
+            if (m.return_type?)
+              buffer.print( '.' )
+              buffer.print( m.return_type.name )
+            endIf
+            local var sig = buffer.to_String
+            buffer.clear
+            buffer.println( "class $ : DelegateType" (delegate_type_name) )
+            buffer.println( "  abstract method context.Object" )
+            buffer.println( "  abstract method " + sig )
+            buffer.println( "endClass" )
+            buffer.println
+            buffer.print( "class Specialized" + delegate_type_name + "<<$ContextType,$method_name>>( $ContextType context ) : " )
+            buffer.println( delegate_type_name )
+            buffer.println( "  method context.Object" )
+            buffer.println( "    return &context" )
+            buffer.println( "  method " + sig )
+            if (m.return_type?) buffer.print( "    return " )
+            buffer.print( "&context.$method_name(" )
+            if (m.parameters.count?)
+              buffer.print( " a" )
+              local var letter = 'b'
+              forEach (p in m.parameters.from(1)) buffer.print( ", " + letter ); ++letter
+            endIf
+            buffer.println( " )" )
+            buffer.println( "endClass" )
+            local SlagParser parser( SlagPreprocessor("Generated Delegate", buffer.to_String) )
+            while (parser.parse_next) noAction
+            #print( buffer.to_String )
+          endIf
+
+          buffer.clear
+          buffer.print( "Specialized" )
+          buffer.print( delegate_type_name )
+          buffer.print( "<<$,$>>" (type_context.name,m_name.before_first('(')) )
+          local SlagParser parser( SlagPreprocessor("(parsing delegate type)",buffer.to_String) )
+          local var delegate_type = parser.parse_data_type
+          return CmdConstruct( t, delegate_type, CmdList(operand) ).resolve
+        endIf
+
+        if (args?) args.resolve
+        local var result = SlagAnalyzer.resolve_call( t, type_context, operand, member.name, args )
+          # in visit CmdMemberAccess
+        Context.implicit_context.remove_last
+        return result
+      catch (SlagError err)
+        Context.implicit_context.remove_last
+        throw err
+      endTry
+
+    method to_String.String
+      return "CmdMemberAccess($,$)" (operand,member)
+endClass
+
+class CmdAccessIndex : CmdUnary
+  PROPERTIES
+    args : CmdList
+
+  METHODS
+    method init( t, operand, args )
+
+    method create_duplicate.CmdAccessIndex
+      return CmdAccessIndex( t, duplicate(operand), duplicate(args) )
+
+    method resolve.Cmd
+      contingent
+        local var construct = (operand as CmdConstruct)
+        necessary (construct?)
+        necessary (construct.type_or_id is TypeManager.type_runtime and construct.args is null)
+        necessary (args.count == 1)
+        construct = args.first as CmdConstruct
+        necessary (construct?)
+        necessary (construct.type_or_id.is_valid_type)
+        construct.type_or_id.resolve
+        return CmdConstruct(construct.t,"RuntimeType"+construct.type_or_id.name).resolve
+      endContingent
+      local var result = CmdMemberAccess( t, operand, CmdConstruct(t,"get",args) )
+      return result.resolve
+endClass
+
+class CmdImplicitListLiteral( t, Cmd[] args ) : Cmd
+  METHODS
+    method create_duplicate.CmdImplicitListLiteral
+      local Cmd[] args2(args.count)
+      forEach (arg in args) args2.add( duplicate(arg) )
+      return CmdImplicitListLiteral(t,args2)
+
+    method resolve.Cmd
+      forEach (index of args)
+        args[index] = args[index].resolve
+      endForEach
+
+      local var common_type = SlagAnalyzer.find_common_element_type( t, args )
+      if (common_type is null)
+        throw error( "Could not infer element type of implictly-typed list - use explicit syntax 'TypeName{...}' instead." )
+      endIf
+      return CmdExplicitListLiteral(t, common_type, args).resolve
+endClass
+
+class CmdExplicitListLiteral( t, TypeInfo of_type, Cmd[] args ) : Cmd
+  METHODS
+    method create_duplicate.CmdExplicitListLiteral
+      local Cmd[] args2(args.count)
+      forEach (arg in args) args2.add( duplicate(arg) )
+      return CmdExplicitListLiteral(t,of_type,args2)
+
+    method resolve.Cmd
+      local var contains_generator = false
+      forEach (index of args)
+        args[index] = args[index].resolve
+      endForEach
+
+      of_type.resolve
+      if (of_type.name.begins_with("Range")) 
+        of_type = of_type.readable_type
+      endIf
+
+      forEach (i of args)
+        local var arg = args[i]
+        local var arg_type = arg.type
+        if (arg_type.is_compatible_with(of_type))
+          args[i] = SlagAnalyzer.create_cast( arg, of_type )
+        else
+          local var readable_type = arg_type.readable_type
+          if (readable_type.is_compatible_with(of_type)) 
+            contains_generator = true
+          else
+            throw arg.error( "Element of type $ is incompatible with list type $." (readable_type,of_type) )
+          endIf
+        endIf
+      endForEach
+
+      if (contains_generator)
+        # turn single values into lists to be compatible with other readable data
+        forEach (i of args)
+          local var arg = args[i]
+          local var arg_type = arg.type
+          if (arg_type.is_compatible_with(of_type))
+            local var list_type = TypeManager.get_type_reference(arg.t,"ArrayList",arg_type)
+            list_type.resolve
+            local Cmd new_obj = CmdUnresolvedNewObject( arg.t, list_type, CmdList(CmdLiteralInt32(arg.t,1)) )
+            new_obj = CmdMemberAccess( arg.t, new_obj, CmdConstruct(arg.t,"add",CmdList(arg)) )
+            args[i] = new_obj.resolve
+          endIf
+        endForEach
+        of_type.resolve
+      endIf
+
+      if (contains_generator)
+        local TypeInfo list_type = TypeManager.get_type_reference(t,"Readable",of_type)
+        list_type.resolve
+        list_type = TypeManager.get_type_reference(t,"ArrayList",list_type)
+        list_type.resolve
+        local Cmd list = SlagAnalyzer.assemble_list( t, list_type, args, args.count )
+        list = CmdCoerceAs( list.t, list, list_type )
+        local var data_type = TypeManager.get_type_reference(list.t,"CompositeData",of_type)
+        data_type.resolve
+        local CmdUnresolvedNewObject new_obj( list.t, data_type, CmdList(list) )
+        return new_obj.resolve
+      else
+        local TypeInfo list_type = TypeManager.get_type_reference(t,"ArrayList",of_type)
+        list_type.resolve
+        local Cmd list = SlagAnalyzer.assemble_list( t, list_type, args, args.count )
+        list = CmdCoerceAs( list.t, list, list_type )
+
+        return list.resolve
+      endIf
+
+endClass
+
+class CmdUnderlyingCall(t) : CmdStatement
+  method create_duplicate.CmdUnderlyingCall
+    return this
+
+  method resolve.Cmd
+    local MethodInfo m = Context.this_method
+    local var underlying_m = Context.underlying_m
+    if (underlying_m?)
+      # Include underlying code
+      local var old_context = Context
+      Context = duplicate(Context)
+      Context.underlying_m = underlying_m.underlying_m;
+      local var result = duplicate(underlying_m.body).resolve
+      Context = old_context
+      return result
+    elseIf (m.prior_m? and not m.prior_m.is_abstract)
+      # Transform into call to prior method
+      local CmdList args( m.parameters.count )
+      forEach (p in m.parameters) args.add( CmdConstruct(t,p.name) )
+      return CmdMemberAccess( t, CmdConstruct(t,"prior"), CmdConstruct(t,m.name,args) ).resolve
+    else
+      # No underlying code, no prior method
+      return null
+    endIf
+endClass
+
+class CmdFormattedString( t, String text, CmdList args ) : Cmd
+  method create_duplicate.CmdFormattedString
+    return CmdFormattedString( t, text, duplicate(args) )
+
+  method resolve.Cmd
+    args.resolve
+
+    local Cmd[] pieces()
+    local var triplet = split_around_next_marker( t, text )
+
+    while (triplet.middle.count?)
+      if (triplet.first.count?) pieces.add( CmdLiteralString(t, triplet.first) )
+      if (args.count == 0) throw error( "Format string contains more insertion markers than arguments." )
+      local Cmd arg = args.remove_first
+
+      local var marker = triplet.middle
+      if (marker.count <= 3)
+        if (arg.type isNot TypeInfo.type_string)
+          arg = CmdMemberAccess( t, CmdSingletonReference(t,TypeManager.types["Global"]), 
+            CmdConstruct(t,"to_String", CmdList(arg)) )
+        endIf
+        pieces.add( arg )
+
+      else
+        # $(n) or $(n.d)
+        local var leading_zero = (marker[2] == '0')
+        local Int32 dot = marker.index_of('.')
+        local Int32 whole_places = 1
+        local Int32 decimal_places = 4
+        if (dot >= 0)
+          # $(n.d)
+          if (dot == marker.count - 2)
+            throw error( "Value expected after decimal point in format string." )
+          endIf
+          if (dot > 2) whole_places = marker.substring(2,dot-1).to_Int32
+          decimal_places = marker.substring(dot+1,marker.count-2).to_Int32
+        else
+          whole_places = marker.substring(2,marker.count-2).to_Int32
+        endIf
+
+        local CmdList format_args(4)
+        format_args.add( arg )
+        format_args.add( CmdLiteralInt32(t,whole_places) )
+        format_args.add( CmdLiteralInt32(t,decimal_places) )
+        if (leading_zero) format_args.add( CmdLiteralChar(t,'0') )
+        arg = CmdMemberAccess( t, CmdSingletonReference(t,TypeManager.types["Global"]), 
+            CmdConstruct(t,"format_string",format_args) )
+        pieces.add( arg )
+        
+      endIf
+        
+      triplet = split_around_next_marker( t, triplet.last )
+      
+    endWhile
+
+    if (triplet.first.count?) pieces.add( CmdLiteralString(t, triplet.first) )
+    if (args.count > 0) throw error( "Format string contains more arguments than insertion markers." )
+
+    which (pieces.count)
+      case 0:
+        return CmdLiteralString(t,"")
+      case 1:
+        return pieces.first.resolve
+      case 2:
+        return CmdAdd( t, pieces.first, pieces.last ).resolve
+      others:
+        local Cmd builder = CmdUnresolvedNewObject( t, TypeInfo.type_string_builder, CmdList(pieces.remove_first) )
+        while (pieces.count?)
+          builder = CmdMemberAccess( t, builder, CmdConstruct(t,"add",CmdList(pieces.remove_first)) )
+        endWhile
+        builder = CmdMemberAccess( t, builder, CmdConstruct(t,"to_String") )
+        return builder.resolve
+    endWhich
+
+    method split_around_next_marker( Token split_t, String st ).StringTriplet
+    local var i = st.index_of('$')
+    while (i>=0 and i+1 < st.count and st[i+1]=='$')
+      st = st.leftmost(i) + st.substring(i+1)
+      i = st.index_of('$',i+1)
+    endWhile
+
+    if (i == -1) return StringTriplet(st,"","")
+
+    if (i+1 >= st.count or st[i+1] != '(')
+      return StringTriplet( st.leftmost(i), "$", st.substring(i+1) )
+    else
+      local var i2 = i+2
+      local var count = st.count
+      local var decimals = 0
+      while (i2 < count)
+        local var ch = st[i2]
+        if (ch == ')') return StringTriplet( st.leftmost(i), st.substring(i,i2), st.substring(i2+1) )
+        if (ch == '.')
+          decimals++
+          if (decimals == 2) throw split_t.error( "Too many decimal points in format marker." )
+        elseIf (not ch.is_digit) 
+          throw split_t.error( "Syntax error in format marker." )
+        endIf
+        i2++
+      endWhile
+      throw split_t.error( "Missing ')' on format marker." )
+    endIf
+endClass
+
+class StringTriplet
+  # Helper class for CmdFormattedString
+  PROPERTIES
+    first, middle, last : String
+
+  METHODS
+    method init( first, middle, last )
+
+    method to_String.String
+      return "StringTriplet($,$,$)" (first,middle,last)
+endClass
+
+class CmdDuplicate : CmdUnary
+  method create_duplicate.CmdDuplicate
+    return CmdDuplicate(t,duplicate(operand))
+
+  method resolve.Cmd
+    operand .= resolve
+    local var ref_type = SlagAnalyzer.require_value( operand )
+
+    if (ref_type.is_reference)
+      if(ref_type.is_array)
+        # Cross-compiled arrays are sometimes mapped to native arrays 
+        # outside the normal object hierarchy; use a special command.
+        return CmdArrayDuplicate( t, operand ).resolve
+      endIf
+
+      local Cmd result = CmdMemberAccess( t, CmdSingletonReference(t,TypeManager.types["ObjectManager"]),
+          CmdConstruct(t,"create_duplicate",CmdList(operand)) ).resolve
+      return SlagAnalyzer.create_cast( result, ref_type )
+    else
+      return operand
+    endIf
+endClass
+
+class CmdInitialConstructor( t, CmdList args ) : Cmd
+  method create_duplicate.CmdInitialConstructor
+    return CmdInitialConstructor( t, duplicate(args) )
+
+  method resolve.Cmd
+    throw Error("Internal Error")
+endClass
+
+class CmdInitialAssignment : Cmd
+  PROPERTIES
+    expression : Cmd
+
+  METHODS
+    method init( t, expression )
+
+    method create_duplicate.CmdInitialAssignment
+      return CmdInitialAssignment( t, duplicate(expression) )
+
+    method resolve.Cmd
+      throw Error("Internal Error")
+endClass
+
+class CmdAssign : CmdBinary
+  method create_duplicate.CmdAssign
+    return CmdAssign( t, duplicate(lhs), duplicate(rhs) )
+
+  method resolve.Cmd
+    if (lhs instanceOf CmdAccessIndex)
+      local var access = lhs.(CmdAccessIndex)
+      access.args.add( rhs )
+      local CmdConstruct set_call( access.t, "set", access.args )
+      return CmdMemberAccess(access.t, access.operand, set_call).resolve
+    endIf
+
+    local String name
+    local TypeInfo type_context = null
+    local Cmd context = null
+
+    contingent
+      if (lhs instanceOf CmdConstruct)
+        local var con = lhs.(CmdConstruct)
+        necessary (con.args is null)
+        necessary (con.name != "this")
+        if (con.type_or_id.is_valid_type)
+          lhs = CmdSingletonReference(t,con.type_or_id)
+          return this.resolve
+        endIf
+        name = con.type_or_id.name
+
+      elseIf (lhs instanceOf CmdMemberAccess)
+        local var op = lhs.(CmdMemberAccess)
+        if (op.member.name == "get" and op.member.args? and op.member.args.count?)
+          op.member = CmdConstruct( op.member.t, "set", op.member.args )
+          op.member.args.add( rhs )
+          return op.resolve
+        endIf
+        necessary (op.member.args is null)
+
+        local var con = op.operand as CmdConstruct
+        if (con? and con.type_or_id.is_valid_type)
+          con.type_or_id.resolve
+          type_context = con.type_or_id
+          context = CmdSingletonReference( con.t, type_context ).resolve
+        else
+          context = op.operand.resolve
+          type_context = context.type
+        endIf
+        name = op.member.name
+
+      elseIf (lhs instanceOf CmdSingletonReference)
+        local var s = lhs.(CmdSingletonReference)
+        return CmdSingletonWrite( t, s.of_type, rhs ).resolve
+
+      elseIf (lhs instanceOf CmdNewObject)
+        necessary (false)
+
+      else
+        throw Error( "[Internal] Unhandled lhs in Assign: '$'." (lhs.type_name) )
+
+      endIf
+
+    satisfied
+      local var result = SlagAnalyzer.create_property_set( t, type_context, context, name, rhs )
+
+      if (result is null)
+        throw error( "No such property '$' in type '$'." (name,type_context) )
+      endIf
+      return result
+
+    unsatisfied
+      throw error( ...
+        "Left-hand side of assignment must be a variable or the name of a property-set method." )
+    endContingent
+endClass
+
+class CmdLocalVarDeclaration( t, LocalVarInfo var_info, Cmd initial_value=null ): Cmd
+  METHODS
+    method create_duplicate.CmdLocalVarDeclaration
+      return CmdLocalVarDeclaration( t, var_info, duplicate(initial_value) )
+
+    method resolve.Cmd
+      if (Context.this_type.properties_by_name.contains(var_info.name))
+        throw error( //A property named "$" already exists.// (var_info.name) )
+      endIf
+
+      if (var_info.type is TypeManager.type_var)
+        if (initial_value?)
+          local var expr = initial_value.resolve
+          var_info.type = SlagAnalyzer.require_value( expr )
+          Context.local_var_table.define( var_info )
+          return CmdAssign(t, CmdConstruct(t,var_info.name), expr).resolve
+        else
+          throw t.error( "Cannot determine variable type - locals of type 'var' must include an initial value assignment." )
+        endIf
+      endIf
+
+      var_info.type.resolve
+      Context.local_var_table.define( var_info )
+
+      if (initial_value?) return CmdAssign(t, CmdConstruct(t,var_info.name), initial_value).resolve
+      else return null
+
+endClass
+
+class CmdAssignZeroValue( t, LocalVarInfo var_info ) : Cmd
+  method create_duplicate.CmdAssignZeroValue
+    return CmdAssignZeroValue( t, var_info )
+
+  method resolve.Cmd
+    return CmdAssign( t, CmdConstruct(t,var_info.name), SlagAnalyzer.make_zero_value(t,var_info.type) ).resolve
+endClass
+
+class CmdAssignNewObject( t, LocalVarInfo var_info, CmdInitialConstructor constructor ) : Cmd
+  method create_duplicate.CmdAssignNewObject
+    return CmdAssignNewObject( t, var_info, duplicate(constructor) )
+
+  method resolve.Cmd
+    local var v = Context.local_var_table[var_info.name]
+    v.type.resolve
+    if (v.type.is_primitive)
+      which (constructor.args.count)
+        case 0: return CmdAssignZeroValue( t, var_info ).resolve
+        case 1: return CmdAssign( t, CmdConstruct(t,var_info.name), constructor.args.first ).resolve
+        others: throw error( "Primitive initialization requires a single value." )
+      endWhich
+
+    else
+      return CmdAssign( t, CmdConstruct(t,var_info.name), 
+          CmdUnresolvedNewObject( t, v.type, constructor.args )).resolve
+    endIf
+    return this
+endClass
+
+class CmdRemoveCurrent( t, Int32 id ) : CmdStatement
+  method create_duplicate.Cmd
+    return CmdRemoveCurrent( t, id )
+
+  method resolve.Cmd
+    return CmdAssign( t, CmdConstruct(t,".kept$"(id)), CmdLiteralLogical(t,false) ).resolve
+endClass
+
+class CmdWhich : CmdStructure
+  PROPERTIES
+    expression  : Cmd
+    cases(1)    : CmdWhichCase[]
+    case_others : CmdStatementList
+    use_is_comparison : Logical
+
+    # note: unused "body" inherited
+
+  METHODS
+    method init( t, id, expression, use_is_comparison )
+
+    method create_duplicate.Cmd
+      local CmdWhich result( t, id, duplicate(expression), use_is_comparison )
+      forEach (c in cases) result.cases.add( duplicate(c) )
+      result.case_others = duplicate(case_others)
+      return result
+
+    method to_String.String
+      local StringBuilder buffer()
+      buffer.println( "which::$ ($)" (id,expression) )
+      forEach (c in cases) buffer.println( c )
+      buffer.println( "endWhich" )
+      return buffer.to_String
+
+    method resolve.Cmd
+      local var var_name = "which_$" (id)
+      expression .= resolve
+      local var expr_type = SlagAnalyzer.require_value( expression )
+
+      local var literal_expr = (expression instanceOf CmdLiteralPrimitive)
+
+      local LocalVarInfo v_info( t, Context.this_method, expr_type, var_name )
+      Context.local_var_table.define( v_info )
+
+      local CmdStatementList cmds(t,2)
+      if (not literal_expr) cmds.add( CmdLocalVarWrite(t, v_info, expression).optimize )
+
+      local CmdIf conditionals = null
+      forEach (c in cases)
+        local Cmd or_terms = CmdLiteralLogical(c.t,false)
+
+        forEach (term in c.values)
+          local var cur_t = term.t
+          local Cmd v;
+          if (literal_expr) v = expression
+          else v = CmdConstruct(cur_t,var_name)
+
+          local Cmd cmp
+          if (term instanceOf CmdRange)
+            local var range = term.(CmdRange)
+            contingent
+              necessary (range instanceOf CmdRangeLE)
+              necessary (range.increment is null)
+              cmp = CmdCmpGE( cur_t, v, range.first )
+              cmp = CmdLazyAnd( cur_t, cmp, CmdCmpLE(cur_t,v,range.last) )
+            unsatisfied
+            throw cur_t.error( "Only simple 'upTo' ranges (low..high) are allowed in cases." )
+            endContingent
+          else
+            if (use_is_comparison) cmp = CmdCmpIs( cur_t, v, term )
+            else cmp = CmdCmpEQ( cur_t, v, term )
+          endIf
+          or_terms = CmdLazyOr( c.t, or_terms, cmp )
+        endForEach
+
+        if (conditionals?)
+          conditionals.elseifs.add( CmdElseIf(or_terms.t,or_terms,c.body) )
+        else
+          conditionals = CmdIf( or_terms.t, id, or_terms, c.body )
+        endIf
+      endForEach
+
+      if (conditionals?)
+        conditionals.else_cmd = case_others
+        cmds.add( conditionals.resolve )
+      elseIf (case_others?)
+        cmds.add( case_others.resolve )
+      endIf
+
+      return cmds
+    
+endClass
+
+class CmdWhichCase : Cmd
+  PROPERTIES
+    values(1) : CmdList
+    body  : CmdStatementList
+
+  METHODS
+    method init( t )
+
+    method create_duplicate.Cmd
+      local CmdWhichCase result( t )
+      forEach (v in values) result.values.add( duplicate(v) )
+      result.body = duplicate(body)
+      return result
+
+    method to_String.String
+      return "  case $:\n    $" (values,body)
+
+    method resolve.Cmd
+      throw Error("Internal Error")
+endClass
+
+class CmdForEach : CmdStructure
+  PROPERTIES
+    var_info : LocalVarInfo
+    control  : Cmd
+
+  METHODS
+    method init( t, id, var_info, control, body=null )
+
+    method resolve.Cmd
+      remap_id
+      control .= resolve
+      return this
+
+endClass
+
+class CmdForEachIn : CmdForEach
+  PROPERTIES
+    contains_remove_current : Logical 
+
+  METHODS
+    method init( t, id, var_info, control, body=null, contains_remove_current=false )
+
+    method create_duplicate.Cmd
+      return CmdForEachIn( t, id, var_info, duplicate(control), duplicate(body), contains_remove_current )
+
+
+    method resolve.Cmd
+      local var converted = convert_to_while
+      if (converted?) return converted
+
+      if (contains_remove_current)
+        return CmdForEachInWithRemoveCurrent(t, id, var_info, control, body).resolve
+      endIf
+
+      control .= resolve
+      local var control_type = SlagAnalyzer.require_value(control)
+
+      local var read_type = control_type.reader_type
+      local var control_t = control.t
+      if (not read_type?)
+        control = CmdMemberAccess( control_t, control, CmdConstruct(control_t,"create_reader") ).resolve
+        control_type = SlagAnalyzer.require_value(control)
+        control_type.resolve
+        read_type = control_type.reader_type
+        if (not read_type?) throw control.error( "Reader or Readable type expected." )
+      endIf
+
+      local CmdStatementList code(control_t,4)
+      code.add( CmdOpenScope(control_t) )
+      local var reader_name = ".reader$" (id)
+      code.add( CmdLocalVarDeclaration( control_t, 
+        LocalVarInfo(control_t,Context.this_method,TypeManager.type_var,reader_name), control ) )
+
+      var_info.type = TypeManager.type_var
+      local var reader_construct = CmdConstruct( t, reader_name )
+      body.insert( CmdLocalVarDeclaration(t,var_info,CmdMemberAccess(t,reader_construct,CmdConstruct(control_t,"read",CmdList(0)))) )
+
+      code.add( CmdWhile( t, id, CmdMemberAccess(t,reader_construct,CmdConstruct(t,"has_another",CmdList(0))), body ) )
+      code.add( CmdCloseScope(control_t) )
+      return code.resolve
+
+    method convert_to_while.Cmd
+      if (control notInstanceOf CmdRange) return null
+
+      if (contains_remove_current)
+        throw error( "The 'removeCurrent' command in this loop requires the loop control value to be a list type." )
+      endIf
+
+      local var range = control.(CmdRange)
+
+      local TypeInfo increment_type = null
+      if (range.increment?)
+        range.increment = range.increment.resolve
+        if (range.increment notInstanceOf CmdLiteralInt32) return null
+        if (range.increment.(CmdLiteralInt32).value < 0 and range instanceOf CmdRangeLE)
+          # Change "A upTo B step -N" to be "A downTo B step -N"
+          # (so shorthand "X..Y step -1" becomes "X downTo Y step -1")
+          range = CmdRangeGE( range.t, range.first, range.last, range.increment )
+        endIf
+      else
+        if (range instanceOf CmdRangeLE or range instanceOf CmdRangeLT)
+          range.increment = CmdLiteralInt32( range.t, 1 )
+        else
+          range.increment = CmdLiteralInt32( range.t, -1 )
+        endIf
+      endIf
+
+      local LocalVarInfo first_info = var_info
+      first_info.type = TypeManager.type_var
+      local var last_var_name = ".last$" (id)
+      local LocalVarInfo last_info( t, Context.this_method, TypeManager.type_var, last_var_name )
+  
+      local CmdStatementList result( t, body.count+5 )
+      result.add( CmdOpenScope(t) )
+      result.add( CmdLocalVarDeclaration(t, first_info, range.first) )
+      result.add( CmdLocalVarDeclaration(t, last_info, range.last) )
+
+      local var last_t = range.last.t
+      local var lhs = CmdConstruct( last_t, var_info.name, null )
+      local var rhs = CmdConstruct( last_t, last_var_name, null )
+      local Cmd condition
+      if (range instanceOf CmdRangeLE)     condition = CmdCmpLE( last_t, lhs, rhs )
+      elseIf (range instanceOf CmdRangeLT) condition = CmdCmpLT( last_t, lhs, rhs )
+      elseIf (range instanceOf CmdRangeGE) condition = CmdCmpGE( last_t, lhs, rhs )
+      elseIf (range instanceOf CmdRangeGT) condition = CmdCmpGT( last_t, lhs, rhs )
+      else throw range.error( "[Internal] Unhandled range type $." (range.type_name) )
+
+      local var incr_t = range.increment.t
+      local CmdAssign modifier( incr_t, lhs, CmdAdd(incr_t, lhs, range.increment) )
+
+      body.add( modifier )
+      Context.next_iteration_injections[id] = modifier
+
+      result.add( CmdWhile( t, id, condition, body ) )
+      result.add( CmdCloseScope(t) )
+      return result.resolve
+endClass
+
+class CmdForEachInWithRemoveCurrent : CmdForEach
+  METHODS
+    method create_duplicate.Cmd
+      return CmdForEachInWithRemoveCurrent( t, id, var_info, duplicate(control), duplicate(body) )
+
+    method resolve.Cmd
+      control .= resolve
+      local var control_type = SlagAnalyzer.require_value(control)
+
+      if (not control_type.instance_of(TypeManager.type_list_type))
+        throw error( "The 'removeCurrent' command contained in this loop requires the loop control value to be a list type." )
+      endIf
+
+      local var ctrl_t = control.t
+      local CmdStatementList result(ctrl_t,6)
+      local var list_name   = ".list$" (id)
+      local LocalVarInfo list_info( ctrl_t, Context.this_method, TypeManager.type_var, list_name )
+      result.add( CmdLocalVarDeclaration(ctrl_t, list_info, control) )
+
+      local var count_name = ".count$" (id)
+      local LocalVarInfo count_info( ctrl_t, Context.this_method, TypeManager.type_var, count_name )
+      result.add( CmdLocalVarDeclaration(ctrl_t, count_info, 
+          CmdMemberAccess(ctrl_t,CmdConstruct(ctrl_t,list_name),CmdConstruct(ctrl_t,"count"))) )
+
+      local var write_pos_name = ".write_pos$" (id)
+      local LocalVarInfo write_pos_info( ctrl_t, Context.this_method, TypeManager.type_var, write_pos_name )
+      result.add( CmdLocalVarDeclaration(ctrl_t, write_pos_info, CmdLiteralInt32(ctrl_t,0)) )
+
+      local var read_pos_name = ".read_pos$" (id)
+      local LocalVarInfo read_pos_info( ctrl_t, Context.this_method, TypeManager.type_var, read_pos_name )
+      result.add( CmdLocalVarDeclaration(ctrl_t, read_pos_info, CmdLiteralInt32(ctrl_t,0)) )
+
+      local var kept_name = ".kept$" (id)
+      local LocalVarInfo kept_info( ctrl_t, Context.this_method, TypeManager.type_var, kept_name )
+      result.add( CmdLocalVarDeclaration(ctrl_t, kept_info, CmdLiteralLogical(ctrl_t,false)) )
+
+      local CmdStatementList cmd_body( ctrl_t, 3 )
+      local CmdIf cmd_if( ctrl_t, SlagParser.unique_id, CmdConstruct(ctrl_t,kept_name), 
+          CmdStatementList( CmdLocalVarIncrement(ctrl_t,write_pos_info) ) )
+      cmd_if.else_cmd = CmdStatementList( CmdLocalVarWrite(ctrl_t, kept_info, CmdLiteralLogical(ctrl_t,true)) )
+      cmd_body.add( cmd_if )
+      cmd_body.add( CmdMemberAccess( ctrl_t, CmdConstruct(ctrl_t,list_name), 
+          CmdConstruct(ctrl_t,"set",CmdList(CmdLocalVarRead(ctrl_t,write_pos_info),CmdLocalVarRead(ctrl_t,var_info))) ) )
+      cmd_body.add( CmdLocalVarIncrement(ctrl_t,read_pos_info) )
+      cmd_body.add( body )
+
+      local CmdForEachIn cmd_foreach( ctrl_t, id, var_info, CmdConstruct(ctrl_t,list_name), cmd_body )
+      cmd_body = CmdStatementList( ctrl_t, 3 )
+      cmd_body.add( cmd_foreach )
+
+      cmd_if = CmdIf( ctrl_t, SlagParser.unique_id, CmdLocalVarRead(ctrl_t,kept_info), 
+          CmdStatementList(CmdLocalVarIncrement(ctrl_t,write_pos_info)) )
+      cmd_body.add( cmd_if )
+      cmd_body.add( CmdMemberAccess( ctrl_t, CmdConstruct(ctrl_t,list_name), 
+          CmdConstruct(ctrl_t,"discard", CmdList( CmdLocalVarRead(ctrl_t,write_pos_info),
+            CmdSub(ctrl_t,CmdLocalVarRead(ctrl_t,read_pos_info),CmdLiteralInt32(ctrl_t,1)))) ) )
+
+      local CmdTry cmd_try( ctrl_t, SlagParser.unique_id, cmd_body )
+      local var err_name = ".err$" (SlagParser.unique_id)
+      local LocalVarInfo err_info( ctrl_t, Context.this_method, TypeManager.type_exception, err_name )
+      err_info.is_catch_var = true
+
+      cmd_body = CmdStatementList( ctrl_t, 6 )
+      cmd_body.add( CmdOpenScope(ctrl_t) )
+      cmd_body.add( CmdLocalVarDeclaration(ctrl_t, err_info) )
+      cmd_body.add( CmdIf( ctrl_t, SlagParser.unique_id, CmdLocalVarRead(ctrl_t,kept_info), 
+          CmdStatementList(CmdLocalVarIncrement(ctrl_t,write_pos_info)) ) )
+      cmd_body.add( CmdMemberAccess( ctrl_t, CmdConstruct(ctrl_t,list_name), 
+        CmdConstruct(ctrl_t,"discard",CmdList(CmdLocalVarRead(ctrl_t,write_pos_info),
+        CmdSub(ctrl_t,CmdLocalVarRead(ctrl_t,read_pos_info),CmdLiteralInt32(ctrl_t,1)))) ) )
+      cmd_body.add( CmdThrow( ctrl_t, CmdLocalVarRead(ctrl_t,err_info) ) )
+      cmd_body.add( CmdCloseScope(ctrl_t) )
+
+      local CmdCatch cmd_catch(ctrl_t,err_info,cmd_body)
+      cmd_try.catches.add( cmd_catch )
+      result.add( cmd_try )
+
+      Context.foreach_fixups.add( id )
+      local var resolved_result = result.resolve
+      Context.foreach_fixups.discard_last
+
+      return resolved_result
+endClass
+
+class CmdForEachOf : CmdForEach
+  METHODS
+    method create_duplicate.Cmd
+      return CmdForEachOf( t, id, var_info, duplicate(control), duplicate(body) )
+
+    method resolve.Cmd
+      local CmdStatementList locals(t,2)
+      local var count_name = ".count$" (id)
+      local LocalVarInfo count_info( t, Context.this_method, TypeManager.type_var, count_name )
+
+      locals.add( CmdLocalVarDeclaration( t, var_info, CmdLiteralInt32(t,0) ) )
+      locals.add( CmdLocalVarDeclaration( t, count_info, CmdMemberAccess(t,control,CmdConstruct(t,"count")) ) )
+
+      local CmdStatementList result( t, 5 )
+      result.add( CmdOpenScope(t) )
+      result.statements.add( locals )
+
+      local CmdLocalVarIncrement modifier( t, var_info )
+      Context.next_iteration_injections[id] = modifier
+
+      body.add( modifier )
+
+      result.add( CmdWhile(t, id, CmdCmpLT( t, CmdLocalVarRead(t,var_info), CmdLocalVarRead(t,count_info) ), body) )
+      result.add( CmdCloseScope(t) )
+      return CmdBlock( t, SlagParser.unique_id, result ).resolve
+endClass
+
+class CmdOpenScope(t) : CmdStatement
+  method create_duplicate.CmdOpenScope
+    return this
+
+  method resolve.Cmd
+    Context.local_var_table.open_scope
+    return null
+endClass
+
+class CmdCloseScope(t) : CmdStatement
+  method create_duplicate.CmdCloseScope
+    return this
+
+  method resolve.Cmd
+    Context.local_var_table.close_scope
+    return null
+endClass
+
+#{
+class CmdMetaForEachProperty : Cmd
+  PROPERTIES
+    body : CmdStatementList
+
+  METHODS
+    method init( t, body=null )
+
+    method create_duplicate.CmdMetaForEachProperty
+      return CmdMetaForEachProperty( t, duplicate(body) )
+
+    method to_String.String
+      local StringBuilder buffer()
+      buffer.println( "[forEach property]" )
+      buffer.print( body )
+      buffer.println( "[endForEach]" )
+      return buffer.to_String
+
+    method resolve.Cmd
+      local CmdList list()
+      forEach (property in Context.this_type.properties)
+        Context.meta_properties.add( property )
+        list.add( duplicate(body).resolve )
+        Context.meta_properties.remove_last
+      endForEach
+      return CmdStatementList(t,list)
+endClass
+
+class CmdMetaPropertyName(t) : Cmd
+  METHODS
+    method create_duplicate.CmdMetaPropertyName
+      return CmdMetaPropertyName(t)
+
+    method resolve.Cmd
+      if (Context.meta_properties.count == 0)
+        throw error( //"[property.name]" must be inside a "[forEach property]" meta loop.// )
+      endIf
+      return CmdConstruct( t, Context.meta_properties.last.name ).resolve
+endClass
+
+class CmdMetaPropertyType(t) : Cmd
+  METHODS
+    method create_duplicate.CmdMetaPropertyType
+      return CmdMetaPropertyType(t)
+
+    method resolve.Cmd
+      if (Context.meta_properties.count == 0)
+        throw error( //"[property.type]" must be inside a "[forEach property]" meta loop.// )
+      endIf
+      return CmdConstruct( t, Context.meta_properties.last.type )
+endClass
+
+class CmdMetaStringPropertyName( t ) : Cmd
+  METHODS
+    method create_duplicate.CmdMetaStringPropertyName
+      return CmdMetaStringPropertyName(t)
+
+    method resolve.Cmd
+      if (Context.meta_properties.count == 0)
+        throw error( //"[property.name]" must be inside a "[forEach property]" meta loop.// )
+      endIf
+      return CmdLiteralString( t, Context.meta_properties.last.name )
+endClass
+
+class CmdMetaStringPropertyType( t ) : Cmd
+  METHODS
+    method create_duplicate.CmdMetaStringPropertyType
+      return CmdMetaStringPropertyType(t)
+
+    method resolve.Cmd
+      if (Context.meta_properties.count == 0)
+        throw error( //"[property.type]" must be inside a "[forEach property]" meta loop.// )
+      endIf
+      return CmdLiteralString( t, Context.meta_properties.last.type.name )
+endClass
+
+}#
+

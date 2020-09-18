@@ -1,0 +1,274 @@
+[include "analyzer.slag"]
+[include "scanner.slag"]
+[include "cmd.slag"]
+
+class SlagPreprocessorTest
+  METHODS
+    method init
+      local SlagPreprocessor scanner( "test.slag" )
+
+      forEach (token in scanner) println( token )
+endClass
+
+class TokenReader : Reader<<Token>>
+  PROPERTIES
+    buffer() : ArrayList<<Token>>
+
+  METHODS
+    method has_another.Logical
+      return buffer.count? and buffer.first.type != Token.eof
+
+    method peek.Token
+      return buffer.first
+
+    method peek( Int32 reads_ahead ).Token
+      while (buffer.count < reads_ahead) prep_next
+      return buffer[reads_ahead-1]
+
+    method read.Token
+      local var result = buffer.remove_first
+      if (buffer.count == 0) prep_next
+      return result
+
+    method prep_next: abstract
+
+endClass
+
+class TemplateReader : TokenReader
+  PROPERTIES
+    first    : Token
+    src      : Reader<<Token>>
+    mappings : HashTable<<String,Token[]>>
+
+  METHODS
+    method init( Token[] tokens, mappings )
+      src = tokens.create_reader
+      first = tokens.first
+      prep_next
+
+    method prep_next
+      if (src.has_another)
+        local var t = src.read
+        if (t.type == Token.placeholder_id)
+          local var entry = mappings.find(t.content)
+          if (entry?)
+            buffer.add( entry.value )
+          else
+            throw t.error( //No such placeholder "$" was defined.// (t.content) )
+          endIf
+        else
+          buffer.add(t)
+        endIf
+      else
+        buffer.add( Token(eof,first.filename,first.pos) )
+      endIf
+endClass
+
+class SlagPreprocessor : TokenReader
+  PROPERTIES
+    scanner        : SlagScanner
+    next           : Token
+    discard_tokens : Logical
+
+    ifdef_stack()  : ArrayList<<Int32>>
+
+  METHODS
+    method init( String filename )
+      scanner = SlagScanner( filename )
+      prep_next
+
+    method init( String filename, String data )
+      scanner = SlagScanner( filename, data )
+      prep_next
+
+    method prep_next
+      loop
+        local var t = scanner.read
+        if (t.type == Token.literal_string)
+          loop
+            local var t2 = scanner.peek
+            if (t2.type == Token.eol)
+              scanner.read
+              if (scanner.peek.type != Token.literal_string)
+                buffer.add(t)
+                buffer.add(t2)
+                return
+              else
+                t.content += scanner.read.content
+                nextIteration
+              endIf
+            elseIf (scanner.peek.type == Token.literal_string)
+              t.content += scanner.read.content
+              nextIteration
+            else
+              escapeLoop
+            endIf
+          endLoop
+
+        elseIf (t.type == Token.symbol_open_bracket)
+          local var t2 = scanner.peek
+          if (scanner.consume(Token.symbol_if))
+            local var result = preprocessor_evaluate_literal_expression
+            scanner.must_consume(Token.symbol_close_bracket,"]")
+
+            if (ifdef_stack.count? and ifdef_stack.last <= 0)
+              ifdef_stack.add( -1 )
+            elseIf (result)
+              ifdef_stack.add( 1 )
+            else
+              ifdef_stack.add( 0 )
+            endIf
+
+            discard_tokens = (ifdef_stack.count>0 and ifdef_stack.last <= 0)
+            scanner.allow_defines = not discard_tokens
+
+            nextIteration
+
+          elseIf (scanner.consume(Token.symbol_elseif))
+            local var result = preprocessor_evaluate_literal_expression
+            scanner.must_consume(Token.symbol_close_bracket,"]")
+
+            if (ifdef_stack.count?)
+              which (ifdef_stack.remove_last)
+                case 0
+                  if (result) ifdef_stack.add( 1 )
+                  else        ifdef_stack.add( 0 )
+                others
+                  ifdef_stack.add( -1 )
+              endWhich
+            else
+              throw t2.error( "[elseIf] without starting [if]." )
+            endIf
+
+            discard_tokens = (ifdef_stack.last <= 0)
+            scanner.allow_defines = not discard_tokens
+
+            nextIteration
+
+          elseIf (scanner.consume(Token.symbol_else))
+            scanner.must_consume(Token.symbol_close_bracket,"]")
+
+            if (ifdef_stack.count?)
+              which (ifdef_stack.remove_last)
+                case 0: ifdef_stack.add( 1 )
+                others: ifdef_stack.add( -1 )
+              endWhich
+            else
+              throw t2.error( "[else] without starting [if]." )
+            endIf
+
+            discard_tokens = (ifdef_stack.last <= 0)
+            scanner.allow_defines = not discard_tokens
+            nextIteration
+
+          elseIf (scanner.consume(Token.symbol_endif))
+            scanner.must_consume(Token.symbol_close_bracket,"]")
+
+            if (ifdef_stack.count?)
+              ifdef_stack.discard_last
+            else
+              throw t2.error( "[endIf] without starting [if]." )
+            endIf
+
+            discard_tokens = (ifdef_stack.count>0 and ifdef_stack.last <= 0)
+            scanner.allow_defines = not discard_tokens
+
+            nextIteration
+          endIf
+        endIf
+
+        if (discard_tokens)
+          if (t.type == Token.eof)
+            throw t.error( "[endIf] expected before end of file." )
+          endIf
+          nextIteration
+        endIf
+
+        buffer.add(t)
+        return
+
+      endLoop
+
+    private method preprocessor_evaluate_literal_expression.Logical
+      local var term = evaluate_literal_or
+      if (term notInstanceOf LiteralLogical) 
+        throw term.error( "Logical (true/false) result required." )
+      endIf
+      return term.as_Logical
+
+    private method evaluate_literal_or.LiteralTerm
+      return evaluate_literal_or( evaluate_literal_and )
+        
+    private method evaluate_literal_or( LiteralTerm lhs ).LiteralTerm
+      local var t = scanner.peek
+      if (scanner.consume(Token.symbol_logical_or))
+        local var rhs = evaluate_literal_and
+        lhs.require_logical
+        rhs.require_logical
+        return evaluate_literal_or( 
+            LiteralLogical( t, lhs.as_Logical or rhs.as_Logical )
+          )
+      else
+        return lhs
+      endIf
+
+    private method evaluate_literal_and.LiteralTerm
+      return evaluate_literal_and( evaluate_literal_not )
+
+    private method evaluate_literal_and( LiteralTerm lhs ).LiteralTerm
+      local var t = scanner.peek
+      if (scanner.consume(Token.symbol_logical_and))
+        local var rhs = evaluate_literal_and
+        lhs.require_logical
+        rhs.require_logical
+        return evaluate_literal_and( 
+            LiteralLogical( t, lhs.as_Logical and rhs.as_Logical )
+          )
+      else
+        return lhs
+      endIf
+
+    private method evaluate_literal_not.LiteralTerm
+      local var invert = scanner.consume(Token.symbol_logical_not)
+      local var operand = evaluate_literal_term
+      operand.require_logical
+      if (invert) operand.(LiteralLogical).value = not operand.as_Logical
+      return operand
+
+    private method evaluate_literal_term.LiteralTerm
+      if (scanner.consume(Token.symbol_open_paren))
+        local var result = evaluate_literal_or
+        scanner.must_consume(Token.symbol_close_paren,")")
+        return result
+      endIf
+
+      local var t = scanner.read
+
+      if (t.type isNot Token.literal_logical)
+        throw t.error( "Literal true or false expected." )
+      endIf
+      if (t.content == "true") return LiteralLogical( t, true )
+      else                     return LiteralLogical( t, false )
+
+
+endClass
+
+
+class LiteralTerm : Cmd
+  METHODS
+    method require_logical
+      throw error( "Literal logical value required." )
+
+    method as_Logical.Logical
+      require_logical
+      return false
+endClass
+
+class LiteralLogical( t, Logical value ) : LiteralTerm
+  METHODS
+    method require_logical
+
+    method as_Logical.Logical
+      return value
+endClass
+

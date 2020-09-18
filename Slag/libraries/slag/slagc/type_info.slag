@@ -1,0 +1,2749 @@
+singleton class TypeManager
+  PROPERTIES
+    types(256)        : HashTable<<String,TypeInfo>>
+    templates(128)    : HashTable<<String,TypeTemplate[]>>
+    frameworks()      : HashTable<<String,TypeTemplate>>
+    used_frameworks() : TypeInfo[]
+    method_groups()   : HashTable<<String,MethodGroup>>
+
+    augments()  : TypeInfo[]
+    main_class : TypeInfo
+    doc_type   : TypeInfo
+      # For SlagDoc
+    help_type   : TypeInfo
+      # For Help
+
+    # resolved lists
+    type_list()         : TypeInfo[]
+    method_list()       : MethodInfo[]
+    method_group_list() : MethodGroup[]
+    identifiers()       : StringTable
+    strings()           : StringTable
+
+    type_int64           : TypeInfo
+    type_int32           : TypeInfo
+    type_char            : TypeInfo
+    type_byte            : TypeInfo
+    type_real64          : TypeInfo
+    type_real32          : TypeInfo
+    type_logical         : TypeInfo
+    type_object          : TypeInfo
+    type_null            : TypeInfo
+    #type_generic        : TypeInfo
+    type_string          : TypeInfo
+    type_string_builder  : TypeInfo
+    type_exception       : TypeInfo
+    type_global          : TypeInfo
+    type_generic_enum    : TypeInfo
+    type_reader_type     : TypeInfo
+    type_readable_type   : TypeInfo
+    type_list_type       : TypeInfo
+    type_generic_array   : TypeInfo
+    type_requires_cleanup: TypeInfo
+    type_manager_creates : TypeInfo
+    type_runtime         : TypeInfo
+    type_string_id_access: TypeInfo
+    type_delegate_type   : TypeInfo
+
+    type_var            : TypeInfo
+
+  METHODS
+    method init_singleton
+      type_int64   = define_type( TypeInfo(null,"Int64",  Qualifiers.qual_primitive | Qualifiers.qual_requisite) )
+      type_int32   = define_type( TypeInfo(null,"Int32",  Qualifiers.qual_primitive | Qualifiers.qual_requisite) )
+      type_char    = define_type( TypeInfo(null,"Char",   Qualifiers.qual_primitive | Qualifiers.qual_requisite) )
+      type_byte    = define_type( TypeInfo(null,"Byte",   Qualifiers.qual_primitive | Qualifiers.qual_requisite) )
+      type_real64  = define_type( TypeInfo(null,"Real64", Qualifiers.qual_primitive | Qualifiers.qual_requisite) )
+      type_real32  = define_type( TypeInfo(null,"Real32", Qualifiers.qual_primitive | Qualifiers.qual_requisite) )
+      type_logical = define_type( TypeInfo(null,"Logical",Qualifiers.qual_primitive | Qualifiers.qual_requisite) )
+      type_null    = define_type( TypeInfo(null,"null",   
+          Qualifiers.qual_class | Qualifiers.qual_requisite) )
+      #type_generic = define_type( TypeInfo(null,"Generic", Qualifiers.qual_class | Qualifiers.qual_requisite) )
+      type_object  = get_type_reference( null, "Object" )
+      type_generic_enum  = get_type_reference( null, "GenericEnum" )
+      type_string  = get_type_reference( null, "String" )
+      type_string_builder = get_type_reference( null, "StringBuilder" )
+      type_exception = get_type_reference( null, "Exception" )
+      type_global    = get_type_reference( null, "Global" )
+      type_reader_type = get_type_reference( null, "ReaderType" )
+      type_readable_type = get_type_reference( null, "ReadableType" )
+      type_list_type = get_type_reference( null, "ListType" )
+      type_generic_array = get_type_reference( null, "GenericArray" )
+      type_var = get_type_reference( null, "var" )
+      type_requires_cleanup = get_type_reference( null, "RequiresCleanup" )
+      type_manager_creates = get_type_reference( null, "ManagerCreates" )
+      type_string_id_access = get_type_reference( null, "StringIDAccess" )
+      type_runtime = get_type_reference( null, "Runtime" )
+      type_delegate_type = get_type_reference( null, "DelegateType" )
+
+      main_class   = null
+
+    method store( TypeTemplate template )
+      local var entry = templates.find(template.name)
+      if (entry?) 
+        entry.value.add(template)
+      else
+        local TypeTemplate[] list(1)
+        list.add(template)
+        templates[template.name] = list
+      endIf
+      #template.display
+
+    method store_framework( TypeTemplate _framework )
+      local var entry = frameworks.find(_framework.name)
+      if (entry?)
+        throw _framework.t.prior_error( "A framework named '$' already exists." ...
+        (_framework.name), entry.value.t )
+      else
+        frameworks[_framework.name] = _framework
+      endIf
+
+    method get( String type_name, Token t=null ).TypeInfo
+      local var mapping = types.find(type_name)
+      if (mapping?) 
+        local var type = mapping.value
+        if (type.qualifiers?) return mapping.value
+      endIf
+      local var mesg = "Reference to undefined type '$'." (type_name)
+      if (t?) throw t.error(mesg)
+      else throw SlagError( "[Internal]", mesg )
+
+    #{
+    method find_type( String name ).TypeInfo
+      local var mapping = types.find(name)
+      if (mapping?) 
+        local var type = mapping.value
+        if (type.qualifiers?) SlagAnalyzer.prep(type); return type
+      endIf
+      return null
+      }#
+
+    method get_type_reference( Token t, String name, TypeInfo subst_type ).TypeInfo
+      return get_type_reference( t, name, {{Token(identifier,t.filename,t.pos,subst_type.name)}} )
+
+    method get_type_reference( Token t, String name, Token[][] substitution_tokens=null.(Token[][]) ).TypeInfo
+      if (substitution_tokens?)
+        local StringBuilder buffer(name)
+        buffer.print("<<")
+        local var first = true
+        forEach (group in substitution_tokens)
+          if (first) first = false
+          else buffer.print(",")
+          forEach (token in group)
+            buffer.print(token.to_String)
+          endForEach
+        endForEach
+        buffer.print(">>")
+        name = buffer.to_String
+      endIf
+
+      local var entry = types.find(name)
+      if (entry?) return entry.value
+      local var placeholder_type = TypeInfo(t,name,null,substitution_tokens)
+      types[name] = placeholder_type
+      return placeholder_type
+
+    method define_type( TypeInfo type ).TypeInfo
+      local var entry = types.find(type.name)
+      if (entry is null)
+        types[type.name] = type
+        if (main_class is null and type.is_class) main_class = type
+        return type
+      elseIf (entry.value.qualifiers?)
+        # Already defined?!
+        throw type.t.prior_error("A type named '$' already exists." (type.name), entry.value.t)
+      else
+        # Insert complete type into placeholder type
+        local var existing = entry.value
+        existing.init( type )
+        return existing
+      endIf
+
+    #{
+    method replace_type( TypeInfo type, String old_name, String new_name ).TypeInfo
+      local String name = type.name
+      if (not name.contains(old_name)) return type
+      return get_type_reference( type.t, type.name.replace_id(old_name,new_name) )
+      }#
+endClass
+
+augment String
+  METHODS
+    method replace_id( String old_name, String new_name ).String
+      local var i = index_of(old_name)
+      if (i == -1) return this
+
+      local StringBuilder buffer(count+new_name.count)
+      local Scanner scanner(this)
+      while (scanner.has_another)
+        if (scanner.next_is_id)
+          local var id = scanner.scan_id
+          if (id == old_name) buffer.print(new_name)
+          else buffer.print(id)
+        else
+          buffer.print( scanner.scan_Char )
+        endIf
+      endWhile
+
+      return buffer.to_String
+endAugment
+
+enum Qualifiers : BitFlags<<Qualifiers>>
+  CATEGORIES
+    # Qualifier constants.  Note that the VM echoes these flags
+    # so the order can't be easily changed.
+    qual_class
+    qual_aspect
+    qual_primitive
+    qual_compound
+
+    qual_singleton
+    qual_managed   
+    qual_deferred   
+
+    qual_underlying
+    qual_overlaying
+
+    qual_requisite
+    qual_limited
+    qual_native
+    qual_abstract
+    qual_automatic
+    qual_propagated  
+
+    qual_public 
+    qual_private 
+    qual_readonly    # member var qualifiers
+    qual_class_scope 
+
+    qual_contains_throw
+    qual_empty_body
+    qual_augment
+    qual_enum
+    qual_generic
+
+    qual_constant
+
+    # used by runtime
+    qual_requires_cleanup 
+    qual_array                                  
+    qual_reference_array
+
+    # Used by compiler only
+    qual_runtime
+
+    qual_access_mask(qual_public | qual_private | qual_readonly)
+
+  METHODS
+    method is_class.Logical
+      return (flags & qual_class.flags) != 0
+
+    method is_aspect.Logical
+      return (flags & qual_aspect.flags) != 0
+
+    method is_reference.Logical
+      return (flags & (qual_class.flags | qual_aspect.flags)) != 0
+
+    method is_primitive.Logical
+      return (flags & qual_primitive.flags) != 0
+
+    method is_compound.Logical
+      return (flags & qual_compound.flags) != 0
+
+    method is_public.Logical
+      return (flags & (qual_public.flags)) != 0
+
+    method is_private.Logical
+      return (flags & (qual_private.flags)) != 0
+
+    method is_read_only.Logical
+      return (flags & qual_readonly.flags) != 0
+
+    method is_class_scope.Logical
+      return (flags & qual_class_scope.flags) != 0
+
+    method is_underlying.Logical
+      return (flags & qual_underlying.flags) != 0
+
+    method is_overlaying.Logical
+      return (flags & qual_overlaying.flags) != 0
+
+    method is_managed.Logical
+      return (flags & qual_managed.flags) != 0
+
+    method is_singleton.Logical
+      return (flags & qual_singleton.flags) != 0
+
+    method is_deferred.Logical
+      return (flags & qual_deferred.flags) != 0
+
+    method is_augment.Logical
+      return (flags & qual_augment.flags) != 0
+
+    method is_enum.Logical
+      return (flags & qual_enum.flags) != 0
+
+    method is_generic.Logical
+      return (flags & qual_generic.flags) != 0
+
+    method is_constant.Logical
+      return (flags & qual_constant.flags) != 0
+
+    method is_requisite.Logical
+      return (flags & qual_requisite.flags) != 0
+
+    method is_propagated.Logical
+      return (flags & qual_propagated.flags) != 0
+
+    method is_limited.Logical
+      return (flags & qual_limited.flags) != 0
+
+    method is_native.Logical
+      return (flags & qual_native.flags) != 0
+
+    method is_abstract.Logical
+      return (flags & qual_abstract.flags) != 0
+
+    method is_automatic.Logical
+      return (flags & qual_automatic.flags) != 0
+
+    method is_multimethod.Logical
+      return (flags & qual_multimethod.flags) != 0
+
+    method contains_throw.Logical
+      return (flags & qual_contains_throw.flags) != 0
+
+    method requires_cleanup.Logical
+      return (flags & qual_requires_cleanup.flags) != 0
+
+    method is_array.Logical
+      return (flags & qual_array.flags) != 0
+
+    method is_reference_array.Logical
+      return (flags & qual_reference_array.flags) != 0
+
+    method is_runtime.Logical
+      return (flags & qual_runtime.flags) != 0
+
+    method is_compatible_with( Qualifiers other ).Logical
+      return ((flags & qual_access_mask.flags) == (other.flags & qual_access_mask.flags))
+
+endEnum
+
+augment String
+  method substring_equals( Int32 at_index, String substr ).Logical
+    local var my_count = count
+    local var other_count = substr.count
+    if (at_index + other_count > my_count) return false
+    forEach (i of substr)
+      if (&data[at_index+i] != substr.&data[i]) return false
+    endForEach
+    return true
+endAugment
+
+
+class TypeTemplate( Token t, Qualifiers qualifiers, String name, String[] placeholder_types,
+    Int32 end_type, String end_symbol )
+  PROPERTIES
+    definition(50) : Token[]
+
+  METHODS
+    method display
+      println( "$ $<<$>>:" (qualifiers,name,placeholder_types.format("$[,$]") ) )
+      forEach (token in definition) println( "  " + token )
+endClass
+
+
+class TypeMapping( String old_name, String new_name )
+  method to_String.String: return "$->$" (old_name,new_name)
+endClass
+
+class TypeInfo
+  SINGLETONS
+    TypeManager
+
+  PROPERTIES
+    t           : Token
+    qualifiers  : Qualifiers
+    name        : String
+    base_name   : String
+    doc_comment : String
+
+    substitution_tokens : Token[][]
+    substitution_types  : TypeInfo[]  # obtained from tokens
+
+    placeholder_types : TypeInfo[]
+    augments(0) : TypeInfo[]
+      # For templates defs: list of specialized augments
+      # For template instances: list of augments to be applied
+
+    base_types(1)      : TypeInfo[]
+    flat_base_types(1) : TypeInfo[]
+
+    methods(4)    : MethodInfo[]
+    properties(4) : PropertyInfo[]
+
+    singletons(1) : TypeInfo[]
+    categories(0) : CategoryInfo[]
+    next_enumerate_value : Int32
+
+    properties_by_name() : HashTable<<String,PropertyInfo>>
+
+    methods_by_name()      : MethodTable
+    methods_by_signature() : HashTable<<String,MethodInfo>>
+    get_methods(4)          : HashTable<<String,MethodInfo>>
+    set_methods(4)          : HashTable<<String,MethodInfo>>
+
+    type_mappings(0) : TypeMapping[]
+
+    organized    : Logical
+
+    finding_base_types : Logical
+
+    runtime_check : Logical
+    mapped        : Logical
+    prepped       : Logical
+    visited       : Logical
+    resolved      : Logical
+    collected     : Logical
+
+    properties_collected : Logical
+    methods_collected    : Logical
+
+    sizes_and_offsets_calculated : Logical
+
+    is_extended   : Logical
+      # Lets us optimize some dynamic calls into static calls
+
+    dispatch_table : MethodInfo[]
+
+    index        : Int32
+    element_type : TypeInfo
+      # Of any Array
+
+    incorporating_classes(1) : TypeInfo[]
+      # For aspects.
+
+    x_name     : String
+    singleton_index = -1 : Int32
+
+    data_size  : Int32
+    stack_size : Int32
+
+  METHODS
+    method init( t, name, qualifiers=null, substitution_tokens=null )
+
+    method init( TypeInfo existing )
+      # Copy initializer for use by dummy types only
+      if (this isNot existing)
+        t = existing.t
+        qualifiers = existing.qualifiers
+        methods.add(existing.methods)
+        properties.add(existing.properties)
+      endIf
+
+    method base_name.String
+      if (&base_name?) return &base_name
+      &base_name = name.before_first('<')
+      return &base_name
+
+    method is_valid_type.Logical
+      if (qualifiers?) return true
+      return (TypeManager.templates.find(base_name)?)
+
+    method is_abstract.Logical
+      return (qualifiers & Qualifiers.qual_abstract) != 0
+
+    method is_inherited( MethodInfo m ).Logical
+      return (m.type_context isNot this)
+
+    method is_requisite.Logical
+      return qualifiers.is_requisite
+
+    method is_class.Logical
+      return qualifiers.is_class
+
+    method is_augment.Logical
+      return qualifiers.is_augment
+
+    method is_enum.Logical
+      return qualifiers.is_enum
+
+      #method is_generic.Logical
+      #return qualifiers.is_generic
+
+    method is_singleton.Logical
+      return (qualifiers & Qualifiers.qual_singleton) != 0
+
+    method is_managed.Logical
+      return (qualifiers & Qualifiers.qual_managed) != 0
+
+    method is_deferred.Logical
+      return (qualifiers & Qualifiers.qual_deferred) != 0
+
+    method is_aspect.Logical
+      return qualifiers.is_aspect
+
+    method is_underlying.Logical
+      return (qualifiers & Qualifiers.qual_underlying) != 0
+
+    method is_overlaying.Logical
+      return (qualifiers & Qualifiers.qual_overlaying) != 0
+
+    method is_compound.Logical
+      return qualifiers.is_compound
+
+    method is_reference.Logical
+      return qualifiers.is_reference
+
+    method is_primitive.Logical
+      return qualifiers.is_primitive
+
+    method is_logical.Logical
+      return is_primitive and (this is type_logical)
+
+    method is_numerical.Logical
+      return is_primitive and not is_logical
+
+    method is_real.Logical
+      return is_primitive and (this is type_real64 or this is type_real32)
+
+    method is_integer.Logical
+      return is_numerical and not is_real
+
+    method is_unsigned_int.Logical
+      return (is_integer and (this is type_char or this is type_byte))
+
+    method is_array.Logical
+      return qualifiers.is_array
+
+    method is_reference_array.Logical
+      return qualifiers.is_reference_array
+
+    method is_runtime.Logical
+      return (qualifiers & Qualifiers.qual_runtime) != 0
+
+    method error( String message ).SlagError
+      if (t is null) return SlagError( "[Internal]", message )
+      return t.error(message)
+
+    method to_String.String
+      return name
+
+    method display
+      if (base_class?) print( "$ : $" (name, base_class) )
+      else print( name )
+
+      forEach (base_type in flat_base_types)
+        if (not base_type.is_class) print( ", " + base_type )
+      endForEach
+      println
+
+      #if (doc_comment?) println(doc_comment)
+
+      if (singletons.count?)
+        println( "  SINGLETONS" )
+        forEach (s in singletons) println( "    " + s )
+      endIf
+      if (properties.count?)
+        println( "  PROPERTIES" )
+        forEach (p in properties)
+          println( "    $ $ : $" (p.index,p.name,p.type) )
+        endForEach
+      endIf
+      println( "  METHODS" )
+      forEach (m in methods)
+        println( "    method $" (m.signature) )
+        #if (m.doc_comment?) println( m.doc_comment )
+      endForEach
+
+    method generic_type.TypeInfo
+      if (is_reference)
+        return TypeManager.type_object
+      else
+        return this
+      endIf
+      #{
+        which (data_size)
+          case 8: return TypeManager.type_int64
+          case 4: return TypeManager.type_int32
+          case 2: return TypeManager.type_char
+          case 1: return TypeManager.type_byte
+          others: return this
+        endWhich
+        }#
+
+    method base_class.TypeInfo
+      if (base_types.count == 0) return null
+      local var type = base_types.first
+      if (type.is_class) return type
+      return null
+
+    method discover_runtime_types
+      if (runtime_check) return
+      runtime_check = true
+
+      local var parent_is_runtime = false
+      forEach (base_type in base_types)
+        if (base_type.qualifiers? and base_type.is_class)
+          base_type.discover_runtime_types
+          if (base_type.is_runtime)
+            parent_is_runtime = true
+            qualifiers |= Qualifiers.qual_runtime
+            escapeForEach
+          endIf
+        endIf
+      endForEach
+
+      if (is_runtime)
+        contingent
+          sufficient (not parent_is_runtime)
+
+          local var found_init = false
+          local var found_default_init = false
+          forEach (m in methods)
+            if (m.name == "init")
+              found_init = true
+              if (m.parameters.count == 0) found_default_init = true; escapeForEach
+            endIf
+          endForEach
+
+          necessary (found_init and not found_default_init)
+
+        satisfied
+          base_types.add( TypeManager.get_type_reference(t, "HasDefaultInit") )
+        endContingent
+
+        qualifiers |= Qualifiers.qual_requisite
+        #local var creator_type = TypeManager.get_type_reference( t, "RuntimeCreator", this )
+        #creator_type.prep
+        local StringBuilder buffer()
+        buffer.println( "requisite singleton class RuntimeType$ : RuntimeType" (name) )
+        buffer.println( "  METHODS" )
+        buffer.println( "    method init_object" )
+        buffer.println
+        buffer.println( "    requisite method create_instance.Object" )
+        buffer.println( "      return " + name + "()" )
+        buffer.println
+        buffer.println( "    requisite method name.String" )
+        buffer.println(//      return "$"// (name) )
+        buffer.println
+        buffer.println( "endClass" )
+
+        local SlagParser parser( SlagPreprocessor("Generated Runtime Type",buffer.to_String) )
+        parser.parse_next
+      endIf
+
+    method organize
+      if (organized) return
+      organized = true
+
+      if (substitution_tokens?)
+        local var entry = TypeManager.templates.find(base_name)
+        if (entry?)
+          instantiate_templates( entry.value )
+        endIf
+      endIf
+
+      if (qualifiers is null)
+        # type was referenced but never defined
+        if (TypeManager.templates.contains(name))
+          throw t.error( "Reference to type $ is missing substitution values." (name) )
+        endIf
+        throw t.error( //Reference to undefined type "$".// (name) )
+      endIf
+
+      if (is_enum)
+        local var mgr = TypeManager.get_type_reference( t, "Enum", {{Token(identifier,t.filename,t.pos,name)}} )
+        mgr.organize
+        singletons.add( mgr )
+        qualifiers &= !Qualifiers.qual_enum
+        qualifiers |= Qualifiers.qual_class
+        forEach (cat in categories)
+          local var cat_name = cat.construct.type_or_id.name
+          local CmdInitialAssignment assign( t, 
+            CmdConstruct( t, "prep",
+              CmdList( CmdConstruct(t,this.name,cat.construct.args), CmdLiteralString(t,cat_name) ) ) )
+          mgr.properties.add( PropertyInfo( t, mgr, Qualifiers.qual_public, this, cat_name, assign ) )
+        endForEach
+        categories.clear
+
+        base_types.add( TypeManager.get_type_reference( t, "EnumCategory", {{Token(identifier,t.filename,t.pos,name)}} ) )
+
+        contingent
+          forEach (m in methods)
+            necessary (m.name!="init")
+          endForEach
+        satisfied
+          local MethodInfo m( t, Qualifiers.qual_public, this, "init" )
+          m.parameters = ParameterInfo[](0)
+          m.body = CmdStatementList(m.t,0)
+          methods.add(m)
+        endContingent
+
+      elseIf (is_compound)
+        check_compound_dependencies
+      endIf
+
+      local TypeInfo base_cls
+      forEach (base_type in base_types)
+        base_type.organize
+        if (base_type.is_class)
+          if (base_cls? and base_cls isNot base_type) 
+            throw error( //A class may only extend one base class ($ extends both $ and $).// (this,base_cls,base_type) )
+          else 
+            base_cls = base_type
+          endIf
+        else
+          if(base_type.base_class?)
+            if (base_cls? and base_cls isNot base_type) 
+              throw error( //A class may only extend one base class ($ extends both $ and $).// ...
+                  (this,base_cls,base_type.base_class) )
+            else 
+              base_cls = base_type.base_class
+            endIf
+          endIf
+        endIf
+      endForEach
+
+      if (is_class)
+        if (base_cls?) 
+          base_types.remove(base_cls)
+          base_types.insert(base_cls)
+        elseIf (this isNot TypeManager.type_object)
+          TypeManager.type_object.organize
+          base_types.insert( TypeManager.type_object )
+        endIf
+      endIf
+
+      # Build flat list of base types that can be used for quick instance-of tests
+      finding_base_types = true
+      forEach (base_type in base_types) collect_flat_base_types( base_type )
+      finding_base_types = false
+
+      if (this.instance_of(TypeManager.type_generic_array) ...
+          and this isNot TypeManager.type_generic_array ...
+          and this isNot TypeManager.type_null)
+        qualifiers |= Qualifiers.qual_array
+        if (name.begins_with("Array<"))
+          element_type = substitution_types.first
+        else
+          forEach (base_type in flat_base_types)
+            if (base_type.name.begins_with("Array<"))  
+              element_type = base_type.substitution_types.first
+              escapeForEach
+            endIf
+          endForEach
+          if (element_type is null) throw Error("whoa")
+        endIf
+        if (element_type.is_reference) qualifiers |= Qualifiers.qual_reference_array
+      endIf
+
+      if (name.count > 11 and name.begins_with("RuntimeType"))
+        local var actual_type = TypeManager.types[name.substring(11)]
+        actual_type.organize
+        forEach (m in methods)
+          if (m.name == "init_object" and m.parameters.count == 0)
+            forEach (base_type in actual_type.flat_base_types)
+              m.body.add( 
+                CmdMemberAccess( t,
+                  CmdConstruct(t,"base_type_names"),
+                  CmdConstruct(t,"add",CmdList(CmdLiteralString(t,base_type.name)))
+                )
+              )
+            endForEach
+            escapeForEach
+          endIf
+        endForEach
+      endIf
+
+
+    method instantiate_templates( TypeTemplate[] templates )
+      # Find main template (class,aspect,compound,enum)
+      local TypeTemplate main_template = null
+      forEach (template in templates)
+        if (not template.qualifiers.is_augment)
+          if (main_template?)
+            throw template.t.prior_error( "Type $ is already defined." (template.name), main_template.t )
+          endIf
+          main_template = template
+        endIf
+        if (template.placeholder_types is null)
+          template.placeholder_types = String[](substitution_tokens.count)
+          forEach (1..substitution_tokens.count) template.placeholder_types.add("*")
+        elseIf (template.placeholder_types.count != substitution_tokens.count)
+          throw t.error( "The number of substitution values does not match the number of placeholders." )
+        endIf
+      endForEach
+
+      if (main_template is null)
+        throw t.error( "Type '$' does not require <<substitution types>>." ...
+            (name.before_first("<<") ) )
+      endIf
+
+      local HashTable<<String,Token[]>> mappings()
+      local var i = 0
+      forEach (st in main_template.placeholder_types)
+        mappings[st] = substitution_tokens[i]
+        ++i
+      endForEach
+      mappings["$ThisType"] = {Token(identifier,t.filename,t.pos,name)}
+
+      local SlagParser parser()
+      parser.parse_type_def( TemplateReader(main_template.definition,mappings),
+          this, main_template.qualifiers, main_template.end_type, main_template.end_symbol )
+
+      substitution_types = TypeInfo[]( substitution_tokens.count )
+      forEach (group in substitution_tokens)
+        contingent
+          necessary (group.count >= 1 and group.first.type is Token.identifier)
+          parser.scanner = TemplateReader(group,mappings)
+          local var type = parser.parse_data_type
+          necessary (type.qualifiers? or TypeManager.templates.contains(type.name.before_first('<')))
+          type.organize
+          substitution_types.add(type)
+        unsatisfied
+          substitution_types.add(null)
+        endContingent
+      endForEach
+
+      forEach (template in templates)
+        if (template isNot main_template)
+          incorporate_specialized_augment(template,mappings)
+        endIf
+      endForEach
+
+    method incorporate_specialized_augment( TypeTemplate template, HashTable<<String,Token[]>> mappings )
+      forEach (i of template.placeholder_types)
+        local var subst_type = substitution_types[i]
+        local var placeholder = template.placeholder_types[i]
+
+        if (placeholder[0] == '$')
+          throw template.t.error( "Omit the placeholder list (<<...>>) on a general augment." )
+        endIf
+
+        if (placeholder != "*" and subst_type is null) return
+
+        which (placeholder)
+          case "*":             nextIteration
+          case "numerical":     if (not subst_type.is_numerical) return
+          case "real":          if (not subst_type.is_real) return
+          case "integer":       if (not subst_type.is_integer) return
+          case "primitive":     if (not subst_type.is_primitive) return
+          case "compound":      if (not subst_type.is_compound) return
+          case "reference":     if (not subst_type.is_reference) return
+
+          case "non-numerical": if (subst_type.is_numerical) return
+          case "non-real":      if (subst_type.is_real) return
+          case "non-integer":   if (subst_type.is_integer) return
+          case "non-primitive": if (subst_type.is_primitive) return
+          case "non-compound":  if (subst_type.is_compound) return
+          case "non-reference": if (subst_type.is_reference) return
+
+          others:               if (subst_type.name != placeholder) return
+        endWhich
+      endForEach
+
+      local TypeInfo aug( template.t, template.name )
+
+      local SlagParser parser()
+      parser.parse_type_def( TemplateReader(template.definition,mappings),
+          aug, template.qualifiers, template.end_type, template.end_symbol )
+
+      aug = TypeManager.augments.remove_first  # TypeInfo ref could be changed
+
+      forEach (base_type in aug.base_types) base_types.add(base_type)
+      forEach (s in aug.singletons) singletons.add(s)
+      forEach (p in aug.properties) properties.add(p); p.type_context = this
+      forEach (m in aug.methods) methods.add(m); m.type_context = this
+
+    method collect_flat_base_types( TypeInfo base_type )
+      if (base_type.finding_base_types)
+        throw error( "Cyclic type dependency detected in type $." (name) )
+      endIf
+      forEach (ancestor_type in base_type.base_types)
+        base_type.finding_base_types = true
+        collect_flat_base_types( ancestor_type )
+        base_type.finding_base_types = false
+      endForEach
+      if (not flat_base_types.contains(base_type)) 
+        flat_base_types.add(base_type)
+      endIf
+
+    method check_compound_dependencies
+      if (finding_base_types)
+        throw error( "Cyclic type dependency detected in compound $." (name) )
+      endIf
+      finding_base_types = true
+      forEach (p in properties) 
+        p.type.organize
+        if (p.type.finding_base_types)
+          # necessary check for recursive compound defs
+          throw error( "Cyclic type dependency detected in compound $." (name) )
+        endIf
+        if (not (p.type.is_primitive or p.type.is_compound))
+          throw error( "Illegal member type; compounds can only contain primitives and other compounds." )
+        endIf
+      endForEach
+      finding_base_types = false
+
+    method collect_singletons( TypeInfo s )
+      if (singletons.contains(s)) return
+      singletons.add(s)
+      forEach (implicit_s in s.singletons)
+        collect_singletons( implicit_s )
+      endForEach
+
+    method resolve
+      if (resolved) return
+      resolved = true
+
+      prep
+
+      forEach (base_type in base_types) base_type.resolve
+      forEach (s in singletons) s.resolve
+
+      if (is_class) must_find_method("init_object()").resolve
+
+      if (is_singleton)
+        local var m = find_method("init_singleton()")
+        if (m?) m.resolve; m.called = true
+      endIf
+
+      if (is_array) element_type.resolve
+
+      calculate_sizes_and_offsets
+
+      forEach (m in methods)
+        if (m.resolve_if_class_resolved or m.is_requisite) m.resolve
+        else m.resolve_if_ancestor_resolved
+      endForEach
+
+      if (element_type?) element_type.resolve
+
+    method prep( Token context_t=null )
+      if (prepped) return
+      prepped = true
+
+      organize
+
+      if (context_t is null) context_t = t
+
+      if (qualifiers is null)
+        # An error has already been generated; don't look any further here.
+        throw Errors.errors.remove_last
+      endIf
+
+      if (is_compound or is_deferred)
+        # Ensure a singleton manager exists
+        local var mgr_class = manager_class
+
+        if (is_deferred)
+          local Token[][] of_type = {{Token(Token.identifier,t.filename,t.pos,name)}}
+          local var auto_type =  TypeManager.get_type_reference( t, "Automanaged", of_type )
+          mgr_class.base_types.add( auto_type )
+        endIf
+      endIf
+
+      if (not singletons.contains(TypeManager.type_global))
+        singletons.add( TypeManager.type_global )
+      endIf
+
+      # prep base types
+      forEach (b in base_types) b.prep(t)
+
+      # prep context singletons
+      forEach (s in singletons) 
+        if (s.qualifiers is null and s.name.contains("Manager"))
+          # Was an automatically generated partial type; fix it up and allow it.
+          s.qualifiers = Qualifiers.qual_singleton | Qualifiers.qual_class
+        endIf
+        s.prep(t)
+      endForEach
+
+      # Build flat list of singletons
+      local var work_singletons = duplicate(singletons)
+      singletons.clear
+
+      # Inherit base type singletons
+      forEach (b in base_types)
+        forEach (s in b.singletons)
+          collect_singletons(s)
+        endForEach
+      endForEach
+
+      forEach (s in work_singletons) collect_singletons(s)
+
+      # Ensure that the manager type (class methods) comes first in the list
+      # of singleton types.
+      if (this.is_class)
+        local var mgr_class = TypeManager.get_type_reference( t, manager_name )
+        if (mgr_class.qualifiers?)
+          singletons.remove( mgr_class )
+          singletons.insert( mgr_class )
+        endIf
+      endIf
+
+      collect_properties
+      collect_methods
+
+    method collect_properties
+      if (properties_collected) return
+      properties_collected = true
+
+      #{
+      if (is_aspect)
+        local var work_properties = duplicate(properties)
+        properties.clear
+        forEach (p in work_properties) 
+          collect_property( p )
+          p.type.prep
+        endForEach
+        return
+        }#
+
+      if (qualifiers is null) throw Errors.errors.remove_first
+
+      if (is_class and this isNot TypeManager.type_object)
+        base_class.collect_properties
+
+        local var work_properties = duplicate(properties)
+        properties.clear
+        forEach (p in base_class.properties) collect_property( duplicate(p) )
+        forEach (p in work_properties) collect_property( p )
+
+      else
+        # Type Object or compound
+        local var work_properties = duplicate(properties)
+        properties.clear
+        forEach (p in work_properties) collect_property( p )
+      endIf
+
+      if (is_class)
+        forEach (base_type in base_types)
+          if (base_type.is_class) nextIteration
+          inherit_aspect_properties( base_type )
+        endForEach
+      endIf
+
+      local var p_index = 0
+      while (p_index < properties.count)
+        properties[p_index].type.prep
+        ++p_index
+      endWhile
+
+    method inherit_aspect_properties( TypeInfo base_type )
+      forEach (ancestor_type in base_type.base_types)
+        if (ancestor_type.is_aspect) inherit_aspect_properties( ancestor_type )
+      endForEach
+
+      forEach (p in base_type.properties) 
+        if (p.qualifiers.is_class_scope)
+          local var mgr_class = manager_class
+          mgr_class.prep
+          mgr_class.collect_property(duplicate(p))
+        else
+          collect_property( duplicate(p) )
+        endIf
+      endForEach
+
+    method collect_property( PropertyInfo p )
+      local PropertyInfo existing
+      local var entry = properties_by_name.find(p.name)
+      if (entry?) existing = entry.value
+
+      if (existing?)
+        if (not existing.is_abstract and not p.is_abstract)
+          throw p.t.error( //A property named "$" already exists in type $.// (p.name,name) )
+        endIf
+        if ((existing.qualifiers & !Qualifiers.qual_abstract) != (p.qualifiers & !Qualifiers.qual_abstract))
+          throw p.t.error( //Mismatched public/private/readOnly qualifiers on abstract and actual declarations of "$".// (p.name) )
+        endIf
+        if (existing.type isNot p.type)
+          throw p.t.error( //Mismatched types on abstract and actual declarations of "$".// (p.name) )
+        endIf
+        if (not existing.is_abstract or not p.is_abstract)
+          existing.qualifiers &= !Qualifiers.qual_abstract
+        endIf
+        return
+      endIf
+
+      p.type_context = this
+      p.type.organize
+      p.index = properties.count
+      properties.add(p)
+      properties_by_name[p.name] = p
+
+      if (methods_collected)
+        # We're late to the property initialization party!
+        if (p.initial_value?)
+          local var m_init_object = methods_by_signature["init_object()"]
+          store_property_init( p, m_init_object )
+        endIf
+      endIf
+
+    method store_property_init( PropertyInfo p, MethodInfo m_init_object )
+
+      # skip inherited properties
+      local var base = base_class
+      if (base? and base.properties_by_name.contains(p.name)) return
+
+      local var context_t = p.t
+      if (p.initial_value instanceOf CmdInitialConstructor)
+        m_init_object.body.insert( CmdAssign( context_t, CmdConstruct(context_t,"&"+p.name), 
+        CmdConstruct(context_t,p.type,p.initial_value.(CmdInitialConstructor).args) ) )
+      else
+        m_init_object.body.insert( CmdAssign( context_t, CmdConstruct(context_t,"&"+p.name),
+            p.initial_value.(CmdInitialAssignment).expression ) )
+      endIf
+
+    method collect_methods
+      if (methods_collected) return
+      collect_properties
+
+      methods_collected = true
+      local var my_methods = duplicate(methods)
+      methods.clear
+
+      if (is_class)
+        # Class methods (vs aspect methods) are duplicated and layered
+
+        # Base class methods
+        forEach (base_type in base_types)
+          base_type.collect_methods
+          if (base_type.is_class)
+            forEach (m in base_type.methods) collect_method(m)
+          endIf
+        endForEach
+
+        # Underlying methods
+        forEach (base_type in base_types)
+          collect_underlying_methods( base_type )
+        endForEach
+
+        # Class methods
+        forEach (m in my_methods) collect_method(m)
+
+        # Overlaying methods
+        forEach (base_type in base_types)
+          collect_overlaying_methods( base_type )
+        endForEach
+
+        # Propagate inherited 'propagated' methods (duplicate in inherited class)
+        forEach (m in duplicate(methods))
+          if (m.qualifiers.is_propagated and is_inherited(m))
+            m = duplicate(m)
+            m.type_context = this
+            if (m.original_body?) m.body = duplicate(m.original_body)
+            collect_method(m)
+          endIf
+        endForEach
+
+        # Give deferred singletons a default initializer
+        if (is_deferred and not methods_by_signature.find("init()")?)
+          local MethodInfo m( t, Qualifiers.qual_public, this, "init" )
+          m.parameters = ParameterInfo[](0)
+          m.body = CmdStatementList(m.t,0)
+          collect_method(m)
+        endIf
+
+        # Create init_object() and type_name() for all classes.
+        local var entry = methods_by_signature.find("init_object()")
+        if (entry is null or is_inherited(entry.value))
+          local MethodInfo m( t, Qualifiers.qual_public|Qualifiers.qual_requisite, this, "init_object" )
+          m.parameters = ParameterInfo[](0)
+          m.body = CmdStatementList(m.t,2)
+          collect_method(m)
+        endIf
+
+        entry = methods_by_signature.find("type_name()")
+        if (entry is null or is_inherited(entry.value))
+          local MethodInfo m( t, Qualifiers.qual_public|Qualifiers.qual_requisite, this,
+            "type_name" )
+          m.parameters = ParameterInfo[](0)
+          m.return_type = TypeManager.type_string
+          m.body = CmdStatementList(t,1)
+          m.body.add( CmdReturnValue(t,CmdLiteralString(t,name)) )
+          collect_method(m)
+        endIf
+
+        # Create a to_String method for compounds if it doesn't already
+        # exist. 
+        if (name.ends_with("Manager"))
+          local var compound_name = name.before_last("Manager")
+          local var compound_type = TypeManager.get_type_reference( t, compound_name )
+          if (compound_type.qualifiers? and compound_type.is_compound)
+            compound_type.organize
+
+            local var m_to_string = find_method( "to_String($)" (compound_name) )
+            if (not m_to_string?)
+              local StringBuilder format_buffer(compound_name)
+              format_buffer.print("(")
+              if (compound_type.properties.count?) format_buffer.print("$")
+              forEach (property in compound_type.properties.from(1)) format_buffer.print(",$")
+              format_buffer.print(")")
+
+              local CmdList args(compound_type.properties.count)
+              forEach (property in compound_type.properties)
+                args.add( 
+                  CmdConstruct(t,"to_String",CmdList(
+                    CmdMemberAccess(t,CmdConstruct(t,"_compound"),CmdConstruct(t,property.name))
+                    ) )
+                  ) 
+              endForEach
+              m_to_string = MethodInfo( t, Qualifiers.qual_public, this, "to_String" )
+              m_to_string.parameters = ParameterInfo[](1)
+              m_to_string.parameters.add( ParameterInfo(t,m_to_string,compound_type,"_compound",null) )
+              m_to_string.return_type = TypeManager.type_string
+              m_to_string.body = CmdStatementList(t,1)
+              m_to_string.body.add( CmdReturnValue(t,CmdFormattedString(t,format_buffer.to_String,args)) ) 
+              collect_method( m_to_string )
+            endIf
+          endIf
+        endIf
+
+        # Create property initialization code
+        local var m_init_object = methods_by_signature["init_object()"]
+        forEach (p in properties.reverse_order)
+          if (p.initial_value?)
+            store_property_init( p, m_init_object )
+          endIf
+        endForEach
+
+        # Have deferred singletons store themselves in their manager.
+        if (is_deferred)
+          local var t2 = m_init_object.t
+          m_init_object.body.insert(
+            CmdMemberAccess( t2,
+              CmdSingletonReference( t2, TypeManager[manager_name] ),
+              CmdConstruct( t2, "set", CmdList(CmdConstruct(t2,"this")) ) ) )
+        endIf
+
+        # Add a call in to prior.init_object at the beginning of each init_object
+        if (this isNot TypeManager.type_object)
+          local var context_t = m_init_object.t
+          m_init_object.body.insert( CmdMemberAccess( context_t, CmdConstruct(context_t,"prior"), 
+            CmdConstruct(context_t,"init_object",CmdList(0)) ) )
+        endIf
+
+      elseIf (is_aspect)
+        # Aspect methods are straight inheritance
+        forEach (base_type in base_types)
+          base_type.collect_methods
+          if (not base_type.is_class)
+            forEach (m in base_type.methods) collect_method(m)
+          endIf
+        endForEach
+
+        forEach (m in my_methods) collect_method(m)
+
+        # Ensure every aspect method is marked underlying or overlaying
+        forEach (m in methods)
+          if (not m.is_underlying and not m.is_overlaying)
+            if (is_overlaying) m.qualifiers |= Qualifiers.qual_overlaying
+            else               m.qualifiers |= Qualifiers.qual_underlying
+          endIf
+        endForEach
+
+
+      else
+        # Compounds
+        forEach (m in my_methods) collect_method(m)
+
+      endIf
+
+      forEach (m in methods)
+        organize_method(m)
+      endForEach
+
+      # Add underlying property get/set methods for aspect properties (object only).
+      if (this.is_aspect)
+        forEach (p in properties)
+          if (p.qualifiers.is_class_scope) nextIteration
+          if (not p.qualifiers.is_private and not get_methods.contains(p.name))
+            local MethodInfo m_get( t, 
+                Qualifiers.qual_public|Qualifiers.qual_underlying|Qualifiers.qual_automatic, 
+                this, p.name )
+            m_get.parameters = ParameterInfo[](0)
+            m_get.return_type = p.type
+            m_get.body = CmdStatementList(t,1)
+            m_get.body.add( CmdReturnValue(t,CmdConstruct(t,"&"+p.name)) ) 
+            collect_method(m_get)
+            organize_method(m_get)
+          endIf
+
+          if (p.qualifiers.is_public and not set_methods.contains(p.name))
+            local MethodInfo m_set( t, 
+              Qualifiers.qual_public|Qualifiers.qual_underlying|Qualifiers.qual_automatic,
+              this, p.name )
+            m_set.parameters = { ParameterInfo(t,m_set,p.type,"."+p.name,null) }
+            m_set.body = CmdStatementList(t,1)
+            m_set.body.add( CmdAssign( t, CmdConstruct(t,"&"+p.name),
+              CmdConstruct(t,"."+p.name) ) )
+            collect_method(m_set)
+            organize_method(m_set)
+          endIf
+        endForEach
+      endIf
+
+    method organize_method( MethodInfo m )
+      # create methods-by-name and get-methods lookup tables
+      methods_by_name.add( m.name, m )
+
+      which (m.parameters.count)
+        case 0:
+          if (m.return_type?)
+            get_methods[m.name] = m
+          endIf
+
+        case 1:
+          local var first_type = m.parameters.first.type
+          if (m.return_type? and first_type.is_compound and 
+              first_type.properties_by_name.contains(m.name))
+            get_methods[m.name] = m
+          else
+            set_methods[m.name] = m
+          endIf
+      endWhich
+
+    method collect_underlying_methods( TypeInfo base_type )
+      if (not base_type.is_aspect) return
+
+      local var flagged_incorporation = false
+      local var flagged_mgr_incorporation = false
+
+      forEach (ancestor_type in base_type.base_types)
+        collect_underlying_methods( ancestor_type )
+      endForEach
+      forEach (m in base_type.methods)
+        if (m.is_underlying and not base_type.is_inherited(m))
+          if (m.qualifiers.is_class_scope)
+            local var mgr_class = manager_class
+            mgr_class.prep
+            local var new_m = duplicate(m)
+            new_m.type_context = mgr_class
+            mgr_class.collect_method(new_m)
+            if (m.resolved) new_m.resolve_if_class_resolved = true
+            if (not flagged_mgr_incorporation)
+              base_type.incorporating_classes.add(mgr_class)
+              flagged_mgr_incorporation = true
+            endIf
+            if (mgr_class.methods_by_name.count?)
+              # mgr_class already collected its methods - stick this in
+              mgr_class.organize_method(new_m)
+            endIf
+
+          else
+            local var new_m = duplicate(m)
+            new_m.type_context = this
+            collect_method(new_m)
+            if (m.resolved) new_m.resolve_if_class_resolved = true
+            if (not flagged_incorporation)
+              base_type.incorporating_classes.add(this)
+              flagged_incorporation = true
+            endIf
+          endIf
+        endIf
+      endForEach
+
+    method collect_overlaying_methods( TypeInfo base_type )
+      if (not base_type.is_aspect) return
+
+      local var flagged_incorporation = false
+      local var flagged_mgr_incorporation = false
+
+      forEach (ancestor_type in base_type.base_types)
+        collect_overlaying_methods( ancestor_type )
+      endForEach
+
+      forEach (m in base_type.methods)
+        if (m.is_overlaying and not base_type.is_inherited(m)) 
+          if (m.qualifiers.is_class_scope)
+            local var mgr_class = manager_class
+            mgr_class.prep
+            local var new_m = duplicate(m)
+            new_m.type_context = mgr_class
+            mgr_class.collect_method(new_m)
+            if (m.resolved) new_m.resolve_if_class_resolved = true
+            if (not flagged_mgr_incorporation)
+              base_type.incorporating_classes.add(mgr_class)
+              flagged_mgr_incorporation = true
+            endIf
+            if (mgr_class.methods_by_name.count?)
+              # mgr_class already collected its methods - stick this in
+              mgr_class.organize_method(new_m)  
+            endIf
+          else
+            local var new_m = duplicate(m)
+            new_m.type_context = this
+            collect_method(new_m)
+            if (m.resolved) new_m.resolve_if_class_resolved = true
+            if (not flagged_incorporation)
+              base_type.incorporating_classes.add(this)
+              flagged_incorporation = true
+            endIf
+          endIf
+        endIf
+      endForEach
+
+    method collect_method( MethodInfo m, Logical do_layering=true )
+      # validate parameters and return types and fix up autoinitializer parameters
+      if (m.signature is null)
+        # Method could be fixed up & signature created before this method is inherited
+        forEach (p in m.parameters.reverse_order)
+          if (p.type is null)
+            if (m.is_native) throw p.t.error( "Auto-initializing parameters aren't allowed on native methods." )
+            local PropertyInfo property
+            contingent
+              local var entry = properties_by_name.find(p.name)
+              if (entry?) property = entry.value; sufficient(true)
+
+              forEach (s in singletons)
+                entry = s.properties_by_name.find(p.name)
+                if (entry?) property = entry.value; sufficient(true)
+              endForEach
+
+              if (is_aspect)
+                forEach (prop in properties)
+                  if (prop.name == p.name) property = prop; sufficient(true)
+                endForEach
+              endIf
+
+              necessary(false)
+            satisfied
+              p.type = property.type
+            unsatisfied
+            throw p.t.error( //No such property "$" for auto-initializing parameter in type $.// ...
+              (p.name,m.type_context) )
+            endContingent
+            local var new_name = p.name + "." + SlagParser.unique_id
+            m.body.statements.insert( CmdAssign(p.t, CmdConstruct(p.t,p.name), CmdConstruct(p.t,new_name)) )
+            p.name = new_name
+          else
+            p.type.organize
+          endIf
+        endForEach
+
+        # create signatures
+        local StringBuilder buffer(m.name)
+        buffer.print('(')
+        local var first = true
+        forEach (p in m.parameters)
+          if (first) first = false
+          else buffer.print(',')
+          buffer.print(p.type.name)
+        endForEach
+        buffer.print(')')
+
+        m.signature = buffer.to_String.consolidate
+
+        local String vsig
+        if (m.return_type?)
+          m.return_type.organize
+          buffer.print('.')
+          buffer.print(m.return_type.name)
+          if (m.return_type.is_reference) vsig = m.signature + ".Object"
+          else vsig = "$.$" (m.signature,m.return_type.name)
+        else
+          vsig = m.signature
+        endIf
+        m.full_signature = "$::$" (m.type_context.name,buffer.to_String)
+
+        local var entry = TypeManager.method_groups.find(vsig)
+        if (entry?) entry.value.add(m)
+        else TypeManager.method_groups[vsig] = MethodGroup(vsig,m)
+      endIf
+
+      local var entry = methods_by_signature.find(m.signature)
+      if (entry?)
+        local var existing = entry.value
+        if (existing.is_requisite) m.qualifiers |= Qualifiers.qual_requisite
+        elseIf (m.is_requisite) existing.qualifiers |= Qualifiers.qual_requisite
+
+        if (existing.resolve_if_class_resolved) m.resolve_if_class_resolved = true
+
+        if (existing.return_type? xor m.return_type?)
+          throw m.t.prior_error( "Inconsistent return type declarations.",existing.t )
+        endIf
+
+        if (m.is_abstract) return
+
+        if (is_inherited(existing) or existing.is_abstract)
+          # replace inherited method with overridden method
+          if (existing.return_type? and not m.return_type.instance_of(existing.return_type))
+            throw m.t.prior_error( "Return type is not instanceOf original return type.",existing.t )
+          endIf
+
+          m.prior_m = existing
+          existing.overrides.add(m)
+          methods_by_signature[m.signature] = m
+          methods.remove(existing)
+          methods.add(m)
+
+        elseIf (existing.is_aspect_method or m.is_aspect_method)
+          # layer method on top
+          if (existing.prior_m?)
+            existing.prior_m.overrides.remove(existing)
+            existing.prior_m.overrides.add(m)
+            m.prior_m = existing.prior_m
+          endIf
+
+          m.underlying_m = existing
+          methods_by_signature[m.signature] = m
+          methods.remove(existing)
+          methods.add(m)
+          if (is_class)
+            if (existing.return_type? and not m.return_type.instance_of(existing.return_type))
+              throw m.t.prior_error( "Return type is not instanceOf original return type.",existing.t )
+            endIf
+          endIf
+
+        else
+          # method already defined
+          throw m.t.error( "$ is already defined in type $." (m.signature,name) )
+        endIf
+      else
+        methods.add(m)
+        methods_by_signature[m.signature] = m
+      endIf
+
+    method find_method( String sig ).MethodInfo
+      local var entry = methods_by_signature.find(sig)
+      if (not entry?) return null
+      return entry.value
+
+    method must_find_method( String sig ).MethodInfo
+      local var result = find_method(sig)
+      if (result?) return result
+      println( System.stack_trace )
+      throw SlagError( "[Internal]", "Can't find method $::$." (name,sig) )
+
+    method instance_of( TypeInfo ancestor_type ).Logical
+      # true if types match exactly
+      if (this is ancestor_type) return true
+
+      # false if either type isn't a reference
+      if (not (is_reference and ancestor_type.is_reference)) return false
+
+      # Anything is instanceOf Object
+      if (ancestor_type is type_object) return true
+
+      # null reference can be an instance of anything
+      if (this is type_null) return true
+
+      forEach (base_type in flat_base_types)
+        if (base_type is ancestor_type) return true
+      endForEach
+      return false
+
+    method find_property( String var_name ).PropertyInfo
+      local var entry = properties_by_name.find(var_name)
+      if (entry?) return entry.value
+      return null
+
+    method manager_name.String
+      local var mgr_name = base_name + "Manager"
+      if (base_name.count < name.count)
+        mgr_name += name.substring(base_name.count)
+      endIf
+      return mgr_name
+
+    method manager_class.TypeInfo
+      local var mgr_class = TypeManager.get_type_reference( t, manager_name )
+      if (mgr_class.qualifiers is null)
+        mgr_class.qualifiers = Qualifiers.qual_singleton | Qualifiers.qual_class
+      endIf
+      if (not singletons.contains(mgr_class)) singletons.add(mgr_class)
+      return mgr_class
+
+    method reader_type.TypeInfo
+      # Returns element Type if this is Reader<<Type>> or null otherwise.
+      if (this.instance_of(type_reader_type))       return find_reader_element_type
+      return null
+
+    method readable_type.TypeInfo
+      # Returns element Type if this is Readable<<Type>> or null otherwise.
+      if (this.instance_of(type_readable_type)) return find_readable_element_type
+      else return null
+
+    method find_reader_element_type.TypeInfo
+      if (name.begins_with("Reader<<")) return substitution_types.first
+
+      forEach (base_type in base_types)
+        local var result = base_type.find_reader_element_type
+        if (result?) return result
+      endForEach
+
+      return null
+
+    method find_readable_element_type.TypeInfo
+      if (name.begins_with("Readable<<")) return substitution_types.first
+
+      forEach (base_type in base_types)
+        local var result = base_type.find_readable_element_type
+        if (result?) return result
+      endForEach
+
+      return null
+
+    method is_lower_precision_than( TypeInfo other ).Logical
+      if (this is other) return false
+      if (not (this.is_numerical and other.is_numerical)) return false
+
+      if (other.is_real)
+        if (not this.is_real) return true
+        return (other is type_real64)
+      elseIf (other.is_integer)
+        if (this.is_real) return false
+        if (other is type_int64) return true
+        if (this  is type_int64) return false
+        if (other is type_int32) return true
+        if (this  is type_int32) return false
+        if (other is type_char) return true
+        return false
+      endIf
+
+      return false
+
+    method is_compatible_with( TypeInfo other ).Logical
+      if (this is other) return true
+      if (this.instance_of(other)) return true
+      if (this.is_numerical and other.is_numerical) return true
+      if (this.is_logical and other.is_logical) return true
+      return false
+
+    method x_name.String
+      if (&x_name is null)
+
+        if (this.is_class) &x_name = "Class$" (name.x_compatible)
+        elseIf (this.is_aspect) &x_name = "Aspect$" (name.x_compatible)
+        elseIf (this.is_compound) &x_name = "Compound$" (name.x_compatible)
+        else &x_name = name.x_compatible
+        
+      endIf
+      return &x_name
+
+    method calculate_sizes_and_offsets
+      if (sizes_and_offsets_calculated) return
+      sizes_and_offsets_calculated = true
+
+      if (this.is_class)
+        forEach (i of properties) properties[i].index = i
+      endIf
+
+      if (is_primitive)
+        which (this)
+          case type_int64:   data_size = 8
+          case type_int32:   data_size = 4
+          case type_char:    data_size = 2
+          case type_byte:    data_size = 1
+          case type_real64:  data_size = 8
+          case type_real32:  data_size = 4
+          case type_logical: data_size = 4
+        endWhich
+        stack_size = max( data_size, SlagCompiler.byte_alignment )
+
+      elseIf (is_compound)
+        forEach (v in properties)
+          v.type.calculate_sizes_and_offsets
+          v.offset = data_size
+          data_size += v.type.stack_size
+        endForEach
+        stack_size = data_size
+
+      else
+        noAction  # reference type
+      endIf
+
+    method stack_type.TypeInfo
+      if (is_primitive and data_size < 4) return type_int32
+      return this
+
+    method wiki_name.String
+      if (is_primitive)
+        return "[[SlagDoc:Primitives#$|$]]" (name.x_compatible,rename_lists(name))
+      else
+        return "[[SlagDoc:$|$]]" (name.x_compatible,rename_lists(name))
+      endIf
+
+    method help_name.String
+      return rename_lists(name)
+
+    method rename_lists( String st ).String
+      if (st.begins_with("ArrayList<<"))
+        return rename_lists(st.substring(11,st.count-3)) + "[]"
+      else
+        return st
+      endIf
+
+    method write_slagdoc
+      println( "  Writing doc.txt" )
+      local FileWriter writer("doc.txt")
+      writer.print( build_slagdoc )
+      writer.close
+
+    method write_help
+      forEach (line in LineReader(build_help))
+        println(line)
+      endForEach
+
+    method build_slagdoc.String
+      local StringBuilder buffer()
+
+      # Class & Base Types
+      if (is_class) 
+        buffer.print( "== ")
+        if (is_singleton) buffer.print( "Singleton " )
+        buffer.println( "Class $ ==" (name) )
+      endIf
+      if (is_aspect) buffer.println( "== Aspect $ ==" (name) )
+      if (is_compound) buffer.println( "== Compound $ ==" (name) )
+      buffer.println( "<table class='slagdoc'>" )
+
+      local var any_property_detail = false
+      if (properties.count?)
+        buffer.println( "<tr><th>Properties</th></tr>" )
+        buffer.println( "<tr><td><dl>" )
+        forEach (p in properties)
+          if (p.doc_comment?)
+            any_property_detail = true
+            buffer.println( "<dt><span id='index_$'>[[#$|$]]</span> : $" ...
+              (anchor_name(p.x_name),anchor_name(p.x_name),p.name,p.type.wiki_name) )
+          else
+            buffer.println( "<dt>$ : $" (p.name,p.type.wiki_name) )
+          endIf
+        endForEach
+        buffer.println( "</dl></td></tr>" )
+      endIf
+
+      local var doc_methods = duplicate(methods)
+      HeapSort<<MethodInfo>>.sort( doc_methods, 
+        Comparator<<MethodInfo>>() with
+          method a_before_b( MethodInfo a, MethodInfo b ).Logical
+            if (a.name == "init")
+              if (b.name == "init") return a.signature < b.signature
+              else return true
+            else
+              if (b.name == "init") return false
+              else return a.signature < b.signature
+            endIf
+        endWith )
+
+      local var any_method_detail = false
+      if (methods.count?)
+        buffer.println( "<tr><th>Methods</th></tr>" )
+        buffer.println( "<tr><td><dl>" )
+        forEach (m in doc_methods)
+          if (m.signature == "init_object()") nextIteration
+          buffer.println( "<dt>$()$" (wiki_anchor(m,true),wiki_signature(m,true)) )
+          if (m.doc_comment?) any_method_detail = true
+        endForEach
+        buffer.println( "</dl></td></tr>" )
+      endIf
+
+      # Base Types
+      if (flat_base_types.count?)
+        buffer.println( "<tr><th>Base Types</th></tr>" )
+        buffer.print( "<tr><td>" )
+        buffer.print( flat_base_types.first.wiki_name )
+        forEach (s in flat_base_types.from(1))
+          buffer.print( ", " )
+          buffer.print( s.wiki_name )
+        endForEach
+        buffer.println( "</td></tr>" )
+      endIf
+
+
+      # Implicit Singletons
+      local var work_singletons = duplicate(singletons)
+      if (this.is_class)
+        if (this isNot TypeManager.type_global) 
+          work_singletons.remove(type_global)
+          work_singletons.insert(type_global)
+        endIf
+        local var mgr_class = TypeManager.get_type_reference( t, manager_name )
+        if (mgr_class.qualifiers?)
+          work_singletons.remove( mgr_class )
+          work_singletons.insert( mgr_class )
+        endIf
+      endIf
+
+      buffer.println( "<tr><th>Implicit Singletons</th></tr>" )
+      buffer.print( "<tr><td>" )
+      buffer.print( work_singletons.first.wiki_name )
+      forEach (s in work_singletons.from(1))
+        buffer.print( ", " )
+        buffer.print( s.wiki_name )
+      endForEach
+      buffer.println( "</td></tr>" )
+
+
+      buffer.println( "</table>" )
+
+      buffer.println
+      buffer.println
+
+      if (doc_comment?)
+        buffer.println( "=== Overview ===" )
+        buffer.println( format_doc_comment(doc_comment) )
+      elseIf (name.contains("Manager"))
+        buffer.println( "=== Overview ===" )
+        local var cls_name = name.before_first("Manager") + name.after_first("Manager")
+        local var type_string = "class"
+        if (TypeManager.types[cls_name]? and TypeManager.types[cls_name].is_compound)
+          type_string = "compound"
+        endIf
+        buffer.println(
+[string]
+$ is an automatically generated singleton representing the class
+context (aka ''static'' variables and methods) of $ [[SlagDoc:$|$]].
+
+
+==== See Also ====
+* [[SlagDoc:$|$]]
+[endString] (name,type_string,cls_name,cls_name,cls_name,cls_name) )
+      endIf
+      buffer.println
+      buffer.println
+
+      if (properties.count? and any_property_detail)
+        buffer.println( "=== Properties ===" )
+        forEach (p in properties)
+          if (p.doc_comment is null) nextIteration
+          buffer.println( "<table class='slagdoc'>" )
+          buffer.println( "<th><span id='$'>[[#index_$|$]] : $</span></th>" ...
+            (anchor_name(p.x_name),anchor_name(p.x_name),p.name,p.type.wiki_name) )
+          buffer.println( "<tr><td>" )
+          buffer.println( format_doc_comment(p.doc_comment) )
+          buffer.println( "</td></tr></table>" )
+          buffer.println
+          buffer.println
+        endForEach
+      endIf
+
+      if (methods.count? and any_method_detail)
+        buffer.println( "=== Methods ===" )
+        forEach (m in doc_methods)
+          if (m.doc_comment is null or m.signature == "init_object()") nextIteration
+          buffer.println( "$<table class='slagdoc'>" (wiki_anchor(m,false) ) )
+          buffer.println( "<th>$</th>" (wiki_signature(m,false)) )
+          buffer.println( "<tr><td>" )
+          buffer.print( format_doc_comment(m.doc_comment) )
+          buffer.println( "</td></tr></table>" )
+          buffer.println
+          buffer.println
+        endForEach
+      endIf
+
+      buffer.println( "''The content on this SlagDoc page was automatically generated. Any changes maybe overwritten in the future - post corrections and updates to the Plasmacore forums or email Abe.Pralle at Plasmaworks.com.''" )
+
+      return buffer.to_String
+
+    method build_help.String
+      local StringBuilder buffer()
+
+      local var doc_methods = duplicate(methods)
+      HeapSort<<MethodInfo>>.sort( doc_methods, 
+        Comparator<<MethodInfo>>() with
+          method a_before_b( MethodInfo a, MethodInfo b ).Logical
+            if (a.name == "init")
+              if (b.name == "init") return a.signature < b.signature
+              else return true
+            else
+              if (b.name == "init") return false
+              else return a.signature < b.signature
+            endIf
+        endWith )
+
+      if (SlagCompiler.help_type.contains("::"))
+        local var lookfor = SlagCompiler.help_type.after_first("::")
+
+        local var started_properties = false
+        forEach (p in properties)
+          if (p.name.contains(lookfor))
+            if (not started_properties)
+              started_properties = true
+              buffer.println( "PROPERTIES" )
+            endIf
+            buffer.println( "$ : $" (p.name,p.type.help_name) )
+            forEach (line in LineReader(format_help_comment(p.doc_comment)) )
+              buffer.println( "  " + line )
+            endForEach
+            buffer.println
+          endIf
+        endForEach
+        if (started_properties) buffer.println
+
+        local var started_methods = false
+        forEach (m in doc_methods)
+          if (m.signature.contains(lookfor))
+            if (not started_methods)
+              started_methods = true
+              buffer.println( "METHODS" )
+            endIf
+            buffer.println( help_signature(m) )
+            forEach (line in LineReader(format_help_comment(m.doc_comment)) )
+              buffer.println( "  " + line )
+            endForEach
+            buffer.println
+          endIf
+        endForEach
+        if (started_methods) buffer.println
+
+        return buffer.to_String
+      endIf
+
+      # Class & Base Types
+      if (is_class) 
+        if (is_singleton) buffer.print( "Singleton " )
+        buffer.println( "Class $" (name) )
+      endIf
+      if (is_aspect) buffer.println( "Aspect $" (name) )
+      if (is_compound) buffer.println( "Compound $" (name) )
+      buffer.println
+
+      # OVERVIEW
+      if (doc_comment?)
+        buffer.println( "OVERVIEW" )
+        buffer.println( format_help_comment(doc_comment) )
+        buffer.println
+        buffer.println
+      elseIf (name.contains("Manager"))
+        buffer.println( "OVERVIEW" )
+        local var cls_name = name.before_first("Manager") + name.after_first("Manager")
+        local var type_string = "class"
+        if (TypeManager.types[cls_name]? and TypeManager.types[cls_name].is_compound)
+          type_string = "compound"
+        endIf
+        buffer.println( (
+[string]
+$ is an automatically generated singleton representing the class context (aka 'static' variables and methods) of $.
+[endString] (name,type_string)).word_wrap(79).join )
+        buffer.println
+        buffer.println
+      endIf
+
+      local var any_property_detail = false
+      if (properties.count?)
+        buffer.println( "PROPERTIES" )
+        forEach (p in properties)
+          if (p.doc_comment?) any_property_detail = true
+          buffer.println( "$ : $" (p.name,p.type.help_name) )
+        endForEach
+        buffer.println
+      endIf
+
+      local var any_method_detail = false
+      if (methods.count?)
+        buffer.println( "METHODS" )
+        forEach (m in doc_methods)
+          if (m.signature == "init_object()") nextIteration
+          buffer.println( "$" (help_signature(m)) )
+          if (m.doc_comment?) any_method_detail = true
+        endForEach
+        buffer.println
+      endIf
+
+      # Base Types
+      if (flat_base_types.count?)
+        buffer.println( "BASE_TYPES" )
+        buffer.print( flat_base_types.first.help_name )
+        forEach (s in flat_base_types.from(1))
+          buffer.print( ", " )
+          buffer.print( s.help_name )
+        endForEach
+        buffer.println
+        buffer.println
+      endIf
+
+
+      # Implicit Singletons
+      local var work_singletons = duplicate(singletons)
+      if (this.is_class)
+        if (this isNot TypeManager.type_global) 
+          work_singletons.remove(type_global)
+          work_singletons.insert(type_global)
+        endIf
+        local var mgr_class = TypeManager.get_type_reference( t, manager_name )
+        if (mgr_class.qualifiers?)
+          work_singletons.remove( mgr_class )
+          work_singletons.insert( mgr_class )
+        endIf
+      endIf
+
+      buffer.println( "SINGLETONS" )
+      buffer.print( work_singletons.first.help_name )
+      forEach (s in work_singletons.from(1))
+        buffer.print( ", " )
+        buffer.print( s.help_name )
+      endForEach
+      buffer.println
+      buffer.println
+
+
+      #{
+      if (properties.count? and any_property_detail)
+        buffer.println( "=== Properties ===" )
+      endIf
+
+      if (methods.count? and any_method_detail)
+        buffer.println( "=== Methods ===" )
+        forEach (m in doc_methods)
+          if (m.doc_comment is null or m.signature == "init_object()") nextIteration
+          buffer.println( "$<table class='slagdoc'>" (wiki_anchor(m,false) ) )
+          buffer.println( "<th>$</th>" (wiki_signature(m,false)) )
+          buffer.println( "<tr><td>" )
+          buffer.print( format_doc_comment(m.doc_comment) )
+          buffer.println( "</td></tr></table>" )
+          buffer.println
+          buffer.println
+        endForEach
+      endIf
+
+      buffer.println( "''The content on this SlagDoc page was automatically generated. Any changes maybe overwritten in the future - post corrections and updates to the Plasmacore forums or email Abe.Pralle at Plasmaworks.com.''" )
+      }#
+
+      return buffer.to_String
+
+    method anchor_name( String st ).String
+      # Remove double underscores
+      local var i = st.index_of("__")
+      while (i >= 0)
+        st = st.substring(0,i-1) + st.substring(i+1)
+        i = st.index_of("__")
+      endWhile
+      return st
+
+    method wiki_anchor( MethodInfo m, Logical short ).String
+      local var a_name = anchor_name(m.x_name.after_first("__"))
+      if (short and m.doc_comment?)
+        return "<span id='index_$'></span>" (a_name)
+      elseIf (m.doc_comment?)
+        return "<span id='$'></span>" (a_name)
+      else
+        return ""
+      endIf
+
+    method wiki_signature( MethodInfo m, Logical short ).String
+      local StringBuilder buffer()
+
+      local var a_name = anchor_name(m.x_name.after_first("__"))
+      if (short and m.doc_comment?)
+        buffer.print( "[[#$|$]]" (a_name,m.name) )
+      elseIf (m.doc_comment?)
+        buffer.print( "[[#index_$|$]]" (a_name,m.name) )
+      else
+        buffer.print(m.name)
+      endIf
+      
+      buffer.print('(')
+      if (m.parameters.count?)
+        buffer.print(' ')
+        if (m.min_params == 0) buffer.print("&#91;")
+        buffer.print( m.parameters.first.type.wiki_name )
+        buffer.print(' ')
+        buffer.print( m.parameters.first.name.before_first('.') )
+        if (m.min_params == 0) buffer.print("&#93;")
+        local var i = 1
+        forEach (p in m.parameters.from(1))
+          buffer.print(", ")
+          if (m.min_params <= i) buffer.print("&#91;")
+          buffer.print( p.type.wiki_name )
+          buffer.print(' ')
+          buffer.print( p.name.before_first('.') )
+          if (m.min_params <= i) buffer.print("&#93;")
+          ++i
+        endForEach
+        buffer.print(' ')
+      endIf
+      buffer.print(')')
+      if (m.return_type?)
+        buffer.print('.')
+        buffer.print( m.return_type.wiki_name )
+      endIf
+      if (is_inherited(m)) buffer.print( " (inherited)" )
+      return buffer.to_String
+
+    method help_signature( MethodInfo m ).String
+      local StringBuilder buffer()
+
+      buffer.print(m.name)
+      
+      buffer.print('(')
+      if (m.parameters.count?)
+        buffer.print(' ')
+        if (m.min_params == 0) buffer.print("[")
+        buffer.print( m.parameters.first.type.help_name )
+        buffer.print(' ')
+        buffer.print( m.parameters.first.name.before_first('.') )
+        if (m.min_params == 0) buffer.print("]")
+        local var i = 1
+        forEach (p in m.parameters.from(1))
+          buffer.print(", ")
+          if (m.min_params <= i) buffer.print("[")
+          buffer.print( p.type.help_name )
+          buffer.print(' ')
+          buffer.print( p.name.before_first('.') )
+          if (m.min_params <= i) buffer.print("]")
+          ++i
+        endForEach
+        buffer.print(' ')
+      endIf
+      buffer.print(')')
+      if (m.return_type?)
+        buffer.print('.')
+        buffer.print( m.return_type.help_name )
+      endIf
+      #if (is_inherited(m)) buffer.print( " (inherited)" )
+      return buffer.to_String
+
+    method format_doc_comment( String comment, Logical first_sentence=false ).String
+      local StringBuilder buffer(comment.count)
+
+      if (first_sentence)
+        forEach (line in LineReader(comment))
+          line .= trim
+          if (line.count == 0) escapeForEach  # empty line
+          if (line.count >= 2 and line[1] == ' ') escapeForEach  # indented example
+          if (buffer.count?) buffer.print(' ')
+          buffer.print(line)
+        endForEach
+
+        local var result = buffer.to_String
+        local var end1 = result.index_of(". ")
+        local var end2 = result.index_of("? ")
+        local var end3 = result.index_of("! ")
+        local var end = result.count - 1
+        if (end1 >= 0 and end1 < end) end = end1;
+        if (end2 >= 0 and end2 < end) end = end2;
+        if (end3 >= 0 and end3 < end) end = end3;
+        return result.substring(0,end)
+
+      else
+        forEach (line in LineReader(comment))
+          if (line.count?) buffer.println( line.substring(1) )
+          else buffer.println
+        endForEach
+
+        return buffer.to_String
+
+      endIf
+
+    method format_help_comment( String comment ).String
+      if (comment is null) return ""
+
+      local StringBuilder buffer(comment.count)
+      local var new_line = true
+
+      forEach (line in LineReader(comment))
+        while (line.ends_with(' ')) line .= excluding_rightmost(1)
+
+        if (line.count?)
+          line = line.substring(1)
+
+          if (line.begins_with(' '))
+            if (not new_line) buffer.println
+          elseIf (not new_line)
+            buffer.print(' ')
+          endIf
+          buffer.print( line )
+          new_line = false
+        else
+          if (not new_line) buffer.println
+          buffer.println
+          new_line = true
+        endIf
+      endForEach
+
+      if (not new_line) buffer.println
+
+      local var result = buffer.to_String
+      result .= replace("<br> ","\n")
+      result .= replace("<br/> ","\n")
+      result .= replace("<br>","\n")
+      result .= replace("<br/>","\n")
+      return result.word_wrap(77).join
+
+endClass
+
+class CategoryInfo
+  PROPERTIES
+    t           : Token
+    construct   : CmdConstruct
+    doc_comment : String
+
+  METHODS
+    method init( construct )
+      t = construct.t
+endClass
+
+class GenericVarInfo
+  PROPERTIES
+    t      : Token
+    index  : Int32
+    type   : TypeInfo
+    name   : String
+    x_name : String
+
+    offset : Int32
+      # For local vars:
+      #   For reference types: reference index from beginning of ref stack frame
+      #   For value types:     byte offset from beginning of data stack frame
+      # For class & object vars:
+      #   Byte offset from beginning of class data or object address
+
+endClass
+
+
+class PropertyInfo : GenericVarInfo
+  PROPERTIES
+    type_context  : TypeInfo
+    qualifiers    : Qualifiers
+    initial_value : Cmd
+    doc_comment   : String
+    #has_get_method : Logical
+    #has_set_method : Logical
+
+  METHODS
+    method init( t, type_context, qualifiers, type, name, initial_value, index=-1 )
+
+    method create_duplicate.PropertyInfo
+      local var result = PropertyInfo( t, type_context, qualifiers, type, name, duplicate(initial_value), index )
+      result.doc_comment = doc_comment
+      return result
+
+    method is_abstract.Logical
+      return qualifiers.is_abstract
+
+    method is_private.Logical
+      return qualifiers.is_private
+
+    method is_read_only.Logical
+      return qualifiers.is_read_only
+
+    method x_name.String
+      if (&x_name is null) &x_name = "property_$" (name.x_compatible)
+      return &x_name
+
+endClass
+
+
+class MethodInfo
+  PROPERTIES
+    t                : Token
+    qualifiers       : Qualifiers
+    type_context     : TypeInfo
+    name             : String
+
+    parameters       : ParameterInfo[]
+    return_type      : TypeInfo
+    body             : CmdStatementList
+
+    original_body    : CmdStatementList
+      # For propagated methods only
+
+    doc_comment      : String
+
+    signature        : String
+    full_signature   : String
+
+    underlying_m     : MethodInfo
+    prior_m          : MethodInfo
+    group            : MethodGroup
+
+    local_vars(2)    : LocalVarInfo[]
+    index=-1         : Int32
+
+    resolve_if_class_resolved : Logical
+
+    resolved         : Logical
+    collected        : Logical
+    mapped           : Logical
+    called           : Logical
+
+    min_params=-1    : Int32
+
+    num_catches     : Int32
+
+    overrides(1)             : MethodInfo[]
+
+    x_name           : String
+
+    param_ref_count : Int32
+    param_data_size : Int32
+    local_ref_count : Int32
+    local_data_size : Int32
+
+    supports_inlining=true : Logical
+    context_read_count : Int32
+      # For inlining.
+    inlining_lock      : Logical
+
+
+
+  METHODS
+    method init( t, qualifiers, type_context, name )
+
+    method create_duplicate.MethodInfo
+      local MethodInfo new_m( t, qualifiers, type_context, name )
+      new_m.parameters = ParameterInfo[](parameters.count)
+      forEach (param in parameters) 
+        param = duplicate(param)
+        param.method_context = new_m
+        new_m.parameters.add(param)
+      endForEach
+      new_m.return_type = return_type
+      new_m.body = duplicate(body)
+      new_m.original_body = original_body
+      new_m.doc_comment = doc_comment
+      return new_m
+
+    method is_native.Logical
+      return (qualifiers & Qualifiers.qual_native) != 0
+
+    method is_underlying.Logical
+      return qualifiers.is_underlying
+
+    method is_overlaying.Logical
+      return qualifiers.is_overlaying
+
+    method is_aspect_method.Logical
+      return qualifiers.is_overlaying or qualifiers.is_underlying
+
+    method is_abstract.Logical
+      return qualifiers.is_abstract
+
+    method is_automatic.Logical
+      return qualifiers.is_automatic
+
+    method is_requisite.Logical
+      return qualifiers.is_requisite
+
+    method is_generic.Logical
+      return qualifiers.is_generic
+
+    method is_compatible_with( MethodInfo base_method ).Logical
+      if (this.parameters.count != base_method.parameters.count) return false
+      if (name != base_method.name) return false
+
+      if (this.return_type? xor base_method.return_type?) return false
+      if (return_type? and not return_type.instance_of(base_method.return_type)) return false
+      forEach (i of parameters)
+        if (not this.parameters[i].type.instance_of(base_method.parameters[i].type)) return false
+      endForEach
+
+      return type_context.instance_of(base_method.type_context)...
+          or (base_method.type_context.is_aspect and base_method.type_context.instance_of(type_context))
+
+    method min_params.Int32
+      if (&min_params >= 0) return &min_params
+      forEach (i in parameters.reverse_indices)
+        if (not parameters[i].default_value?) &min_params = i; escapeForEach
+      endForEach
+      &min_params++
+      return &min_params
+
+    method base_return_type.TypeInfo
+      # This method used when cross-compiling to C#, which doesn't
+      # support covariant return types.
+      if (return_type is null) return null
+      forEach (base_type in type_context.base_types)
+        if (base_type.methods_by_signature.contains(signature))
+          return base_type.methods_by_signature[signature].base_return_type
+        endIf
+      endForEach
+      return return_type
+
+    method resolve
+      if (resolved) return
+      resolved = true
+
+      type_context.resolve
+
+      if (prior_m?) prior_m.resolve
+
+      forEach (p in parameters) p.type.resolve
+      if (return_type?) return_type.resolve
+
+      local var old_context = Context
+      Context = Context( type_context, this )
+      type_context.visited = true
+
+      try
+
+        Context.local_var_table.open_scope  # parameter scope
+        forEach (p in parameters) 
+          Context.local_var_table.define( LocalVarInfo(p.t,this,p.type,p.name) )
+        endForEach
+
+        if (is_generic)
+          contingent
+            necessary (type_context.substitution_types?)
+            forEach (specializing_type in type_context.substitution_types)
+              necessary (specializing_type?)
+            endForEach
+          unsatisfied
+            throw t.error( "A generic method can only be defined in a template class "
+                "where all specializers are valid types." )
+          endContingent
+
+          local StringBuilder generic_map_buffer( type_context.name.before_first('<') )
+          generic_map_buffer.print("<<")
+          local var first=true
+          forEach (specializing_type in type_context.substitution_types)
+            if (first) first=false
+            else generic_map_buffer.print(',')
+            generic_map_buffer.print(specializing_type.generic_type.name)
+          endForEach
+          generic_map_buffer.print(">>")
+          local var generic_map_name = generic_map_buffer.to_String
+
+          contingent
+            local TypeInfo generic_map_type
+            if (TypeManager.types.contains(generic_map_name))
+              generic_map_type = TypeManager.types[generic_map_name]
+            else
+              local Token[][] subst_tokens()
+              forEach (specializing_type in type_context.substitution_types)
+                subst_tokens.add( { Token(identifier,t.filename,t.pos,specializing_type.generic_type.name) } )
+              endForEach
+              generic_map_type = TypeManager.get_type_reference( type_context.t,
+                  generic_map_name.before_first('<'), subst_tokens )
+            endIf
+
+            generic_map_type.resolve
+            necessary (generic_map_type isNot type_context)
+
+            local StringBuilder sig_buffer(name)
+            sig_buffer.print('(')
+            first = true
+            forEach (p in parameters)
+              if (first) first = false
+              else sig_buffer.print(',')
+              if (type_context.substitution_types.contains(p.type))
+                sig_buffer.print(p.type.generic_type.name)
+              else
+                sig_buffer.print(p.type.name)
+              endIf
+            endForEach
+            sig_buffer.print(')')
+            local var generic_sig = sig_buffer.to_String
+
+            necessary (generic_map_type.methods_by_signature.contains(generic_sig))
+
+            local var generic_m = generic_map_type.methods_by_signature[generic_sig]
+            local CmdList args()
+            local var i=0
+            forEach (v in local_vars) args.add( CmdLocalVarRead(t,v) )
+            local Cmd cmd = CmdStaticCall( t, CmdThisReference(t,type_context), generic_m, args )
+            if (return_type?)
+              cmd = CmdReturnValue( t, CmdCoerceAs(t,cmd,return_type) )
+            endIf
+            generic_m.resolve
+            body.statements.clear
+            body.statements.add(cmd)
+
+          endContingent
+        endIf
+
+        if (type_context.is_class) 
+          if (qualifiers.is_propagated and original_body is null)
+            original_body = duplicate(body)
+          endIf
+          body.resolve
+        else
+          supports_inlining = false
+        endIf
+
+        Context = old_context
+
+      catch (SlagError err)
+        Context = old_context
+        throw err
+      endTry
+
+      local var c_index = 0
+      while (c_index < type_context.incorporating_classes.count)
+        local var incorporating_class = type_context.incorporating_classes[c_index]
+        local var entry = incorporating_class.methods_by_signature.find(signature)
+        if (entry?) entry.value.resolve
+        ++c_index
+      endWhile
+
+      resolve_overrides
+
+
+    method resolve_overrides
+      local var i = 0
+      while (i < overrides.count)
+        local var m = overrides[i]
+        if (m.type_context.resolved) m.resolve
+        else m.resolve_if_class_resolved = true
+        m.resolve_overrides
+        ++i
+      endWhile
+
+    method resolve_if_ancestor_resolved.Logical
+      if (resolved) return true
+      if (prior_m?)
+        if (prior_m.resolve_if_ancestor_resolved) resolve; return true
+      endIf
+
+      return false
+
+    method finalize_calls.Logical
+      if (body is null) return true
+      if (not type_context.is_class) return true
+
+      Context = Context( type_context, this, false )
+      body.finalize_calls
+      return true
+
+    method finalize_structure_info.Logical
+      if (body is null) return true
+      if (not type_context.is_class) return true
+
+      context_read_count = 0
+      forEach (v in local_vars) v.read_count = 0
+      Context = Context( type_context, this, false )
+      try
+        body.finalize_structure_info
+        contingent
+          necessary (not is_native)
+          necessary (body.statements.count == 1) 
+          necessary (context_read_count == 1)
+          necessary (local_vars.count == parameters.count)
+          forEach (v in local_vars) 
+            necessary( 1 == v.read_count )
+          endForEach
+        unsatisfied
+            supports_inlining = false
+        endContingent
+      catch (SlagError err)
+        if (Errors.add(err)) return false
+      endTry
+      return true
+
+    method x_name.String
+      if (&x_name is null)
+        local StringBuilder buffer()
+        buffer.print( "$__$" (type_context.name.x_compatible,name.x_compatible) )
+        if (parameters.count?)
+          buffer.print( "__$" (parameters.first.type.name.x_compatible) )
+        endIf
+        forEach (p in parameters.from(1))
+          buffer.print( "_$" (p.type.name.x_compatible) )
+        endForEach
+        &x_name = buffer.to_String
+      endIf
+      return &x_name
+
+    method calculate_local_var_offsets
+      param_ref_count++  # 'this'
+      forEach (param in parameters)
+        if (param.type.is_reference) param_ref_count++; param.offset = param_ref_count
+        else param_data_size += param.type.stack_size; param.offset = param_data_size
+      endForEach
+
+      forEach (param in parameters)
+        if (param.type.is_reference) param.offset = param_ref_count - param.offset
+        else param.offset = param_data_size - param.offset
+      endForEach
+
+      local var num_params = parameters.count
+      forEach (i of local_vars)
+        local var v = local_vars[i]
+        if (i < num_params)
+          v.offset = parameters[i].offset
+          parameters[i].index = i
+        else
+          if (v.type.is_reference)
+            local_ref_count++
+            v.offset = -local_ref_count
+          else
+            local_data_size += v.type.stack_size
+            v.offset = -local_data_size
+          endIf
+        endIf
+      endForEach
+
+endClass
+
+class MethodVarInfo : GenericVarInfo
+  PROPERTIES
+    method_context : MethodInfo
+
+    read_count    : Int32
+      # For inlining.
+
+  METHODS
+    method init( t, method_context, type, name, index=-1 )
+
+    method x_name.String: abstract
+endClass
+
+class LocalVarInfo : MethodVarInfo
+  PROPERTIES
+    is_catch_var : Logical
+
+  METHODS
+    method x_name.String
+      if (&x_name is null) &x_name = "local_$_$" (index,name.x_compatible)
+      return &x_name
+endClass
+
+
+class ParameterInfo : MethodVarInfo
+  PROPERTIES
+    default_value : Cmd
+
+  METHODS
+    method init( t, method_context, type, name, default_value, index=-1 )
+
+    method create_duplicate.ParameterInfo
+      return ParameterInfo( t, method_context, type, name, duplicate(default_value), index )
+
+    method to_String.String
+      return "$:$" (name,type) 
+
+    method x_name.String
+      if (&x_name is null) &x_name = "local_$_$" (index,name.x_compatible)
+      return &x_name
+endClass
+
+class MethodTable : HashTable<<String,MethodInfo[]>>
+  CLASS_PROPERTIES
+    empty_list(0) : MethodInfo[]
+
+  METHODS
+    method get( String key ).MethodInfo[]
+      local var result = find(key)
+      if (result?) return result.value
+      return empty_list
+
+    method add( String key, MethodInfo m )
+      local var entry = find(key)
+      if (entry?) 
+        local var list = entry.value
+        if (not list.contains(m)) list.add(m)
+      else
+        local MethodInfo[] list()
+        list.add(m)
+        this[key] = list
+      endIf
+
+endClass
+
+class MethodGroup
+  PROPERTIES
+    signature     : String
+    x_name        : String
+    index=-1      : Int32
+    methods(2)    : MethodInfo[]
+    method_hash() : HashSet<<String>>
+
+  METHODS
+    method init( signature, MethodInfo m )
+      m.group = this
+      methods.add(m)
+      method_hash.add(m.full_signature)
+
+    method add( MethodInfo m )
+      m.group = this
+      if (not method_hash.contains(m.full_signature))
+        method_hash.add(m.signature)
+        methods.add(m)
+      endIf
+
+    method count.Int32
+      return methods.count
+
+    method mark_called
+      forEach (m in methods) m.called = true
+
+    method display
+      println( "$ [$]" (signature,index) )
+      forEach (m in methods) println( "  " + m.full_signature )
+      println
+endClass
+
+class StringTable : Readable<<String>>
+  PROPERTIES
+    strings() : String[]
+    map()     : HashTable<<String,Int32>>
+
+  METHODS
+    method init
+
+    method count.Int32
+      return strings.count
+
+    method create_reader.Reader<<String>>
+      return strings.create_reader
+
+    method get( Int32 index ).String
+      return strings[index]
+
+    method get( String st ).Int32
+      local var entry = map.find(st)
+      if (entry is null)
+        local var i = strings.count
+        map[st] = i
+        strings.add( st )
+        return i
+      else
+        return entry.value
+      endIf
+endClass
+
+augment String
+  METHODS
+    method x_compatible.String
+      # Replaces special characters with underscores
+      # and <<type1,type2>> with _of_type1_and_type2
+      if (this == "op<>") return "opCMP";
+      if (this == "op==") return "opEQ";
+
+      local StringBuilder buffer( count )
+      local var discard_next = false
+      forEach (ch in this)
+        if (discard_next) discard_next=false; nextIteration
+
+        if ( (ch >= 'A' and ch <= 'Z') ...
+            or (ch >= 'a' and ch <= 'z') ...
+            or (ch >= '0' and ch <= '9') )
+          buffer.print( ch )
+
+        else
+          which (ch)
+            case '<':
+              buffer.print( "_of_" )
+              discard_next = true
+
+            case '>':
+              nextIteration
+
+            case ',':
+              buffer.print( "_and_" )
+
+            case '+': buffer.print( "ADD" )
+            case '-': buffer.print( "SUB" )
+            case '*': buffer.print( "MUL" )
+            case '/': buffer.print( "DIV" )
+            case '%': buffer.print( "MOD" )
+            case '^': buffer.print( "EXP" )
+            case '&': buffer.print( "AND" )
+            case '|': buffer.print( "OR"  )
+            case '~': buffer.print( "XOR" )
+            case '!': buffer.print( "NOT" )
+
+            others:
+              buffer.print( '_' )
+          endWhich
+        endIf
+
+      endForEach
+
+      return buffer.to_String
+endAugment
+

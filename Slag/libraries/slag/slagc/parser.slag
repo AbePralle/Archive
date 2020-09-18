@@ -1,0 +1,2573 @@
+#=====================================================================
+# parser.slag
+#
+# --------------------------------------------------------------------
+#
+# Copyright 2009 Plasmaworks LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); 
+# you may not use this file except in compliance with the License. 
+# You may obtain a copy of the License at 
+#
+#   http://www.apache.org/licenses/LICENSE-2.0 
+#
+# Unless required by applicable law or agreed to in writing, 
+# software distributed under the License is distributed on an 
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, 
+# either express or implied. See the License for the specific 
+# language governing permissions and limitations under the License.
+#
+# --------------------------------------------------------------------
+#
+# History:
+#   2009.12.15 / Abe Pralle - Revamped for slagc v3
+#
+#=====================================================================
+
+[include "preprocessor.slag"]
+[include "type_info.slag"]
+[include "big_int.slag"]
+
+class TestParser
+  METHODS
+    method init
+      local Stopwatch timer()
+      local SlagParser parser()
+      #parser.include("libraries/slag/standard/standard.slag")
+      parser.parse("test.slag")
+      Errors.print
+      println( timer )
+endClass
+
+
+enum StructureType
+  CATEGORIES
+    block_stmt, if_stmt, which_stmt, whichis_stmt, contingent_stmt, try_stmt
+    forEach_stmt(true), while_stmt(true), loop_stmt(true)
+
+  PROPERTIES
+    is_loop : Logical
+
+  METHODS
+    method init( is_loop )
+endEnum
+
+class ControlStructureInfo
+  PROPERTIES
+    type  : StructureType
+    node  : CmdStructure
+    label : String
+
+  METHODS
+    method init( type, node, label )
+endClass
+
+class SlagFile( Token t, String filename, String data )
+  METHODS
+    method to_String.String
+      return filename
+endClass
+
+class KeywordPairing( String open, String close );
+
+
+class SlagParser
+  CLASS_PROPERTIES
+    next_unique_id=1 : Int32
+
+    value_2e63( "8000000000000000",16) : BigInt
+    value_2e64("10000000000000000",16) : BigInt
+
+    delegate_types() : HashSet<<String>>
+
+  CLASS_METHODS
+    method unique_id.Int32
+      local var result = next_unique_id
+      next_unique_id++
+      return result
+
+  PROPERTIES
+    no_terminators          = Int32{}   : Int32[]
+    block_terminators       = { Token.symbol_endblock }                   : Int32[]
+    try_terminators         = { Token.symbol_catch, Token.symbol_endtry } : Int32[]
+    if_terminators          = { Token.symbol_elseif, Token.symbol_else, Token.symbol_endif }    : Int32[]
+    else_terminators        = { Token.symbol_endif }        : Int32[]
+    others_terminators      = { Token.symbol_endwhich, Token.symbol_endwhichis }     : Int32[]
+    loop_terminators        = { Token.symbol_endloop }      : Int32[]
+    loop_while_terminators  = { Token.symbol_endloop }      : Int32[]
+    while_terminators       = { Token.symbol_endwhile }     : Int32[]
+    foreach_terminators     = { Token.symbol_endforeach }   : Int32[]
+    which_terminators       = { Token.symbol_case, Token.symbol_casenext, Token.symbol_others, Token.symbol_endwhich }     : Int32[]
+    whichis_terminators     = { Token.symbol_case, Token.symbol_casenext, Token.symbol_others, Token.symbol_endwhichis }   : Int32[]
+    contingent_terminators  = { Token.symbol_satisfied, Token.symbol_unsatisfied, Token.symbol_endcontingent } : Int32[]
+    satisfied_terminators   = { Token.symbol_unsatisfied, Token.symbol_endcontingent }  : Int32[]
+    unsatisfied_terminators = { Token.symbol_endcontingent } : Int32[]
+    #meta_foreach_terminators = { Token.symbol_meta_endforeach }   : Int32[]
+
+    out_of_place_keywords() : HashTable<<Int32,KeywordPairing>>
+
+    shorthand_ops =
+    {
+      Token.symbol_add_with_assign,
+      Token.symbol_subtract_with_assign,
+      Token.symbol_multiply_with_assign,
+      Token.symbol_divide_with_assign,
+      Token.symbol_mod_with_assign,
+      Token.symbol_power_with_assign,
+      Token.symbol_bitwise_and_with_assign,
+      Token.symbol_bitwise_or_with_assign,
+      Token.symbol_bitwise_xor_with_assign,
+      Token.symbol_member_with_assign
+    } : Int32[]
+
+    scanner       : TokenReader
+    requisite_all : Logical
+    control_structure_stack() : ControlStructureInfo[]
+    this_type   : TypeInfo
+    this_method : MethodInfo
+
+    src_paths()       : String[]
+    includes()        : SlagFile[]
+    pending_files()   : SlagFile[]
+    processed_files() : SlagFile[]
+
+
+
+  METHODS
+    method init( scanner=null )
+      out_of_place_keywords[Token.symbol_catch]         = KeywordPairing( "try","catch" )
+      out_of_place_keywords[Token.symbol_endtry]        = KeywordPairing( "try", "endTry" )
+      out_of_place_keywords[Token.symbol_elseif]        = KeywordPairing( "if", "elseIf" )
+      out_of_place_keywords[Token.symbol_else]          = KeywordPairing( "if", "else" )
+      out_of_place_keywords[Token.symbol_endif]         = KeywordPairing( "if", "endIf" )
+      out_of_place_keywords[Token.symbol_case]          = KeywordPairing( "which' or 'whichIs", "case" )
+      out_of_place_keywords[Token.symbol_casenext]      = KeywordPairing( "which' or 'whichIs", "caseNext" )
+      out_of_place_keywords[Token.symbol_others]        = KeywordPairing( "which' or 'whichIs", "others" )
+      out_of_place_keywords[Token.symbol_endwhich]      = KeywordPairing( "which", "endWhich" )
+      out_of_place_keywords[Token.symbol_endwhichis]    = KeywordPairing( "whichIs", "endWhichIs" )
+      out_of_place_keywords[Token.symbol_endloop]       = KeywordPairing( "loop", "endLoop" )
+      out_of_place_keywords[Token.symbol_endwhile]      = KeywordPairing( "while", "endWhile" )
+      out_of_place_keywords[Token.symbol_endforeach]    = KeywordPairing( "forEach", "endForEach" )
+      out_of_place_keywords[Token.symbol_satisfied]     = KeywordPairing( "contingent", "satisfied" )
+      out_of_place_keywords[Token.symbol_unsatisfied]   = KeywordPairing( "contingent", "unsatisfied" )
+      out_of_place_keywords[Token.symbol_endcontingent] = KeywordPairing( "contingent", "endContingent" )
+      out_of_place_keywords[Token.symbol_close_bracket] = KeywordPairing( "[", "]" )
+      out_of_place_keywords[Token.symbol_close_comment] = KeywordPairing( "#{", "}#" )
+
+    method include( String filename, Token t=null, String data=null )
+      includes.add( SlagFile(t,filename,data) )
+
+    method parse( String filename ).Logical
+      includes.insert( SlagFile(null,filename,null) )
+      return parse_pending
+
+    method parse_pending.Logical
+      forEach (inc in includes) include(inc)
+      includes.clear
+
+      while (pending_files.count? or includes.count? or TypeManager.used_frameworks.count?)
+        if (includes.count?)
+          forEach (inc in includes) include(inc)
+          includes.clear
+          nextIteration
+        endIf
+
+        if (pending_files.count?)
+          local var file = pending_files.remove_first
+          processed_files.add(file)
+          scanner = SlagPreprocessor( file.filename, file.data )
+          requisite_all = false
+          try
+            while (parse_next) noAction
+          catch (SlagError err)
+            Errors.add(err)
+          endTry
+          nextIteration
+        endIf
+
+        parse_framework( TypeManager.used_frameworks.remove_first )
+      endWhile
+
+      return not Errors.any
+
+    method parse_framework( TypeInfo type )
+      local var name = type.name.before_first('<')
+      if (not TypeManager.frameworks.contains(name))
+        throw type.error( "No such framework: " + name )
+      endIf
+
+      local var f = TypeManager.frameworks[name]
+
+      local HashTable<<String,Token[]>> mappings()
+      local var i = 0
+      forEach (st in f.placeholder_types)
+        local var list = type.substitution_tokens[i]
+        forEach (index of list)
+          local Token t = list[index]
+          list[index] = Token( placeholder_id, t.filename, t.pos, "$" + t.content )
+        endForEach
+        mappings[st] = list
+        ++i
+      endForEach
+
+      scanner = TemplateReader( f.definition, mappings )
+      while (parse_next) noAction
+      parse_pending
+
+    method include( SlagFile file )
+      if (file.data?)
+        pending_files.add( file )
+      else
+        file.filename = find_file(file.filename,file.t)
+        if (already_included(file.filename)) return
+        file.data = String.create_from(File(file.filename).to_List)
+        pending_files.add( file )
+      endIf
+
+    method include_dir( String filename, Token t )
+      filename = find_file( filename, t )
+      if (File(filename).is_directory)
+        src_paths.add(filename)
+        local var listing = File(filename).directory_listing(absolute|recursive|ignore_hidden)
+        forEach (f in listing)
+          if (File(f).is_directory) src_paths.add(f)
+        endForEach
+        forEach (f in listing)
+          if (not File(f).is_directory) include(f,t)
+        endForEach
+      else
+        throw t.error( //"$" is not a directory.// (filename) )
+      endIf
+
+    method already_included( String filename ).Logical
+      forEach (file in pending_files)
+        if (file.filename == filename) return true
+      endForEach
+
+      forEach (file in processed_files)
+        if (file.filename == filename) return true
+      endForEach
+
+      return false
+
+    method find_file( String filename, Token t ).String
+      if (File(filename).exists) return File(filename).absolute_filepath
+
+      forEach (path in src_paths)
+        local var f = "$/$" (path,filename)
+        if (File(f).exists) return File(f).absolute_filepath
+      endForEach
+
+      local var mesg = //File not found: "$".// (filename)
+      if (t?) throw t.error(mesg)
+      else throw SlagError("[Internal]",mesg)
+
+    method next_is( Int32 type ).Logical
+      return scanner.peek.type == type 
+
+    method next_is_id( String identifier ).Logical
+      local var t = scanner.peek
+      return (t.type == Token.identifier and t.content == identifier)
+
+    method after_next_is( Int32 type ).Logical
+      return scanner.peek(2).type == type 
+
+    method next_is_end_cmd.Logical
+      local var t = scanner.peek.type
+      return t == Token.eol or t == Token.symbol_semicolon
+
+    method next_elseif_is_not_at_eol.Logical
+      # Counts parens, then sees if the next one after is an EOL or not
+      # Assumes that scanner.peek is 'elseIf'.
+      if (scanner.peek(3).type != Token.symbol_open_paren)
+        throw scanner.peek(3).error( "'(' expected." )
+      endIf
+
+      local Int32 pos = 4
+      local Int32 count = 1
+      while (count > 0)
+        local Token t = scanner.peek( pos )
+
+        if (t.type is Token.eol) return false
+          # Gonna be an error anyways, no need to throw one
+
+        if (t.type == Token.symbol_open_paren)  count++
+        if (t.type == Token.symbol_close_paren) count--
+        ++pos
+      endWhile
+
+      return (scanner.peek(pos).type != Token.eol)
+
+    method consume( Int32 token_type ).Logical
+      if (scanner.peek.type != token_type) return false
+      scanner.read
+      return true
+
+    method consume_id( String st ).Logical
+      if (scanner.peek.type != Token.identifier) return false
+      if (not (scanner.peek.content == st))  return false
+      scanner.read
+      return true
+
+    method must_consume_id( String st )
+      if (not consume_id(st)) throw scanner.peek.error( "'$' expected." (st) )
+
+    method discard_eols
+      # discard EOLs
+      while (scanner.peek.type == Token.eol) scanner.read
+
+    method must_consume( Int32 type, String mesg )
+      discard_eols
+
+      if (not consume(type))
+        throw scanner.peek.error( "'$' expected." (mesg) )
+      endIf
+
+    method consume_eol.Logical
+      if (scanner.peek.type == Token.eol)
+        scanner.read
+        return true
+      endIf
+      return false
+
+    method consume_end_cmd.Logical
+      return (consume(Token.symbol_semicolon) or consume_eol)
+
+    method error( String mesg ).SlagError
+      return scanner.peek.error( mesg )
+
+    method must_consume_eol
+      if (not consume_eol) 
+        throw scanner.peek.error( "End of line expected." )
+      endIf
+
+    method must_consume_end_cmd
+      if (not consume_end_cmd) 
+        throw scanner.peek.error( "End of line or ';' expected." )
+      endIf
+
+    method must_read_identifier( String mesg ).String
+      while (next_is(Token.eol)) scanner.read
+      if (not next_is(Token.identifier)) throw error( mesg )
+      return scanner.read.content
+
+    method must_read_string( String mesg ).String
+      if (not next_is(Token.literal_string)) throw error( mesg )
+      return scanner.read.content
+
+    method parse_next.Logical
+      discard_eols
+      if (next_is(Token.eof)) return false
+
+      local Token t = scanner.peek
+
+      while (next_is(Token.symbol_open_bracket))
+        parse_directive
+        return true
+      endWhile
+
+      local var quals = parse_type_qualifiers
+
+      if (consume(Token.symbol_class))
+        parse_type_def( t, quals|Qualifiers.qual_class, Token.symbol_endclass, "endClass" )
+        return true
+      endIf
+
+      if (quals.is_singleton)
+        throw t.error( "Only classes can be singletons." )
+      endIf
+
+      if (consume(Token.symbol_aspect))
+        parse_type_def( t, quals|Qualifiers.qual_aspect, Token.symbol_endaspect, "endAspect" )
+        return true
+      endIf
+
+      if (consume(Token.symbol_augment))
+        parse_type_def( t, quals|Qualifiers.qual_augment, Token.symbol_endaugment, "endAugment" )
+        return true
+      endIf
+
+      if (consume(Token.symbol_compound))
+        parse_compound_def( t, quals|Qualifiers.qual_compound )
+        return true
+      endIf
+
+      if (consume(Token.symbol_enum))
+        parse_type_def( t, quals|Qualifiers.qual_enum, Token.symbol_endenum, "endEnum" )
+        return true
+      endIf
+
+      if (consume(Token.symbol_framework))
+        parse_framework
+        return true
+      endIf
+
+      if (consume(Token.symbol_useframework))
+        local var used_framework = parse_data_type
+        must_consume_eol
+        TypeManager.used_frameworks.add( used_framework )
+        return true
+      endIf
+
+      throw error( "Expected directive, class, augment, aspect, compound, enum, or framework." )
+
+    method parse_directive
+      local Token t = scanner.peek
+
+      must_consume( Token.symbol_open_bracket, "[" )
+      if (consume_id("include"))
+        t = scanner.peek
+        include( must_read_string("Quoted filename expected."), t )
+        must_consume( Token.symbol_close_bracket, "]" )
+
+      elseIf (consume_id("includeDir"))
+        t = scanner.peek
+        include_dir( must_read_string("Quoted path expected."), t )
+        must_consume( Token.symbol_close_bracket, "]" )
+
+      elseIf (consume_id("includeDefines"))
+        local String include_file = must_read_string( "Quoted path expected." )
+        must_consume( Token.symbol_close_bracket, "]" )
+
+        # Let the scanner process all the defines
+        forEach (SlagPreprocessor(find_file(include_file,t))) noAction
+
+      elseIf (consume_id("main"))
+        TypeManager.main_class = parse_data_type
+        must_consume( Token.symbol_close_bracket, "]" )
+
+      elseIf (consume(Token.symbol_requisite))
+        must_consume_id("all")
+        requisite_all = true
+        must_consume( Token.symbol_close_bracket, "]" )
+
+      else
+        throw error( "Expected include, includeDir, includeDefines, main, if, or requisite directive." )
+
+      endIf
+
+    method parse_framework
+      local var t = scanner.peek
+      local var name = must_read_identifier( "Framework name expected." )
+
+      if (next_is(Token.symbol_open_template))
+        local TypeTemplate template( t, null, name, parse_placeholder_types(false), 0, null )
+        loop
+          local Token def_t = scanner.read
+          local var def_type = def_t.type
+          if (def_type == Token.eof) throw t.error( "No matching 'endFramework' found." )
+
+          if (def_type == Token.symbol_endframework)
+            TypeManager.store_framework( template )
+            return
+          endIf
+
+          template.definition.add(def_t)
+
+        endLoop
+
+      else
+        throw t.error( "'<<' expected." )
+      endIf
+
+    method parse_data_type.TypeInfo
+      local Token t = scanner.peek
+
+      local String name
+      name = must_read_identifier( "Expected name of datatype." )
+      if (name == "ThisType")
+        if (this_type is null)
+          throw t.error( "'ThisType' is only valid within a class or aspect definition." )
+        endIf
+        return this_type
+      elseIf (name == "Delegate")
+        local StringBuilder buffer()
+        local String[] arg_types()
+        local String   return_type = null
+        buffer.print( "Delegate__" )
+        if (consume(Token.symbol_open_paren))
+          if (not consume(Token.symbol_close_paren))
+            arg_types.add( parse_data_type.to_String )
+            buffer.print( DelegateMaker.filter(arg_types.last) )
+            while (consume(Token.symbol_comma))
+              buffer.print("_")
+              arg_types.add( parse_data_type.to_String )
+              buffer.print( DelegateMaker.filter(arg_types.last) )
+            endWhile
+            must_consume( Token.symbol_close_paren, "Closing ')' expected." )
+          endIf
+        endIf
+        buffer.print( "__" )
+        if (consume(Token.symbol_member_access))
+          return_type = parse_data_type.to_String
+          buffer.print( DelegateMaker.filter(return_type) )
+        endIf
+        name = buffer.to_String
+        if (not delegate_types.contains(name))
+          delegate_types.add( name )
+          buffer.clear
+          buffer.print( "call( " )
+          if (arg_types.count?)
+            buffer.print( "$ a" (arg_types.first) )
+            local var letter = 'b'
+            forEach (arg_type in arg_types.from(1))
+              buffer.print( ", $ $" (arg_type,letter) )
+              ++letter
+            endForEach
+          endIf
+          buffer.print( " )" )
+          if (return_type?)
+            buffer.print( '.' )
+            buffer.print( return_type )
+          endIf
+          local var sig = buffer.to_String
+          buffer.clear
+          buffer.println( "class $ : DelegateType" (name) )
+          buffer.println( "  abstract method context.Object" )
+          buffer.println( "  abstract method " + sig )
+          buffer.println( "endClass" )
+          buffer.println
+          buffer.print( "class Specialized" + name + "<<$ContextType,$method_name>>( $ContextType context ) : " )
+          buffer.println( name )
+          buffer.println( "  method context.Object" )
+          buffer.println( "    return &context" )
+          buffer.println( "  method " + sig )
+          if (return_type?) buffer.print( "    return " )
+          buffer.print( "&context.$method_name(" )
+          if (arg_types.count?)
+            buffer.print( " a" )
+            local var letter = 'b'
+            forEach (arg in arg_types.from(1)) buffer.print( ", " + letter ); ++letter
+          endIf
+          buffer.println( " )" )
+          buffer.println( "endClass" )
+          local SlagParser parser( SlagPreprocessor("Generated Delegate", buffer.to_String) )
+          while (parser.parse_next) noAction
+          #print( buffer.to_String )
+        endIf
+      endIf
+
+      local var subst_tokens = parse_substitution_tokens
+      local Int32 list_dims = parse_list_dimensions
+
+      while (list_dims?)
+        if (subst_tokens?)
+          local Token[] flat_list(4)
+          flat_list.add( Token(Token.identifier,t.filename,t.pos,name) )  # original name
+          flat_list.add( Token(Token.symbol_open_template,t.filename,t.pos) )
+          local var first = true
+          forEach (subst_group in subst_tokens)
+            if (first) first = false
+            else flat_list.add( Token(Token.symbol_comma,t.filename,t.pos) )
+            forEach (token in subst_group) flat_list.add(token)
+          endForEach
+          flat_list.add( Token(Token.symbol_close_template,t.filename,t.pos) )
+          subst_tokens.clear
+          subst_tokens.add( flat_list )
+        else
+          local Token[] flat_list(1)
+          flat_list.add( Token(Token.identifier,t.filename,t.pos,name) )  # original name
+          subst_tokens = Token[][](1)
+          subst_tokens.add( flat_list )
+        endIf
+
+        name = "ArrayList"
+        --list_dims
+      endWhile
+
+      return TypeManager.get_type_reference( t, name, subst_tokens )
+
+    method parse_substitution_tokens.Token[][]
+      local var t1 = scanner.peek
+
+      if (not consume(Token.symbol_open_template)) return null
+
+      local Token[][] list(2)
+      local Token[] buffer(2)
+      local Token[] bracket_stack(4)
+      bracket_stack.add(t1)
+      while (bracket_stack.count?)
+        local var t = scanner.read
+        which (t.type)
+          case Token.eof, Token.eol: throw t1.error( "Unbalanced brackets in substitution list." )
+          case Token.symbol_open_template, Token.symbol_open_paren, Token.symbol_open_brace, Token.symbol_open_bracket:
+            bracket_stack.add(t)
+            buffer.add(t)
+          case Token.symbol_close_template:
+            local var open_t = bracket_stack.remove_last
+            if (open_t.type != Token.symbol_open_template) ++open_t.type; throw t.error( "Closing '$' expected." (open_t) )
+            if (bracket_stack.count?) buffer.add(t)
+          case Token.symbol_close_paren:
+            local var open_t = bracket_stack.remove_last
+            if (open_t.type != Token.symbol_open_paren) ++open_t.type; throw t.error( "Closing '$' expected." (open_t) )
+            buffer.add(t)
+          case Token.symbol_close_bracket:
+            local var open_t = bracket_stack.remove_last
+            if (open_t.type != Token.symbol_open_bracket) ++open_t.type; throw t.error( "Closing '$' expected." (open_t) )
+            buffer.add(t)
+          case Token.symbol_close_brace:
+            local var open_t = bracket_stack.remove_last
+            if (open_t.type != Token.symbol_open_brace) ++open_t.type; throw t.error( "Closing '$' expected." (open_t) )
+            buffer.add(t)
+          case Token.symbol_comma:
+            if (bracket_stack.count == 1)
+              list.add( buffer )
+              buffer = Token[](2)
+            else
+              buffer.add(t)
+            endIf
+          others:
+            buffer.add(t)
+        endWhich
+      endWhile
+
+      list.add( buffer )
+      return list
+
+    method parse_list_dimensions.Int32
+      local Int32 count = 0
+      while (consume(Token.symbol_dimension)) count++
+      return count
+
+
+    method parse_type_qualifiers.Qualifiers
+      local var t = scanner.peek
+      local Qualifiers quals(0)
+
+      if (requisite_all) quals |= Qualifiers.qual_requisite
+
+      loop
+        if (consume(Token.symbol_abstract)) quals |= Qualifiers.qual_abstract; nextIteration
+        if (consume(Token.symbol_underlying)) quals |= Qualifiers.qual_underlying; nextIteration 
+        if (consume(Token.symbol_overlaying)) quals |= Qualifiers.qual_overlaying; nextIteration 
+        if (consume(Token.symbol_requisite)) quals |= Qualifiers.qual_requisite; nextIteration 
+        if (consume(Token.symbol_singleton)) quals |= Qualifiers.qual_singleton; nextIteration 
+        if (consume(Token.symbol_runtime)) quals |= Qualifiers.qual_runtime; nextIteration 
+
+        if (consume(Token.symbol_deferred))
+          quals |= Qualifiers.qual_deferred
+          quals |= Qualifiers.qual_managed
+          nextIteration
+        endIf
+
+        if (quals.is_underlying and quals.is_overlaying)
+          throw t.error( "Qualifiers 'underlying' and 'overlaying' cannot be mixed." )
+        endIf
+
+        return quals
+      endLoop
+
+    method parse_property_qualifiers.Qualifiers
+      local Qualifiers quals(0)
+
+      loop
+        if (consume(Token.symbol_abstract))
+          quals |= Qualifiers.qual_abstract
+          nextIteration
+        endIf
+
+        if (consume(Token.symbol_public))
+          quals |= Qualifiers.qual_public
+          nextIteration
+        endIf
+
+        if (consume(Token.symbol_private))
+          quals |= Qualifiers.qual_private
+          nextIteration
+        endIf
+
+        if (consume(Token.symbol_readonly))
+          quals |= Qualifiers.qual_readonly
+          nextIteration
+        endIf
+
+        return quals
+      endLoop
+
+    method parse_method_qualifiers.Qualifiers
+      local Qualifiers quals(0)
+      local Token t = scanner.peek
+
+      loop
+        if (consume(Token.symbol_abstract))   quals |= Qualifiers.qual_abstract;   nextIteration
+        if (consume(Token.symbol_public))     quals |= Qualifiers.qual_public;     nextIteration
+        if (consume(Token.symbol_private))    quals |= Qualifiers.qual_private;    nextIteration
+        if (consume(Token.symbol_native))     quals |= Qualifiers.qual_native;     nextIteration
+        if (consume(Token.symbol_requisite))  quals |= Qualifiers.qual_requisite;  nextIteration
+        if (consume(Token.symbol_propagated)) quals |= Qualifiers.qual_propagated; nextIteration
+        if (consume(Token.symbol_overlaying)) quals |= Qualifiers.qual_overlaying; nextIteration
+        if (consume(Token.symbol_underlying)) quals |= Qualifiers.qual_underlying; nextIteration
+
+        if (consume(Token.symbol_generic))
+          if (SlagCompiler.allow_generic) quals |= Qualifiers.qual_generic
+          nextIteration
+        endIf
+
+        escapeLoop
+      endLoop
+
+      if (quals.is_underlying and quals.is_overlaying)
+        throw t.error( "A method cannot be both 'underlying' and 'overlaying'." )
+      endIf
+
+      if (quals.is_generic and quals.is_native)
+        throw t.error( "A method cannot be both 'generic' and 'native'." )
+      endIf
+
+      return quals
+
+    method parse_type_def( Token t, Qualifiers quals, Int32 end_type, String end_symbol )
+      local var name = must_read_identifier( "Type name expected." )
+
+      if (next_is(Token.symbol_open_template) or quals.is_augment)
+        local TypeTemplate template( t, quals, name, parse_placeholder_types(quals.is_augment), end_type, end_symbol )
+        local var found_eol = false
+        loop
+          local Token def_t = scanner.read
+          local var def_type = def_t.type
+          if (def_type == Token.eof or 
+              (def_type >= Token.first_type_def and def_type <= Token.last_type_def))
+            throw t.error( "No matching '$' found." (end_symbol) )
+          endIf
+
+          template.definition.add(def_t)
+
+          which (def_type)
+            case end_type:
+              template.definition.add( Token(Token.eol,def_t.filename,def_t.pos) )
+              TypeManager.store( template )
+              return
+
+            case Token.eol:
+              found_eol = true
+
+            case Token.symbol_semicolon:
+              if (not found_eol)
+                if (scanner.peek.type == Token.eol)
+                  end_type = Token.eol
+                endIf
+              endIf
+          endWhich
+        endLoop
+
+      else
+        parse_type_def( scanner, TypeInfo(t, name, quals), quals, end_type, end_symbol )
+      endIf
+
+    method parse_type_def( scanner, TypeInfo def, Qualifiers quals, Int32 end_type, String end_symbol )
+      if (quals.is_augment) 
+        if (quals.is_underlying or quals.is_overlaying)
+          # Change "overlaying augment Rooster ..." into:
+          #   overlaying aspect RoosterAspect234 ...
+          #   augument Rooster : RoosterAspect234;
+          local var augment_name = def.name
+          def.qualifiers = quals | Qualifiers.qual_aspect
+          def.name = "$Aspect$" (def.name,unique_id)
+          TypeManager.define_type( def )
+
+          local TypeInfo augment_def( def.t, augment_name, Qualifiers.qual_augment )
+          augment_def.base_types.add( def )
+          TypeManager.augments.add( augment_def )
+        else
+          TypeManager.augments.add( def )
+          def.qualifiers = quals
+        endIf
+      else 
+        def = TypeManager.define_type( def )
+        def.qualifiers = quals
+      endIf
+      this_type = def
+
+      if (quals.is_class and not TypeManager.main_class?) TypeManager.main_class = def
+
+      if (next_is(Token.symbol_open_paren) and def.is_class)
+        local var t = scanner.peek
+
+        local MethodInfo m_def( t, Qualifiers.qual_public, def, "init" )
+        if (def.qualifiers.is_requisite) m_def.qualifiers |= Qualifiers.qual_requisite
+        def.methods.add( m_def )
+
+        parse_param_list(m_def)
+        m_def.body = CmdStatementList(t,0)
+
+        # Turn every parameter type into an auto-initializing property.
+        forEach (param in m_def.parameters)
+          if (param.type?)
+            def.properties.add( ...
+                PropertyInfo( param.t, 
+                  def,
+                  Qualifiers.qual_public,
+                  param.type,
+                  param.name, null ))
+                  
+            param.type = null
+          endIf
+        endForEach
+      endIf
+
+      # Handle Event classes
+      #{
+      if (def.is_class and def.name.ends_with("Event") and def.name!="Event")
+        local Int32 flags
+        loop
+          if (consume_id("on_enter")) flags |= Event.on_enter
+          elseIf (consume_id("on_leave")) flags |= Event.on_leave
+          if (consume(Token.symbol_comma)) nextIteration
+          escapeLoop
+        endLoop
+
+        if (flags?)
+          local var base_name = "CustomEvent<<$," (def.name)
+          if ((flags & Event.on_both) == Event.on_both) base_name += "Event.on_both"
+          elseIf ((flags & Event.on_leave)?) base_name += "Event.on_leave"
+          else                               base_name += "Event.on_enter"
+          base_name += ">>"
+          local SlagParser parser( SlagPreprocessor("Event Base Type", base_name) )
+          local var base_type = parser.parse_data_type
+          def.base_types.add( base_type )
+        endIf
+      endIf
+      }#
+
+      if (consume(Token.symbol_colon))
+        def.base_types.add( parse_data_type )
+        while (consume(Token.symbol_comma))
+          def.base_types.add( parse_data_type )
+        endWhile
+      endIf
+
+      if (consume(Token.symbol_semicolon))
+        must_consume_eol
+        def.doc_comment = parse_doc_comment
+
+      else
+        must_consume_eol
+        def.doc_comment = parse_doc_comment
+
+        parse_member_defs( def, end_type, end_symbol )
+
+        must_consume( end_type, end_symbol )
+        must_consume_eol
+      endIf
+
+      this_type = null
+
+    method parse_compound_def( Token t, Qualifiers quals )
+      local var name = must_read_identifier( "Compound name expected." )
+
+      if (next_is(Token.symbol_open_template))
+        local TypeTemplate template( t, quals, name, parse_placeholder_types(false), 0, null )
+        loop
+          local Token def_t = scanner.read
+          local var def_type = def_t.type
+          if (def_type == Token.eof)
+            throw t.error( "End of line expected." )
+          endIf
+          template.definition.add(def_t)
+          if (def_type == Token.eol)
+            template.definition.add( Token(Token.eol,def_t.filename,def_t.pos) )
+            TypeManager.store( template )
+            return
+          endIf
+        endLoop
+      endIf
+
+      parse_compound_def( scanner, TypeInfo(t,name,quals) )
+
+    method parse_compound_def( scanner, TypeInfo def )
+      def = TypeManager.define_type( def )
+
+      must_consume( Token.symbol_open_paren, "(" )
+      local var t = scanner.peek
+      local var first = true
+      while (first or consume(Token.symbol_comma))
+        first = false
+        local var type = parse_data_type
+        if (type is TypeManager.type_var) throw t.error( "Type 'var' isn't allowed here." )
+        local var name = must_read_identifier( "Identifier expected." )
+        if (next_is(Token.symbol_assign)) throw scanner.peek.error( "Default values aren't allowed here." )
+        def.properties.add( PropertyInfo( t, def, Qualifiers.qual_public, type, name, null ) )
+        t = scanner.peek
+      endWhile
+      must_consume( Token.symbol_close_paren, ")" )
+
+      if (consume(Token.symbol_colon)) throw def.t.error( "Only classes and aspects may be extended." )
+
+      consume(Token.symbol_semicolon)  # optional on compounds
+
+      must_consume_eol
+      def.doc_comment = parse_doc_comment
+
+      # Add a dummy init() method.
+      local MethodInfo m_init( def.t, Qualifiers.qual_public, def, "init" )
+      m_init.parameters = ParameterInfo[](def.properties.count)
+      forEach (p in def.properties)
+        m_init.parameters.add( ParameterInfo( p.t, m_init, p.type, p.name, null ) )
+      endForEach
+      m_init.body = CmdStatementList(m_init.t,0)
+      def.methods.add( m_init )
+
+    method parse_placeholder_types( Logical is_augment ).String[]
+      local Token t = scanner.peek
+      if (is_augment)
+        if (not consume(Token.symbol_open_template)) return null
+      else 
+        must_consume( Token.symbol_open_template, "<<" )
+      endIf
+
+      local String[] placeholder_types(1)
+
+      placeholder_types.add( parse_placeholder_type(is_augment) )
+      while (consume(Token.symbol_comma))
+        placeholder_types.add( parse_placeholder_type(is_augment) )
+      endWhile
+
+      must_consume( Token.symbol_close_template, ">>" )
+      return placeholder_types
+
+    method parse_placeholder_type( Logical is_augment ).String
+      # Work around "compound" and "*" being symbols.
+      if (consume(Token.symbol_compound))
+        return "compound"
+      elseIf (consume(Token.symbol_times))
+        return "*"
+      elseIf (scanner.peek.type == Token.placeholder_id)
+        return scanner.read.content
+      else
+        if (is_augment) 
+          local var id = must_read_identifier( "Identifier expected." )
+          if (id != "non") return id
+          consume(Token.symbol_minus)  # optional
+          return "non-" + must_read_identifier("type category expected (e.g. 'primitive', 'reference', etc.).")
+        endIf
+        throw scanner.peek.error( //Placeholder id (e.g. "$DataType") expected.// )
+      endIf
+
+    method parse_doc_comment.String
+      local var t = scanner.peek
+      if (t.type != Token.eol or t.content is null) return null
+
+      local StringBuilder buffer()
+      buffer.println(scanner.read.content)
+      t = scanner.peek
+      while (t.type == Token.eol and t.content?)
+        buffer.println( scanner.read.content )
+        t = scanner.peek
+      endWhile
+      return buffer.to_String
+
+    method parse_param_list( MethodInfo m )
+      local Token t = scanner.peek
+      m.parameters = ParameterInfo[](1)
+      if (not consume(Token.symbol_open_paren)) return
+      if (consume(Token.symbol_close_paren)) return
+
+      parse_param(m)
+      while (consume(Token.symbol_comma))
+        parse_param(m)
+      endWhile
+
+      must_consume( Token.symbol_close_paren, ")" )
+
+    method parse_param( MethodInfo m )
+      discard_eols
+
+      local Token t = scanner.peek
+      local var type_or_id = parse_data_type
+
+      if (next_is(Token.identifier) or type_or_id.substitution_tokens?)
+        # "fn(Int32 x)" - normal parameter
+        local var data_type = type_or_id
+        if (data_type is TypeManager.type_var) throw t.error( "Type 'var' isn't allowed here." )
+
+        local String name = must_read_identifier("Identifier expected.")
+        local Cmd expr = null
+        if (consume(Token.symbol_assign)) expr = parse_expression
+        m.parameters.add( ParameterInfo( t, m, data_type, name, expr) )
+      else
+        # "fn(x)" - auto-initializer
+        local var name = type_or_id.name
+        local Cmd expr = null
+        if (consume(Token.symbol_assign))
+          expr = parse_expression
+        endIf
+        m.parameters.add( ParameterInfo(t, m, null, name, expr) )
+      endIf
+
+    method parse_member_defs( TypeInfo def, Int32 end_type, String end_symbol )
+      # try to get some METHODS by default
+      local String cur_category = "METHODS"
+      discard_eols
+      while (parse_method(def)) noAction
+
+      loop
+        discard_eols
+
+        local var t = scanner.peek
+
+        if (consume(Token.symbol_singletons))
+          cur_category = "SINGLETONS"
+          must_consume_eol
+          parse_singletons(def)
+          nextIteration
+        endIf
+
+        if (consume(Token.symbol_categories))
+          if (def.is_managed) throw def.t.error( "Deferred singletons cannot have class members." );
+          cur_category = "CATEGORIES"
+          must_consume_eol
+          parse_category_defs(def)
+          nextIteration
+        endIf
+
+        if (consume(Token.symbol_enumerate))
+          if (def.is_managed) throw def.t.error( "Deferred singletons cannot have class members." );
+          cur_category = "ENUMERATE"
+          must_consume_eol
+
+          local var singleton_type = TypeManager.get_type_reference( t, def.manager_name )
+          if (not def.singletons.contains(singleton_type)) def.singletons.add(singleton_type)
+          if (singleton_type.qualifiers is null) singleton_type.qualifiers = Qualifiers.qual_class | Qualifiers.qual_singleton
+
+          parse_enumerate_defs(singleton_type)
+          nextIteration
+        endIf
+
+        if (consume(Token.symbol_class_properties))
+          if (def.is_managed) throw def.t.error( "Deferred singletons cannot have class members." );
+          cur_category = "PROPERTIES"
+          must_consume_eol
+          if (def.is_aspect)
+            parse_properties( def, true )
+          else
+            local var singleton_type = TypeManager.get_type_reference( t, def.manager_name )
+            if (not def.singletons.contains(singleton_type)) def.singletons.add(singleton_type)
+            if (singleton_type.qualifiers is null) singleton_type.qualifiers = Qualifiers.qual_class | Qualifiers.qual_singleton
+            parse_properties( singleton_type )
+          endIf
+          nextIteration
+        endIf
+
+        if (consume(Token.symbol_class_methods))
+          if (def.is_managed) throw def.t.error( "Deferred singletons cannot have class members." );
+          cur_category = "METHODS"
+          must_consume_eol
+          if (def.is_aspect)
+            while (parse_method(def,true)) noAction
+          else
+            local var singleton_type = TypeManager.get_type_reference( t, def.manager_name )
+            if (not def.singletons.contains(singleton_type)) def.singletons.add(singleton_type)
+            if (singleton_type.qualifiers is null) singleton_type.qualifiers = Qualifiers.qual_class | Qualifiers.qual_singleton
+            while (parse_method(singleton_type)) noAction
+            nextIteration
+          endIf
+        endIf
+
+        if (consume(Token.symbol_properties))
+          cur_category = "PROPERTIES"
+          must_consume_eol
+          parse_properties( def )
+          nextIteration
+        endIf
+
+        if (consume(Token.symbol_methods))
+          cur_category = "METHODS"
+          must_consume_eol
+          while (parse_method(def)) noAction
+          nextIteration
+        endIf
+
+        if (next_is(end_type)) return
+
+        if (next_is_method)
+          throw scanner.peek.error( "Methods must be defined in a METHODS or CLASS_METHODS section." )
+        else
+          which (cur_category)
+            case "BASE_TYPES":
+              throw t.error( //Expected "BaseType1, BaseType2, ..." base type declarations, //
+                             //another member category, or the '$' keyword.// (end_symbol) )
+            case "SINGLETONS":
+              throw t.error( //Expected "SingletonType1, SingletonType2, ...", another member category, or //
+                             //the '$' keyword.// (end_symbol) )
+            case "CATEGORIES":
+              throw t.error( //Expected "monday, tuesday, ..." category declaration, //
+                             //another member category, or the '$' keyword.// (end_symbol) )
+            case "ENUMERATE":
+              throw t.error( //Expected e.g. "fade_in, active, error=100, ..." enumeration id declaration, //
+                             //another member category, or the '$' keyword.// (end_symbol) )
+            case "PROPERTIES":
+              throw t.error( //Expected "name : Type" property declaration, //
+                             //another member category, or the '$' keyword.// (end_symbol) )
+            case "METHODS","CLASS_METHODS"
+              throw t.error( "Expected 'method' keyword, another member category, "
+                             "or the '$' keyword." (end_symbol) )
+            others:
+              throw t.error(
+                  "Member category expected: PROPERTIES, METHODS, CLASS_PROPERTIES, "
+                  "CLASS_METHODS, SINGLETONS, CATEGORIES, ENUMERATE, or BASE_TYPES." )
+          endWhich
+        endIf
+      endLoop
+
+    method parse_method( TypeInfo def, Logical class_scope=false ).Logical
+      discard_eols
+
+      local Token t = scanner.peek
+
+      local var quals = parse_method_qualifiers
+
+      # only chance to bail out is if no qualifiers were read
+      if ( quals == 0 and not next_is(Token.symbol_method) ) return false
+
+      if (requisite_all) quals |= Qualifiers.qual_requisite
+      if ((quals & Qualifiers.qual_access_mask).flags == 0) quals |= Qualifiers.qual_public
+      if (class_scope) quals |= Qualifiers.qual_class_scope
+
+      must_consume( Token.symbol_method, "method" )
+
+      local String name = parse_opX
+      if (not name?) name = must_read_identifier( "Method name expected." )
+
+      local MethodInfo m( t, quals, def, name )
+      def.methods.add(m)
+
+      parse_param_list(m)
+
+      if (consume(Token.symbol_member_access)) m.return_type = parse_data_type
+      if (m.name == "init_class" and m.parameters.count == 0 and def.is_singleton)
+        m.name = "init_object"
+      endIf
+
+      local String doc_comment = null
+      consume( Token.symbol_colon )  # Colon is optional
+
+      this_method = m
+
+      if (consume(Token.eol)) 
+        doc_comment = parse_doc_comment
+        discard_eols
+        m.body = parse_multi_line_statements
+
+      elseIf (consume(Token.symbol_abstract))
+        m.qualifiers |= Qualifiers.qual_abstract
+        consume( Token.eol )
+        doc_comment = parse_doc_comment
+
+      elseIf (consume(Token.symbol_native))
+        m.qualifiers |= Qualifiers.qual_native
+        consume( Token.eol )
+        doc_comment = parse_doc_comment
+
+      else
+        m.body = parse_multi_line_statements
+      endIf
+
+      if (m.qualifiers.is_abstract and m.body? and m.body.count > 0)
+        throw m.t.error( "An abstract method cannot contain commands." )
+      endIf
+
+      m.doc_comment = doc_comment
+      if (m.body is null) m.body = CmdStatementList(t,0)
+
+      # Automatically incorporate EventListener<<EventType>> aspects
+      # for methods matching the signature "on(EventType)", where
+      # EventType is any type that includes the word "Event".
+      #{
+      if (def.is_class and m.name == "on" and m.parameters.count == 1)
+        local var param = m.parameters.first
+        if (param.type?)
+          name = param.type.name
+          if (name.ends_with("Event") and not name.contains("<<"))
+            # Incorporate EventListener<<EventType>>
+            local var listener_type = TypeManager.get_type_reference( param.t, 
+              "EventListener", param.type )
+            def.base_types.add( listener_type )
+          endIf
+        endIf
+      endIf
+      }#
+
+      return true
+
+    method next_is_method.Logical
+      local var type = scanner.peek.type
+      if (type == Token.symbol_method)     return true
+      if (type == Token.symbol_abstract)   return true
+      if (type == Token.symbol_public)     return true
+      if (type == Token.symbol_private)    return true
+      if (type == Token.symbol_native)     return true
+      if (type == Token.symbol_requisite)  return true
+      if (type == Token.symbol_propagated) return true
+      if (type == Token.symbol_overlaying) return true
+      if (type == Token.symbol_underlying) return true
+      if (type == Token.symbol_generic)    return true
+      return false
+
+    method parse_construct( Logical allow_arg_types=false ).CmdConstruct
+      local Token t
+      local TypeInfo type_or_id
+
+      # Normal construct
+      t = scanner.peek
+      local var direct = false
+      local var name = parse_opX
+      if (name?)
+        type_or_id = TypeManager.get_type_reference( t, name )
+      else
+        if (consume(Token.symbol_ampersand)) direct = true
+        if (consume_id("ThisType"))
+          type_or_id = TypeManager.get_type_reference( t, "ThisType" )
+        else
+          type_or_id = parse_data_type
+        endIf
+        if (direct) 
+          if (type_or_id.substitution_tokens?)
+            throw t.error( //Sytax error - direct property access "&var" is incompatible with substitution list "<<...>>".// )
+          else
+            type_or_id = TypeManager.get_type_reference( type_or_id.t, "&" + type_or_id.name )
+          endIf
+        endIf
+      endIf
+
+      local CmdList args = null
+      if (next_is(Token.symbol_open_paren)) 
+        if (type_or_id.name == "delegate")
+          consume( Token.symbol_open_paren )
+          local StringBuilder buffer()
+          buffer.print( parse_data_type )
+          if (consume(Token.symbol_open_paren))
+            buffer.print('(')
+            if (not consume(Token.symbol_close_paren))
+              buffer.print( parse_data_type )
+              while (consume(Token.symbol_comma))
+                buffer.print( "," + parse_data_type )
+              endWhile
+              must_consume( Token.symbol_close_paren, "Closing ')' expected." )
+            endIf
+            buffer.print(')')
+          endIf
+          must_consume( Token.symbol_close_paren, "Closing ')' expected." )
+          args = CmdList( CmdLiteralString(t,buffer.to_String) )
+
+        elseIf (type_or_id is TypeManager.type_int64)
+          # Meanually parse Int64(value) and, if value is a literal_int or literal_hex_int,
+          # make it be a CmdLiteralInt64
+          consume( Token.symbol_open_paren )
+          if (next_is(Token.literal_int))
+            local var literal = scanner.read
+            local BigInt value(literal.content)
+            args = CmdList( CmdLiteralInt64(literal, value.to_Int64) )
+          elseIf (next_is(Token.literal_hex_int))
+            local var literal = scanner.read
+            local BigInt value(literal.content,16)
+            args = CmdList( CmdLiteralInt64(literal, value.to_Int64) )
+          else
+            args = CmdList( parse_expression )
+          endIf
+          must_consume( Token.symbol_close_paren, ")" )
+        else
+          args = parse_arg_list( Token.symbol_open_paren, Token.symbol_close_paren, "(", ")", 
+            allow_arg_types )
+        endIf
+      endIf
+
+      return CmdConstruct( t, type_or_id, args)
+
+
+    method parse_singletons( TypeInfo def )
+      loop
+        discard_eols
+
+        if (not next_is(Token.identifier)) return
+
+        loop
+          local var type = parse_data_type
+          if (not def.singletons.contains(type)) def.singletons.add( type )
+          if (not consume(Token.symbol_comma)) escapeLoop
+        endLoop
+
+        must_consume_eol
+      endLoop
+
+    method parse_category_defs( TypeInfo def )
+      loop
+        discard_eols
+
+        if (not next_is(Token.identifier)) return
+
+        local var first_category = def.categories.count
+        loop
+          local var construct = parse_construct
+          if (construct.args is null) construct.args = CmdList(0)
+          def.categories.add( CategoryInfo(construct) )
+          if (not consume(Token.symbol_comma)) escapeLoop
+        endLoop
+
+        must_consume_eol
+
+        local var doc_comment = parse_doc_comment
+        if (doc_comment?)
+          forEach (category in def.categories.from(first_category))
+            category.doc_comment = doc_comment
+          endForEach
+        endIf
+      endLoop
+
+    method parse_enumerate_defs( TypeInfo def )
+      loop
+        discard_eols
+
+        if (not next_is(Token.identifier)) return
+
+        local var first_category = def.categories.count
+        loop
+          local var property = parse_property_decl
+
+          if (property.initial_value?)
+            local var assign = property.initial_value as CmdInitialAssignment
+            if (assign is null) throw property.t.error(//"id" or "id=integer" expected.//)
+
+            local var negate = assign.expression as CmdNegate
+            if (negate?)
+              local var literal = negate.operand as CmdLiteralInt32
+              if (literal?)
+                assign.expression = literal
+                literal.value = -literal.value
+              endIf
+            endIf
+
+            local var expr = assign.expression as CmdLiteralInt32
+            if (expr is null) throw assign.expression.error(//Literal integer expected.//)
+            def.next_enumerate_value = expr.value
+          endIf
+
+          property.initial_value = CmdInitialAssignment( property.t,
+            CmdLiteralInt32(property.t,def.next_enumerate_value) )
+          ++def.next_enumerate_value
+
+          property.type_context = def
+          property.qualifiers = Qualifiers.qual_public | Qualifiers.qual_class_scope | Qualifiers.qual_readonly | Qualifiers.qual_constant
+          property.type = TypeManager.type_int32
+          property.doc_comment = parse_doc_comment
+          def.properties.add( property )
+
+          if (not consume(Token.symbol_comma)) escapeLoop
+        endLoop
+
+        must_consume_eol
+      endLoop
+
+    method parse_properties( TypeInfo def, Logical class_scope=false )
+      loop
+        discard_eols
+
+        local var quals = parse_property_qualifiers
+
+        # chance to bail out here if no qualifiers read
+        if (quals == 0 and not next_is(Token.identifier)) return
+
+        local var decl_list = parse_property_decl_list
+
+        must_consume( Token.symbol_colon, ":" )
+
+        quals |= parse_property_qualifiers
+
+        if ((quals & Qualifiers.qual_access_mask).flags == 0) quals |= Qualifiers.qual_public
+        if (class_scope) quals |= Qualifiers.qual_class_scope
+
+        local var t = scanner.peek
+        local var data_type = parse_data_type
+        if (data_type is TypeManager.type_var) throw t.error( "Type 'var' isn't allowed here." )
+        must_consume_eol
+        local var doc_comment = parse_doc_comment
+
+        forEach (decl in decl_list)
+          decl.type_context = def
+          decl.qualifiers = quals
+          decl.type = data_type
+          decl.doc_comment = doc_comment
+          def.properties.add( decl )
+        endForEach
+      endLoop
+
+    method parse_property_decl_list.PropertyInfo[]
+      local PropertyInfo[] list(1)
+      list.add( parse_property_decl )
+      while (consume(Token.symbol_comma)) list.add( parse_property_decl )
+      return list
+
+    method parse_property_decl.PropertyInfo
+      discard_eols
+      local Token t = scanner.peek
+      local String name = must_read_identifier( "Identifier expected." )
+
+      local PropertyInfo decl( t, null, null, null, name, null )
+
+      if (next_is(Token.symbol_open_paren))
+        local var args = parse_arg_list( Token.symbol_open_paren, Token.symbol_close_paren,"(",  ")" )
+        decl.initial_value = CmdInitialConstructor( t, args )
+        if (next_is(Token.symbol_with))
+          throw scanner.peek.error( "Invalid location for anonymous specialized class.  Instead of \"x() with ...\" write \"x = ObjType() with ...\"." )
+        endIf
+        return decl
+      endIf
+
+      if (consume(Token.symbol_assign))
+        decl.initial_value = CmdInitialAssignment( t, parse_expression )
+      endIf
+
+      return decl
+
+    method parse_opX.String
+      if (consume_id("op"))
+        if (consume(Token.symbol_eq))          return "op=="
+        if (consume(Token.symbol_compare))     return "op<>"
+        if (consume(Token.symbol_plus))        return "op+"
+        if (consume(Token.symbol_minus))       return "op-"
+        if (consume(Token.symbol_times))       return "op*"
+        if (consume(Token.symbol_divide))      return "op/"
+        if (consume(Token.symbol_mod))         return "op%"
+        if (consume(Token.symbol_power))       return "op^"
+        if (consume(Token.symbol_ampersand))   return "op&"
+        if (consume(Token.symbol_bitwise_or))  return "op|"
+        if (consume(Token.symbol_bitwise_xor)) return "op~"
+        if (consume(Token.symbol_bitwise_not)) return "op!"
+        return "op" 
+      endIf
+      return null
+
+    method parse_multi_line_statements.CmdStatementList
+      return parse_multi_line_statements( no_terminators )
+
+    method parse_multi_line_statements( Int32[] terminators ).CmdStatementList
+      if (not next_is_statement( terminators )) return CmdStatementList(scanner.peek,0)
+
+      local CmdStatementList list(scanner.peek,10)
+
+      list.add( CmdOpenScope(list.t) )
+      loop
+        parse_statement(list,true)
+        must_consume_end_cmd
+        if (not next_is_statement(terminators)) escapeLoop
+      endLoop
+      list.add( CmdCloseScope(list.t) )
+
+      return list.trim_to_count
+
+    method next_is_statement( Int32[] terminators=no_terminators ).Logical
+      discard_eols
+
+      forEach (terminator in terminators)
+        if (next_is(terminator)) return false
+      endForEach
+
+      if (next_is_method) return false
+
+      if (scanner.peek.type >= Token.first_non_statement_start_symbol and
+          scanner.peek.type <= Token.last_non_statement_start_symbol) return false
+
+      check_out_of_place_keywords
+
+      return true
+
+    method check_out_of_place_keywords
+      local var missing = out_of_place_keywords.find( scanner.peek.type )
+      if (missing?)
+        local var pair = missing.value
+        throw error( "'$' without '$'." (pair.close,pair.open) )
+      endIf
+
+    method parse_single_line_statements.CmdStatementList
+      if (consume(Token.symbol_semicolon) or not next_is_statement) return CmdStatementList(scanner.peek,0)
+
+      local CmdStatementList list(scanner.peek,10)
+
+      loop
+        if (scanner.peek.type == Token.eol) escapeLoop
+        parse_statement(list,false)
+        if (not consume(Token.symbol_semicolon)) escapeLoop
+      endLoop
+
+      return list.trim_to_count
+
+
+    method parse_statement( CmdStatementList list, Logical allow_control_structures )
+      local Token t = scanner.peek
+
+      if (allow_control_structures)
+        which (scanner.peek.type)
+          case Token.symbol_block:      list.add( parse_block ); return
+          case Token.symbol_if:         list.add( parse_if_statement ); return
+          case Token.symbol_which:      list.add( parse_which_statement ); return
+          case Token.symbol_whichis:    list.add( parse_which_statement(true) ); return
+          case Token.symbol_contingent: list.add( parse_contingent ); return
+          case Token.symbol_try:        list.add( parse_try_statement ); return
+          case Token.symbol_loop:       list.add( parse_loop ); return
+          case Token.symbol_while:      list.add( parse_while_statement ); return
+          case Token.symbol_foreach:    list.add( parse_foreach_loop ); return
+          case Token.symbol_local:      parse_local_vars(list); return
+        endWhich
+      else
+        which (scanner.peek.type)
+          case Token.symbol_block:      throw scanner.peek.error( "Command not allowed in single-line statement body." )
+          case Token.symbol_if:         throw scanner.peek.error( "Command not allowed in single-line statement body." )
+          case Token.symbol_which:      throw scanner.peek.error( "Command not allowed in single-line statement body." )
+          case Token.symbol_contingent: throw scanner.peek.error( "Command not allowed in single-line statement body." )
+          case Token.symbol_try:        throw scanner.peek.error( "Command not allowed in single-line statement body." )
+          case Token.symbol_loop:       throw scanner.peek.error( "Command not allowed in single-line statement body." )
+          case Token.symbol_while:      throw scanner.peek.error( "Command not allowed in single-line statement body." )
+          case Token.symbol_foreach:    throw scanner.peek.error( "Command not allowed in single-line statement body." )
+          case Token.symbol_local:      throw scanner.peek.error( "Command not allowed in single-line statement body." )
+        endWhich
+      endIf
+
+      if (consume(Token.symbol_breakpoint))
+        if (scanner.peek.type == Token.literal_int)
+          list.add( CmdBreakpoint(t, scanner.read.content.to_Int32) )
+        else
+          list.add( CmdBreakpoint(t,0) )
+        endIf
+        return
+      endIf
+
+      if (consume(Token.symbol_escapeif))             list.add(create_escape_cmd(t,StructureType.if_stmt)); return
+      elseIf (consume(Token.symbol_escapewhich))      list.add(create_escape_cmd(t,StructureType.which_stmt)); return
+      elseIf (consume(Token.symbol_escapewhichis))    list.add(create_escape_cmd(t,StructureType.whichis_stmt)); return
+      elseIf (consume(Token.symbol_escapecontingent)) list.add(create_escape_cmd(t,StructureType.contingent_stmt)); return
+      elseIf (consume(Token.symbol_escapeforeach))    list.add(create_escape_cmd(t,StructureType.forEach_stmt)); return
+      elseIf (consume(Token.symbol_escapewhile))      list.add(create_escape_cmd(t,StructureType.while_stmt)); return
+      elseIf (consume(Token.symbol_escapeloop))       list.add(create_escape_cmd(t,StructureType.loop_stmt)); return
+      elseIf (consume(Token.symbol_escapetry))        list.add(create_escape_cmd(t,StructureType.try_stmt)); return
+      elseIf (consume(Token.symbol_escapeblock))      list.add(create_escape_cmd(t,StructureType.block_stmt)); return
+
+      if (consume(Token.symbol_nextiteration))
+        if (next_is(Token.identifier))
+          local var t2 = scanner.read 
+          local var label = t2.content
+          list.add( CmdNextIteration( t, must_find_iteration_id(label,t2) ) )
+        else
+          list.add( CmdNextIteration( t, must_find_iteration_id(t) ) )
+        endIf
+        return
+
+      elseIf (consume(Token.symbol_necessary))
+        must_consume( Token.symbol_open_paren, "(" )
+        local CmdNecessary cmd( t, parse_expression, 
+            must_find_structure_id( StructureType.contingent_stmt, t ) )
+        must_consume( Token.symbol_close_paren, ")" )
+        list.add(cmd)
+        return
+
+      elseIf (consume(Token.symbol_noaction))
+        return
+
+      elseIf (consume(Token.symbol_removecurrent))
+        list.add( CmdRemoveCurrent( t, must_find_foreach_in_with_named_var( t, 
+                must_read_identifier("Identifier expected.")) ) )
+        return
+      elseIf (consume(Token.symbol_return))
+        if (next_is_end_cmd) list.add( CmdReturnNil(t) )
+        else list.add( CmdReturnValue(t, parse_expression) )
+        return
+
+      elseIf (consume(Token.symbol_sufficient))
+        must_consume( Token.symbol_open_paren, "(" )
+        local CmdSufficient cmd( t, parse_expression,
+            must_find_structure_id( StructureType.contingent_stmt, t ) )
+        must_consume( Token.symbol_close_paren, ")" )
+        list.add(cmd)
+        return
+
+      elseIf (consume(Token.symbol_throw))
+        list.add( CmdThrow(t, parse_expression) )
+        return
+
+      elseIf (consume(Token.symbol_increment))
+        # expr++
+        local var expr = parse_expression
+        list.add( CmdAssign( t, expr, CmdAdd(t, duplicate(expr), CmdLiteralInt32(t,1)) ) )
+        return
+
+      elseIf (consume(Token.symbol_decrement))
+        # expr--
+        local var expr = parse_expression
+        list.add( CmdAssign( t, expr, CmdSub(t, duplicate(expr), CmdLiteralInt32(t,1)) ) )
+        return
+
+      #{
+      elseIf (next_is(Token.symbol_meta_foreach_property))
+        list.add( parse_meta_foreach_loop )
+        return
+      }#
+
+      endIf
+
+      # expression, possibly assignment or incr/decr
+      local var expr = parse_expression
+      if (next_is_end_cmd) list.add(expr); return
+
+      if (consume(Token.symbol_assign))
+        list.add( CmdAssign( t, expr, parse_expression ) )
+        return
+
+      elseIf (consume(Token.symbol_increment))
+        # expr++
+        list.add( CmdAssign( t, expr, CmdAdd(t, duplicate(expr), CmdLiteralInt32(t,1)) ) )
+        return
+
+      elseIf (consume(Token.symbol_decrement))
+        # expr--
+        list.add( CmdAssign( t, expr, CmdSub(t, duplicate(expr), CmdLiteralInt32(t,1)) ) )
+        return
+
+      else
+        if (consume(Token.symbol_add_with_assign))         list.add(CmdAssign( t, expr, CmdAdd(t,duplicate(expr),parse_expression) )); return
+        if (consume(Token.symbol_subtract_with_assign))    list.add(CmdAssign( t, expr, CmdSub(t,duplicate(expr),parse_expression) )); return
+        if (consume(Token.symbol_multiply_with_assign))    list.add(CmdAssign( t, expr, CmdMul(t,duplicate(expr),parse_expression) )); return
+        if (consume(Token.symbol_divide_with_assign))      list.add(CmdAssign( t, expr, CmdDiv(t,duplicate(expr),parse_expression) )); return
+        if (consume(Token.symbol_mod_with_assign))         list.add(CmdAssign( t, expr, CmdMod(t,duplicate(expr),parse_expression) )); return
+        if (consume(Token.symbol_power_with_assign))       list.add(CmdAssign( t, expr, CmdExp(t,duplicate(expr),parse_expression) )); return
+        if (consume(Token.symbol_bitwise_and_with_assign)) list.add(CmdAssign( t, expr, CmdAnd(t,duplicate(expr),parse_expression) )); return
+        if (consume(Token.symbol_bitwise_or_with_assign))  list.add(CmdAssign( t, expr,  CmdOr(t,duplicate(expr),parse_expression) )); return
+        if (consume(Token.symbol_bitwise_xor_with_assign)) list.add(CmdAssign( t, expr, CmdXor(t,duplicate(expr),parse_expression) )); return
+        if (consume(Token.symbol_member_with_assign)) 
+          list.add( CmdAssign( t, expr, parse_op_member(CmdMemberAccess(t, duplicate(expr), parse_construct)) ) )
+          return
+        endIf
+
+        if (expr instanceOf CmdConstruct)
+          throw expr.error( "Missing 'local' keyword before local variable declaration." )
+        endIf
+        must_consume_end_cmd  # throws an error
+      endIf
+
+    method parse_label_def.String
+      if (consume(Token.symbol_scope)) return must_read_identifier( "Label name expected." )
+      return null
+
+    method create_escape_cmd( Token t, StructureType type ).CmdEscape
+      if (next_is(Token.identifier))
+        local var t2 = scanner.read
+        local var label = t2.content
+        return CmdEscape( t, must_find_structure_id( type, label, t ) )
+      else
+        return CmdEscape( t, must_find_structure_id( type, t ) )
+      endIf
+
+    method must_find_structure_id( StructureType type, String label, Token t ).Int32
+      forEach (entry in control_structure_stack.reverse_order)
+        if (entry.label? and entry.label == label) 
+          if (entry.type is type) 
+            #entry.node.referenced = true
+            return entry.node.id
+          else 
+            throw t.error( "Escape subtype does not match the control structure referred to." )
+          endIf
+        endIf
+      endForEach
+      throw t.error( //No such control structure labeled "$" exists in the current scope.// (label) )
+
+    method must_find_structure_id( StructureType type, Token t ).Int32
+      forEach (entry in control_structure_stack.reverse_order)
+        if (entry.type is type) 
+          # entry.node.referenced = true
+          return entry.node.id
+        endIf
+      endForEach
+      throw t.error( //No such control structure exists in the current scope.// )
+
+    method must_find_iteration_id( String label, Token t ).Int32
+      forEach (entry in control_structure_stack.reverse_order)
+        if (entry.label? and entry.label == label) 
+          if (entry.type.is_loop)
+            #entry.node.referenced = true
+            return entry.node.id
+          else
+            throw t.error( 
+              //nextIteration label must refer to an iteration structure such as forEach or while.// )
+          endIf
+        endIf
+      endForEach
+      throw t.error( //No such control structure labeled "$" exists in the current scope.// (label) )
+
+    method must_find_iteration_id( Token t ).Int32
+      forEach (entry in control_structure_stack.reverse_order)
+        if (entry.type.is_loop) 
+          #entry.node.referenced = true
+          return entry.node.id
+        endIf
+      endForEach
+      throw t.error( //No enclosing iteration structure exists in the current scope.// )
+
+    method must_find_foreach_in_with_named_var( Token t, String var_name ).Int32
+      forEach (entry in control_structure_stack.reverse_order)
+        if (entry.type is StructureType.forEach_stmt)
+          if (entry.node instanceOf CmdForEachIn)
+            local var cmd = entry.node.(CmdForEachIn)
+            if (cmd.var_info.name == var_name)
+              cmd.contains_remove_current = true
+              return cmd.id
+            endIf
+          endIf
+        endIf
+      endForEach
+      throw t.error( //There is no enclosing forEach-in with a control variable named "$".// (var_name) )
+
+    method push_structure_info( StructureType type, CmdStructure node, String label )
+      if (label?)
+        forEach (entry in control_structure_stack)
+          if (entry.label? and entry.label == label)
+            throw node.error( //Label "$" is already defined in the current scope.// (label) )
+          endIf
+        endForEach
+      endIf
+      control_structure_stack.add( ControlStructureInfo(type,node,label) )
+
+    method pop_structure_info
+      control_structure_stack.remove_last
+
+    method parse_block.CmdBlock
+      local Token t = scanner.peek
+      must_consume( Token.symbol_block, "block" )
+      local var label = parse_label_def
+      must_consume_eol
+
+      local CmdBlock cmd( t, unique_id )
+      push_structure_info( StructureType.block_stmt, cmd, label )
+      cmd.body = parse_multi_line_statements(block_terminators)
+      pop_structure_info
+
+      must_consume(Token.symbol_endblock,"endBlock")
+
+      return cmd
+
+    method parse_if_statement.Cmd
+      local Token t = scanner.peek
+
+      scanner.read  # 'if'
+      local var label = parse_label_def
+      must_consume( Token.symbol_open_paren, "(" )
+      local CmdIf cmd( t, unique_id, parse_expression )
+      must_consume( Token.symbol_close_paren, ")" )
+
+      push_structure_info( StructureType.if_stmt, cmd, label )
+
+      if (consume(Token.eol))
+        # multi-line "if"
+        cmd.body = parse_multi_line_statements( if_terminators )
+
+        t = scanner.peek
+        while (consume(Token.symbol_elseif))
+          must_consume( Token.symbol_open_paren, "(" )
+          local CmdElseIf alt( t, parse_expression )
+          must_consume( Token.symbol_close_paren, ")" )
+          must_consume_eol
+          alt.body = parse_multi_line_statements( if_terminators )
+          cmd.elseifs.add( alt )
+          t = scanner.peek
+        endWhile
+
+        t = scanner.peek
+        if (consume(Token.symbol_else))
+          must_consume_eol
+          cmd.else_cmd = parse_multi_line_statements( else_terminators )
+        endIf
+
+        pop_structure_info
+
+        must_consume( Token.symbol_endif, "endIf" )
+        return cmd
+
+      else
+        # single line "if"
+        cmd.body = parse_single_line_statements
+
+        while (next_is_end_cmd and after_next_is(Token.symbol_elseif) and next_elseif_is_not_at_eol)
+          must_consume_eol
+          t = scanner.peek
+          must_consume( Token.symbol_elseif, "elseIf" )
+          must_consume( Token.symbol_open_paren, "(" )
+          local CmdElseIf alt( t, parse_expression )
+          must_consume( Token.symbol_close_paren, ")" )
+          alt.body = parse_single_line_statements
+          cmd.elseifs.add( alt )
+        endWhile
+
+        if (next_is_end_cmd and after_next_is(Token.symbol_else) and scanner.peek(3).type != Token.eol)
+          must_consume_eol
+          t = scanner.peek
+          scanner.read  # 'else'
+          cmd.else_cmd = parse_single_line_statements
+        endIf
+
+        pop_structure_info
+
+        return cmd
+
+      endIf
+
+    method parse_which_statement( Logical use_is_comparison=false ).Cmd
+      local Token t = scanner.read  # 'which'
+
+      local var label = parse_label_def
+      must_consume( Token.symbol_open_paren, "(" )
+      local CmdWhich cmd( t, unique_id, parse_expression, use_is_comparison )
+      must_consume( Token.symbol_close_paren, ")" )
+      must_consume_eol
+
+      discard_eols
+
+      if (use_is_comparison) push_structure_info( StructureType.whichis_stmt, cmd, label )
+      else push_structure_info( StructureType.which_stmt, cmd, label )
+
+      local Cmd prior_case_value = null
+      t = scanner.peek
+      loop
+        if (consume(Token.symbol_case))
+          local CmdWhichCase which_case(t)
+          cmd.cases.add( which_case )
+
+          discard_eols
+          loop
+            local var t2 = scanner.peek
+            prior_case_value = parse_expression
+            which_case.values.add( prior_case_value )
+            if (not consume(Token.symbol_comma)) escapeLoop
+          endLoop
+          if (not consume(Token.eol)) must_consume( Token.symbol_colon, ":', end of line, or '," )
+
+          if (use_is_comparison) which_case.body = parse_multi_line_statements( whichis_terminators )
+          else which_case.body = parse_multi_line_statements( which_terminators )
+
+        elseIf (consume(Token.symbol_casenext))
+          if (not consume(Token.eol)) must_consume( Token.symbol_colon, ":', end of line, or '," )
+
+          if (prior_case_value is null)
+            prior_case_value = CmdLiteralInt32(t,1)
+          elseIf (prior_case_value instanceOf CmdLiteralInt32)
+            prior_case_value = CmdLiteralInt32( t, prior_case_value.(CmdLiteralInt32).value + 1 )
+          else
+            throw t.error( "Use of 'caseNext' requires that the previous value "
+                "also be a 'caseNext' or a literal integer case." )
+          endIf
+
+          local CmdWhichCase which_case(t)
+          cmd.cases.add( which_case )
+          which_case.values.add( prior_case_value )
+
+          if (use_is_comparison) which_case.body = parse_multi_line_statements( whichis_terminators )
+          else which_case.body = parse_multi_line_statements( which_terminators )
+        else
+          escapeLoop
+        endIf
+        t = scanner.peek
+      endLoop
+
+      if (consume(Token.symbol_others))
+        if (not consume(Token.eol)) must_consume( Token.symbol_colon, ":', end of line, or '," )
+        cmd.case_others = parse_multi_line_statements( others_terminators ) 
+        prior_case_value = cmd.case_others
+      endIf
+
+      if (use_is_comparison)
+        if (prior_case_value?)
+          must_consume( Token.symbol_endwhichis, "endWhichIs" )
+        else
+          must_consume( Token.symbol_endwhichis, "endWhichIs', 'case', or 'others" )
+        endIf
+      else
+        if (prior_case_value?)
+          must_consume( Token.symbol_endwhich, "endWhich" )
+        else
+        must_consume( Token.symbol_endwhich, "endWhich', 'case', or 'others" )
+        endIf
+      endIf
+
+      pop_structure_info
+      return cmd
+
+    method parse_contingent.CmdContingent
+      local Token t = scanner.peek
+      must_consume( Token.symbol_contingent, "contingent" )
+      local var label = parse_label_def
+      must_consume_eol
+
+      local CmdContingent cmd( t, unique_id )
+      push_structure_info( StructureType.contingent_stmt, cmd, label )
+      cmd.body = parse_multi_line_statements(contingent_terminators)
+
+      if (consume(Token.symbol_satisfied))
+        cmd.satisfied_body = parse_multi_line_statements(satisfied_terminators)
+      endIf
+      if (consume(Token.symbol_unsatisfied))
+        cmd.unsatisfied_body = parse_multi_line_statements(unsatisfied_terminators)
+      endIf
+
+      pop_structure_info
+
+      must_consume(Token.symbol_endcontingent,"endContingent")
+
+      return cmd
+
+    method parse_try_statement.Cmd
+      local CmdTry cmd( scanner.read, unique_id )
+      local var label = parse_label_def
+      must_consume_eol
+
+      push_structure_info( StructureType.try_stmt, cmd, label )
+      cmd.body = parse_multi_line_statements( try_terminators )
+
+      local Token t = scanner.peek
+      while (consume(Token.symbol_catch))
+        must_consume( Token.symbol_open_paren, "(" )
+        local var type = parse_data_type
+        local var name = must_read_identifier( "Catch variable name expected." )
+        local LocalVarInfo v( type.t, this_method, type, name )
+        v.is_catch_var = true
+        must_consume( Token.symbol_close_paren,  ")" )
+        must_consume_eol
+
+        local CmdCatch cmd_catch( t,v,parse_multi_line_statements( try_terminators ) )
+        if (cmd_catch.body.statements.count?)
+          cmd_catch.body.statements.add( CmdLocalVarDeclaration(t,v), 0 )  # insert after open scope
+        else
+          cmd_catch.body.statements.add( CmdOpenScope(t) )
+          cmd_catch.body.statements.add( CmdLocalVarDeclaration(t,v) )
+          cmd_catch.body.statements.add( CmdCloseScope(t) )
+        endIf
+        cmd.catches.add( cmd_catch )
+        t = scanner.peek
+      endWhile
+
+      pop_structure_info
+
+      must_consume( Token.symbol_endtry, "endTry" )
+
+      return cmd
+
+    method parse_loop.Cmd
+      local CmdLoop cmd( scanner.read, unique_id )
+      local var label = parse_label_def
+      if (consume(Token.eol))
+        # multi-line loop
+        push_structure_info( StructureType.loop_stmt, cmd, label )
+        cmd.body = parse_multi_line_statements( loop_terminators )
+        pop_structure_info
+        must_consume( Token.symbol_endloop, "endLoop" )
+        return cmd
+      else
+        # single line loop
+        push_structure_info( StructureType.loop_stmt, cmd, label )
+        cmd.body = parse_single_line_statements
+        pop_structure_info
+        return cmd
+      endIf
+
+    method parse_while_statement.Cmd
+      local var t = scanner.read
+      local var label = parse_label_def
+      must_consume( Token.symbol_open_paren, "(" )
+      local CmdWhile cmd( t, unique_id, parse_expression )
+      must_consume( Token.symbol_close_paren, ")" )
+
+      push_structure_info( StructureType.while_stmt, cmd, label )
+
+      if (consume(Token.eol))
+        cmd.body = parse_multi_line_statements( while_terminators )
+        must_consume( Token.symbol_endwhile, "endWhile" )
+      else
+        cmd.body = parse_single_line_statements
+      endIf
+
+      pop_structure_info
+
+      return cmd
+
+    method parse_foreach_loop.Cmd
+      local Token t = scanner.read
+      local var label = parse_label_def
+      must_consume( Token.symbol_open_paren, "(" )
+      local var expression = parse_expression
+      local var t2 = expression.t
+
+      local CmdForEach cmd = null
+
+      if (consume(Token.symbol_close_paren))
+        # forEach(1..10)
+        local LocalVarInfo v( t2, this_method, TypeManager.get_type_reference(t,"var"), ".local_"+unique_id )
+        cmd = CmdForEachIn( t, unique_id, v, expression )
+
+      else
+        # forEach (var_name [in|of] control )
+        if (expression notInstanceOf CmdConstruct or expression.(CmdConstruct).args? or 
+          expression.(CmdConstruct).type_or_id.substitution_tokens?)
+          throw expression.error( "Control variable name expected." )
+        endIf
+        local LocalVarInfo v( t2, this_method, TypeManager.get_type_reference(t,"var"), expression.(CmdConstruct).type_or_id.name )
+
+        if (consume(Token.symbol_in)) cmd = CmdForEachIn( t, unique_id, v, parse_expression )
+        elseIf (consume(Token.symbol_of)) cmd = CmdForEachOf( t, unique_id, v, parse_expression )
+        else throw error( "'in' or 'of' expected." )
+
+        must_consume( Token.symbol_close_paren, ")" )
+      endIf
+
+      push_structure_info( StructureType.forEach_stmt, cmd, label )
+
+      if (consume(Token.eol))
+        cmd.body = parse_multi_line_statements( foreach_terminators )
+        must_consume( Token.symbol_endforeach, "endForEach" )
+      else
+        cmd.body = parse_single_line_statements
+      endIf
+
+      pop_structure_info
+      return cmd
+
+    #{
+    method parse_meta_foreach_loop.Cmd
+      local Token t = scanner.read
+
+      local CmdMetaForEachProperty cmd( t )
+
+      if (consume(Token.eol))
+        cmd.body = parse_multi_line_statements( meta_foreach_terminators )
+        must_consume( Token.symbol_meta_endforeach, "[endForEach]" )
+      else
+        cmd.body = parse_single_line_statements
+      endIf
+
+      return cmd
+    }#
+
+    method parse_local_vars( CmdStatementList cmd_list )
+      consume( Token.symbol_local )
+      local var t = scanner.peek
+      local var type = parse_data_type
+      if (scanner.peek.type != Token.identifier) throw t.error( "Missing type." )
+
+      local var first = true
+      while (first or consume(Token.symbol_comma))
+        t = scanner.peek
+        local String name = must_read_identifier( "Local variable name expected." )
+        first = false
+        local LocalVarInfo v( t, this_method, type, name )
+        local var decl = CmdLocalVarDeclaration(t,v)
+        cmd_list.add( decl )
+        if (consume(Token.symbol_assign))
+          decl.initial_value = parse_expression
+        elseIf (scanner.peek.type == Token.symbol_open_paren)
+          local var args = parse_arg_list( Token.symbol_open_paren, Token.symbol_close_paren,"(",  ")" )
+          cmd_list.add( CmdAssignNewObject( t, v, CmdInitialConstructor(t,args) ) )
+        else
+          cmd_list.add( CmdAssignZeroValue( t, v ) )
+        endIf
+      endWhile
+
+    method parse_expression.Cmd
+      return parse_op_range
+
+    method parse_op_range.Cmd
+      local var first = parse_op_logical_xor
+
+      local Token t = scanner.peek
+      local CmdRange range
+      if (consume(Token.symbol_upto)) range = CmdRangeLE(t,first,parse_op_logical_xor)
+      elseIf (consume(Token.symbol_uptolessthan)) range = CmdRangeLT(t,first,parse_op_logical_xor)
+      elseIf (consume(Token.symbol_downtogreaterthan)) range = CmdRangeGT(t,first,parse_op_logical_xor)
+      elseIf (consume(Token.symbol_downto)) range = CmdRangeGE(t,first,parse_op_logical_xor)
+      else return first
+
+      if (consume(Token.symbol_step)) range.increment = parse_op_logical_xor
+
+      return range
+
+    method parse_op_logical_xor.Cmd
+      local var lhs = parse_op_logical_or
+      return parse_op_logical_xor( lhs )
+
+    method parse_op_logical_xor( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+      if (consume(Token.symbol_logical_xor))
+        return parse_op_logical_xor( CmdLogicalXor(t,lhs,parse_op_logical_or) )
+      else
+        return lhs
+      endIf
+
+    method parse_op_logical_or.Cmd
+      local var lhs = parse_op_logical_and
+      return parse_op_logical_or( lhs )
+
+    method parse_op_logical_or( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+      if (consume(Token.symbol_logical_or))
+        return parse_op_logical_or( CmdLazyOr(t,lhs,parse_op_logical_and) )
+      else
+        return lhs
+      endIf
+
+    method parse_op_logical_and.Cmd
+      local var lhs = parse_op_relational
+      return parse_op_logical_and( lhs )
+
+    method parse_op_logical_and( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+      if (consume(Token.symbol_logical_and))
+        return parse_op_logical_and( CmdLazyAnd(t,lhs,parse_op_relational) )
+      else
+        return lhs
+      endIf
+
+    method parse_op_relational.Cmd
+      local Cmd lhs = parse_op_bitwise_xor
+      return parse_op_relational( lhs )
+
+    method parse_op_relational( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+      if (consume(Token.symbol_eq))      return CmdCmpEQ( t, lhs, parse_op_bitwise_xor )
+      elseIf (consume(Token.symbol_le))  return CmdCmpLE( t, lhs, parse_op_bitwise_xor )
+      elseIf (consume(Token.symbol_ge))  return CmdCmpGE( t, lhs, parse_op_bitwise_xor )
+      elseIf (consume(Token.symbol_lt))  return CmdCmpLT( t, lhs, parse_op_bitwise_xor )
+      elseIf (consume(Token.symbol_gt))  return CmdCmpGT( t, lhs, parse_op_bitwise_xor )
+      elseIf (consume(Token.symbol_ne))  return CmdCmpNE( t, lhs, parse_op_bitwise_xor )
+      elseIf (consume(Token.symbol_is))  return CmdCmpIs( t, lhs, parse_op_bitwise_xor )
+      elseIf (consume(Token.symbol_isnot))  return CmdCmpIsNot( t, lhs, parse_op_bitwise_xor )
+      elseIf (consume(Token.symbol_as))     return CmdAs( t, lhs, parse_data_type )
+      elseIf (consume(Token.symbol_coerce_as))     return CmdCoerceAs( t, lhs, parse_data_type )
+      elseIf (consume(Token.symbol_instanceof))    return CmdCmpInstanceOf( t, lhs, parse_data_type )
+      elseIf (consume(Token.symbol_notinstanceof)) return CmdNot( t, CmdCmpInstanceOf( t, lhs, parse_data_type ) )
+      elseIf (consume(Token.symbol_compare)) return CmdCompare( t, lhs, parse_op_bitwise_xor )
+      else return lhs
+
+    method parse_op_bitwise_xor.Cmd
+      local var lhs = parse_op_bitwise_or
+      return parse_op_bitwise_xor( lhs )
+
+    method parse_op_bitwise_xor( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+      if (consume(Token.symbol_bitwise_xor))
+        return parse_op_bitwise_xor( CmdXor(t,lhs,parse_op_bitwise_or) )
+      endIf
+      return lhs
+
+    method parse_op_bitwise_or.Cmd
+      local var lhs = parse_op_bitwise_and
+      return parse_op_bitwise_or( lhs )
+
+    method parse_op_bitwise_or( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+      if (consume(Token.symbol_bitwise_or))
+        return parse_op_bitwise_or( CmdOr(t,lhs,parse_op_bitwise_and) )
+      endIf
+      return lhs
+
+    method parse_op_bitwise_and.Cmd
+      local var lhs = parse_op_summation
+      return parse_op_bitwise_and( lhs )
+
+    method parse_op_bitwise_and( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+      if (consume(Token.symbol_ampersand))
+        return parse_op_bitwise_and( CmdAnd(t,lhs,parse_op_summation) )
+      endIf
+      return lhs
+
+    method parse_op_summation.Cmd
+      local var lhs = parse_op_product
+      return parse_op_summation( lhs )
+
+    method parse_op_summation( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+      if (consume(Token.symbol_plus))
+        return parse_op_summation( CmdAdd(t,lhs,parse_op_product) )
+      elseIf (consume(Token.symbol_minus))
+        return parse_op_summation( CmdSub(t,lhs,parse_op_product) )
+      else
+        return lhs
+      endIf
+
+    method parse_op_product.Cmd
+      local var lhs = parse_op_exponent
+      return parse_op_product( lhs )
+
+    method parse_op_product( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+      if (consume(Token.symbol_times))
+        return parse_op_product( CmdMul(t,lhs,parse_op_exponent) )
+      elseIf (consume(Token.symbol_divide))
+        return parse_op_product( CmdDiv(t,lhs,parse_op_exponent) )
+      elseIf (consume(Token.symbol_mod))
+        return parse_op_product( CmdMod(t,lhs,parse_op_exponent) )
+      else
+        return lhs
+      endIf
+
+    method parse_op_exponent.Cmd
+      local var lhs = parse_op_unary
+      return parse_op_exponent( lhs )
+
+    method parse_op_exponent( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+      if (consume(Token.symbol_power))
+        return parse_op_exponent( CmdExp(t,lhs,parse_op_unary) )
+      endIf
+      return lhs
+
+    method parse_op_unary.Cmd
+      local Token t = scanner.peek
+
+      if (consume(Token.symbol_plus))
+        return parse_op_unary
+      elseIf (consume(Token.symbol_minus))
+        return CmdNegate( t, parse_op_unary )
+      elseIf (consume(Token.symbol_bitwise_not))
+        return CmdNot( t, parse_op_unary )
+      elseIf (consume(Token.symbol_logical_not))
+        return CmdLogicalNot( t, parse_op_unary )
+      else
+        return parse_op_query_valid
+      endIf
+
+    method parse_op_query_valid.Cmd
+      local var operand = parse_op_member
+      local Token t = scanner.peek
+      if (consume(Token.symbol_logicalize))
+        operand = CmdLogicalize( t, operand )
+
+        # Any question mark after the first is redundant
+        while (consume(Token.symbol_logicalize)) noAction
+      endIf
+      return operand
+
+    method parse_op_member.Cmd
+      local Token t = scanner.peek
+
+      local var lhs = parse_op_term
+      return parse_op_member( lhs )
+
+    method parse_op_member( Cmd lhs ).Cmd
+      local Token t = scanner.peek
+
+      if (consume(Token.symbol_member_access))
+        if (consume(Token.symbol_open_paren))
+          local var cast_type = parse_data_type
+          must_consume(Token.symbol_close_paren,")")
+          return parse_op_member( CmdCast(t, lhs, cast_type) )
+        #elseIf (next_is_id("listen_to"))
+          #return parse_op_member( remap_listen_to(lhs) ) 
+        else
+          return parse_op_member( CmdMemberAccess(t, lhs, parse_construct) )
+        endIf
+      endIf
+
+      if (consume(Token.symbol_open_bracket)) # [
+        local var t2 = scanner.peek
+        local CmdList args(1)
+        args.add( parse_expression )
+        while (consume(Token.symbol_comma)) args.add( parse_expression )
+        must_consume(Token.symbol_close_bracket,"]")
+        return parse_op_member( CmdAccessIndex(t, lhs, args) )
+      endIf
+
+      return lhs
+
+    method parse_op_term.Cmd
+      discard_eols
+
+      local Token t = scanner.peek
+
+      if (consume(Token.symbol_open_paren))
+        t = scanner.peek
+        local var expr = parse_expression
+        must_consume( Token.symbol_close_paren, ")" )
+        return expr
+      endIf
+
+      if (next_is(Token.symbol_open_brace))
+        local CmdImplicitListLiteral list( t, 
+            parse_arg_list(Token.symbol_open_brace, Token.symbol_close_brace,"{","}") )
+        return list
+      endIf
+
+      if (consume(Token.symbol_insert_underlying))
+        return CmdUnderlyingCall(t)
+      endIf
+
+      if (next_is(Token.literal_string))
+        local String text = scanner.read.content
+        if (next_is(Token.symbol_open_paren))
+          local var args = parse_arg_list( Token.symbol_open_paren, Token.symbol_close_paren,"(", ")" )
+          return CmdFormattedString( t, text, args )
+        endIf
+
+        return CmdLiteralString( t, text )
+      endIf
+
+      # construct or explicit list literal
+      if (next_is(Token.symbol_ampersand)) return parse_construct
+
+      if (next_is(Token.identifier))
+        #if (next_is_id("listen_to")) 
+          #return remap_listen_to( CmdConstruct(scanner.peek,"this") )
+        #endIf
+
+        local var construct = parse_construct(true)
+
+        if (construct.args?)
+          contingent
+            forEach (arg in construct.args)
+              sufficient (arg instanceOf InlineClassPropertyDeclaration)
+            endForEach
+            escapeContingent
+
+          satisfied
+            local ParameterInfo[] params(construct.args.count)
+            forEach (index of construct.args)
+              local var arg = construct.args[index]
+              local var decl = arg as InlineClassPropertyDeclaration
+              if (decl?)
+                params.add( ParameterInfo(t, null, decl.of_type, decl.id, null) )
+                construct.args[index] = decl.expression
+              else
+                local var construct_arg = arg as CmdConstruct
+                if (construct_arg is null or construct_arg.args?)
+                  throw arg.error("Single identifer expected for arg-property without type.")
+                endIf
+                params.add( ParameterInfo(t, null, null, construct_arg.name, null) )
+              endIf
+            endForEach
+
+            must_consume(Token.symbol_with,"with")
+            local var ctor = parse_anonymous_class(construct)
+            local var type = ctor.type_or_id
+
+            local MethodInfo m( t, Qualifiers.qual_public, type, "init" )
+            if (type.qualifiers.is_requisite) m.qualifiers |= Qualifiers.qual_requisite
+            type.methods.add(m)
+
+            # fix missing link to containing method context
+            forEach (p in params) p.method_context = m
+
+            m.parameters = params
+            m.body = CmdStatementList(t,0)
+
+            # Turn every parameter type into an auto-initializing property.
+            forEach (param in m.parameters)
+              if (param.type?)
+                type.properties.add( ...
+                    PropertyInfo( param.t, 
+                      type,
+                      Qualifiers.qual_public,
+                      param.type,
+                      param.name, null ))
+                      
+                param.type = null
+              endIf
+            endForEach
+            return ctor
+          endContingent
+        endIf
+
+        if (next_is(Token.symbol_with))
+          return parse_anonymous_class(construct)
+        endIf
+
+        if (next_is(Token.symbol_open_brace))
+          # TypeName{ list def }
+          if (construct.args?)
+            throw construct.error( "Literal list type cannot have arguments." )
+          endIf
+          local var args = parse_arg_list( Token.symbol_open_brace, Token.symbol_close_brace,"{", "}" )
+          local CmdExplicitListLiteral list( t, construct.type_or_id, args )
+          return list
+        endIf
+
+        return construct
+      endIf
+
+      if (next_is(Token.symbol_open_bracket))
+        return parse_meta_expression
+      endIf
+
+      #{
+      if (consume(Token.symbol_meta_property_name))
+        return CmdMetaPropertyName(t)
+      endIf
+      }#
+
+      if (next_is(Token.literal_char))
+        return CmdLiteralChar( t, scanner.read.content[0] )
+      endIf
+
+      if (next_is(Token.literal_int))
+        t = scanner.read
+        local BigInt value(t.content)
+        if (value.is_valid_Int32) return CmdLiteralInt32( t, value.to_Int32 )
+        elseIf (value.is_valid_Int64) return CmdLiteralInt64( t, value.to_Int64 )
+        else println(value.to_String(16)); value.is_valid_Int64; throw t.error("Integer value too large.")
+      endIf
+
+      if (next_is(Token.literal_hex_int))
+        t = scanner.read
+        local BigInt value(t.content,16)
+        local Cmd result
+        if (t.content.count <= 8)
+          result = CmdLiteralInt32( t, Int32(value.to_Int64) )
+        elseIf (t.content.count <= 16)
+          if (value >= value_2e63) result = CmdLiteralInt64( t, (value-value_2e64).to_Int64 )
+          else result = CmdLiteralInt64( t, value.to_Int64 )
+        else
+          throw t.error("Integer hex value too large.")
+        endIf
+        return result
+      endIf
+
+      if (next_is(Token.literal_real))
+        t = scanner.read
+        local var value = (t.content.to_Int64(16) as Real64)
+        return CmdLiteralReal64( t, value )
+      endIf
+
+      if (next_is(Token.literal_logical))
+        local Logical value
+        which (scanner.read.content)
+          case "true":  value = true
+          case "false": value = false
+          others:       throw Error( "Illegal boolean value " )
+        endWhich
+        return CmdLiteralLogical(t,value)
+      endIf
+
+      if (consume(Token.literal_null)) return CmdLiteralNull(t)
+
+      if (consume(Token.symbol_duplicate))
+        must_consume( Token.symbol_open_paren, "(" )
+        local var t2 = scanner.peek
+        local var expr = parse_expression
+        must_consume( Token.symbol_close_paren, ")" )
+        return CmdDuplicate( t, expr )
+      endIf
+
+      check_out_of_place_keywords
+      throw scanner.peek.error( "Unrecognized syntax in expression: ($)" (scanner.peek)  )
+
+    method parse_meta_expression.Cmd
+      consume( Token.symbol_open_bracket )
+      local var t = scanner.peek
+      #{
+      if (consume_id("string"))
+        local Cmd result
+        if (consume(Token.symbol_meta_property_name))
+          result = CmdMetaStringPropertyName( t )
+        elseIf (consume(Token.symbol_meta_property_type))
+          result = CmdMetaStringPropertyType( t )
+        else
+          result = CmdLiteralString( t, must_read_identifier("Identifier expected.") )
+        endIf
+        must_consume( Token.symbol_close_bracket, "]" )
+        return result
+      endIf
+      }#
+      throw t.error( "Unrecognized meta expression." )
+
+      #{
+      local var t = scanner.peek
+      must_consume("[")
+      local StringBuilder buffer()
+      local var first = true
+      while (not consume("]"))
+        if (first) first = false
+        else buffer.print(' ')
+        buffer.print( scanner.read.content )
+      endWhile
+      return MetaExpression( t, buffer.to_String )
+      }#
+
+    method parse_anonymous_class( CmdConstruct construct ).CmdConstruct
+      local TypeInfo def = TypeManager.define_type( ...
+        TypeInfo(scanner.read,"Specialized$_$"(construct.name.before_first("<<"),unique_id),Qualifiers.qual_class) )
+      def.base_types.add( construct.type_or_id )
+
+      parse_member_defs( def, Token.symbol_endwith, "endWith" )
+
+      must_consume( Token.symbol_endwith, "endWith" )
+      construct.type_or_id = def
+      return construct
+
+    method parse_arg_list( Int32 open_bracket, Int32 close_bracket, 
+        String open_bracket_symbol, String close_bracket_symbol, 
+        Logical allow_arg_types=false ).CmdList:
+      discard_eols
+
+      local CmdList args(2)
+
+      must_consume( open_bracket, open_bracket_symbol )
+      discard_eols
+      if (consume(close_bracket)) return args
+
+      args.add( parse_arg(allow_arg_types,close_bracket) )
+      while (consume(Token.symbol_comma)) 
+        discard_eols
+        args.add( parse_arg(allow_arg_types,close_bracket) )
+      endWhile
+
+      discard_eols
+      if (not next_is(close_bracket))
+        throw scanner.peek.error( "Expected ',' or '$'." (close_bracket_symbol) )
+      endIf
+
+      must_consume( close_bracket, close_bracket_symbol )
+      return args
+
+    method parse_arg( Logical allow_arg_decl, Int32 close_bracket ).Cmd
+      local var expr = parse_expression
+      if (not allow_arg_decl) return expr
+      if (next_is(Token.symbol_comma) or next_is(close_bracket) or next_is(Token.eol)) return expr
+
+      local TypeInfo of_type
+      contingent
+        necessary (expr instanceOf CmdConstruct)
+        of_type = expr.(CmdConstruct).type_or_id
+        necessary (expr.(CmdConstruct).args is null)
+      unsatisfied
+        throw expr.error( "Syntax error in argument-property declaration." )
+      endContingent
+
+      local String id
+      if (consume(Token.symbol_assign))
+        id = of_type.name
+        of_type = null
+        expr = parse_expression
+      else
+        expr = parse_expression
+        contingent
+          necessary (expr instanceOf CmdConstruct)
+          id = expr.(CmdConstruct).name
+          necessary (expr.(CmdConstruct).args is null)
+        unsatisfied
+          throw expr.error( "Syntax error in argument-property declaration." )
+        endContingent
+
+        if (consume(Token.symbol_assign))
+          expr = parse_expression
+        endIf
+      endIf
+
+
+      return InlineClassPropertyDeclaration(of_type,id,expr)
+endClass
+
+class InlineClassPropertyDeclaration( TypeInfo of_type, String id, Cmd expression ) : Cmd;
+
+singleton class DelegateMaker
+  METHODS
+    method filter( String name ).String
+      local var i1 = name.index_of( "<<" )
+      while (i1 >= 0)
+        local var i2 = name.last_index_of( ">>" )
+        name = name.substring(0,i1-1) + "_of_" + name.substring(i1+2,i2-1) + name.substring(i2+2) 
+        i1 = name.index_of( "<<" )
+      endWhile
+      return name
+endClass
+

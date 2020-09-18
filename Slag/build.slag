@@ -1,0 +1,323 @@
+class Main : GoGo
+  PROPERTIES
+    bin = "bin/" + System.os      : String
+    slag_cpp_files    : FileSet
+    slagc_cpp_files   : FileSet
+    slag_files("libraries/slag/slagc","*.slag") : FileSet
+    slag_exe, slagc_exe, gogo_exe, slag_build, slagc_build, gogo_build : File
+
+  METHODS
+    method build( String cmd ):
+      if (cmd == "rebuild")
+        println( "Type ./gogo rebuild to rebuild the Slag executables." )
+        return
+      endIf
+
+      set_up
+      if (cmd == "") return
+      if (cmd == "menu" or cmd == "help") cmd = ""
+
+      cmd = menu( cmd, null, {"all","bin","libraries","slag","slagc","gogo","xclean","etc","etc-vm",
+        "slagctest","version","plasmacore install-path"} )
+      if (cmd is null) return
+
+      which (cmd)
+        case "libraries","libs": return  # already copied libraries
+        case "all","":    all
+        case "bin":      make_bin_dist
+        case "src":      make_src_dist
+        case "slag":      compile_slag
+        case "slagc":     compile_slagc
+        case "gogo":      compile_gogo
+        case "etc":       compile_etc(true)
+        case "etc-vm":    compile_etc_using_vm
+        case "slagctest": slagctest
+        case "clean":     make_clean
+        case "xclean":    make_xclean
+        case "download":  download( "plasmaworks.com/images/deathride/deathride5_thumbnail.png" )
+        case "version":
+          if (System.os == "mac")
+            execute( "mvim libraries/native/slag/slag_version.h libraries/slag/slagc/slagc.slag project.properties" )
+            touch( FileSet("libraries/slag") )
+            touch( FileSet("libraries/slag/slagc","*.slag") )
+            touch( FileSet("libraries/native/slag") )
+          elseIf (System.os == "windows")
+            execute( "gvim libraries/native/slag/slag_version.h libraries/slag/slagc/slagc.slag project.properties" )
+            touch( FileSet("libraries/slag") )
+            touch( FileSet("libraries/slag/slagc","*.slag") )
+            touch( FileSet("libraries/native/slag") )
+          elseIf (System.os == "unix")
+            execute( "vim libraries/native/slag/slag_version.h libraries/slag/slagc/slagc.slag project.properties" )
+            touch( FileSet("libraries/slag") )
+            touch( FileSet("libraries/slag/slagc","*.slag") )
+            touch( FileSet("libraries/native/slag") )
+          endIf
+        case "plasmacore install-path":
+          throw Error( //You must type "gogo plasmacore install-path", e.g. "gogo plasmacore ../game".// )
+        case "plasmacore":
+          if (command_line_args.count != 2)
+            throw Error( //You must type "gogo plasmacore install-path", e.g. "gogo plasmacore ../game".// )
+          endIf
+          install_plasmacore( command_line_args[1] )
+
+        others: throw Error( "Unsupported command: " + cmd )
+      endWhich
+
+    method set_up:
+      slag_cpp_files = FileSet(".",null)
+      slag_cpp_files.include("src/slag.cpp")
+      slag_cpp_files.include("src/gogo.cpp")
+      slag_cpp_files.include("libraries/native/slag/*")
+      slag_cpp_files.exclude("*/slag_xc.*")
+
+      slagc_cpp_files = FileSet(".",null)
+      slagc_cpp_files.include("src/slagc.cpp")
+      slagc_cpp_files.include("libraries/native/slag/*")
+      slagc_cpp_files.exclude("*/slag_vm.*")
+
+      which (System.os)
+        case "windows":
+          slag_exe = File("bin\\windows\\slag.exe")
+          slagc_exe = File("bin\\windows\\slagc.exe")
+          gogo_exe  = File("bin\\windows\\gogo.exe")
+          slag_build  = File("platforms\\windows\\Release\\slag.exe")
+          slagc_build = File("platforms\\windows\\Release\\slagc.exe")
+          gogo_build  = File("platforms\\windows\\Release\\gogo.exe")
+          copy( File("libraries/slag/gogo.slag"), Directory("bin/windows/libraries"),
+              Copy.newer_only | Copy.insert_properties )
+
+        case "mac":
+          slag_exe  = File("bin/" + System.os + "/slag")
+          slagc_exe = File("bin/" + System.os + "/slagc")
+          gogo_exe  = File("bin/" + System.os + "/gogo")
+          slag_build  = File("platforms/" + System.os + "/build/Release/slag")
+          slagc_build = File("platforms/" + System.os + "/build/Release/slagc")
+          gogo_build  = File("platforms/" + System.os + "/build/Release/gogo")
+          copy( File("libraries/slag/gogo.slag"), Directory("bin/" + System.os + "/libraries"),
+              Copy.newer_only | Copy.insert_properties )
+
+        others:
+          slag_exe  = File("bin/" + System.os + "/slag")
+          slagc_exe = File("bin/" + System.os + "/slagc")
+          gogo_exe  = File("bin/" + System.os + "/gogo")
+          slag_build  = File("bin/" + System.os + "/slag")
+          slagc_build = File("bin/" + System.os + "/slagc")
+          gogo_build  = File("bin/" + System.os + "/gogo")
+          copy( File("libraries/slag/gogo.slag"), Directory("bin/" + System.os + "/libraries"),
+              Copy.newer_only | Copy.insert_properties )
+      endWhich
+
+      copy( FileSet("libraries/slag/standard"), Directory(bin+"/libraries/standard"), 
+          Copy.insert_properties )
+      copy( FileSet("libraries/slag","*.slag",false), Directory(bin+"/libraries"), 
+          Copy.insert_properties )
+
+      which (System.os)
+        case "windows":
+          if (where("slag.exe") is null)
+            local var path = File("bin/windows").absolute_path
+            println( "*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=ATTENTION=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*" )
+            println( //You need to add the Slag executables to your system path.  To do this, click Start, right-click "Computer", and pick "Properties".  Click "Advanced system settings" (or similar) and then click "Environment Variables".  Find "Path" and edit it.  Insert the following://.word_wrap(70) )
+            println
+            println( "  $;" (path) )
+            println
+            println(//Your full path should then look like this://)
+            println
+            println( "  $;$" (path,System["Path"]) )
+            println
+            println(//Click "OK" and then close and re-open this CMD window so that the changes take effect.//.word_wrap(70) )
+            println( "*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*" )
+            println
+            System.exit(1)
+          endIf
+      endWhich
+
+    method all:
+      compile_slag
+      compile_slagc
+      compile_gogo
+
+    method compile_slag:
+      if (slag_cpp_files.newer_than(slag_build.filepath))
+        println( "> Compile 'slag'" )
+        which (System.os)
+          case "mac":
+            execute( "xcodebuild -target slag", "platforms/mac" )
+
+          case "windows":
+            println( //Load Visual Studio 2010 and open the platforms\\windows solution.  Set the build mode to Release and then right-click..build "slag" and "gogo".//.word_wrap(70) )
+            println
+            input_String( "Press [ENTER] when the build has finished." )
+
+          case "linux":
+            execute( "make slag", "platforms/linux" )
+
+          others:
+            println( "TODO: compile_slag for $" (System.os) )
+        endWhich
+        touch( slag_build )
+      endIf
+
+      if (copy( slag_build, Directory(bin) ))
+        if (System.os != "windows") chmod( bin + "/slag", "a+rx" )
+      endIf
+
+    method compile_gogo:
+      if (slag_cpp_files.newer_than(gogo_build.filepath))
+        println( "> Compile 'gogo'" )
+        which (System.os)
+          case "mac":
+            execute( "xcodebuild -target gogo", "platforms/mac" )
+
+          case "linux":
+            execute( "make gogo", "platforms/linux" )
+
+          case "windows":
+            println( //Load Visual Studio 2010 and open the platforms\\windows solution.  Set the build mode to Release and then right-click..build "slag", and "gogo".//.word_wrap(70) )
+            println
+            input_String( "Press [ENTER] when the build has finished." )
+
+          others:
+            println( "TODO: compile_slag for $" (System.os) )
+        endWhich
+
+        touch( gogo_build )
+
+        gogo_exe.delete
+        println("**********************************************************************")
+        if (System.os == "windows") println( "Run gogo again to complete gogo update." )
+        else                        println( "Run ./gogo again to complete gogo update." )
+        println("**********************************************************************")
+
+      endIf
+
+    method compile_slagc:
+      compile_slag
+      compile_etc
+
+      if (File("libraries/slag/slagc/slagc.etc").newer_than("build/slagc_xc.cpp"))
+        println( "> Cross-compiling slagc.etc into C++" )
+        local var cmd = slag_exe.filepath
+        if (System.os == "windows") cmd = "cmd /C " + cmd
+        execute(//$ libraries/slag/slagc/slagc.etc -src_path "libraries/slag/slagc;libraries/slag/standard" slagc.slag //
+          // -cpp -dest_path build// (cmd) )
+      endIf
+
+      if (File("build/slagc_xc.cpp").newer_than(slagc_build.filepath) ...
+          or slagc_cpp_files.newer_than(slagc_build.filepath))
+        println( "> Compile 'slagc'" )
+        which (System.os)
+          case "mac":
+            execute( "xcodebuild -target slagc", "platforms/mac" )
+
+          case "linux":
+            execute( "make slagc", "platforms/linux" )
+
+          case "windows":
+            println( //Load Visual Studio 2010 and open the platforms\\windowplatforms\\windows solution.  Set the build mode to Release and then right-click..build "slagc".//.word_wrap(70) )
+            println
+            input_String( "Press [ENTER] when the build has finished." )
+        endWhich
+
+        touch( slagc_build )
+      endIf
+
+      if (copy(slagc_build, Directory(bin)))
+        if (System.os != "windows") chmod( "bin/" + System.os + "/slag", "a+rx" )
+      endIf
+
+    method compile_etc_using_slagc.Logical:
+      println( "> Recompiling slagc.etc" )
+      which (System.os)
+        case "windows":
+          execute(//cmd /C slagc slagc.slag -src_path "libraries/slag/slagc;libraries/slag/standard" -dest_path "libraries/slag/slagc"//)
+
+        others:
+          execute(//slagc slagc.slag -src_path "libraries/slag/slagc;libraries/slag/standard" -dest_path "libraries/slag/slagc"//)
+      endWhich
+      return true
+
+    method compile_etc_using_vm:
+      println( "> Recompiling slagc.etc using virtual machine." )
+      which (System.os)
+        case "windows":
+          execute(//cmd /C slag.exe libraries/slag/slagc/slagc.etc slagc.slag -src_path "libraries/slag/slagc;libraries/slag/standard" -dest_path libraries/slag/slagc// )
+          
+        others:
+          execute(//slag libraries/slag/slagc/slagc.etc slagc.slag -src_path "libraries/slag/slagc;libraries/slag/standard" -dest_path libraries/slag/slagc// )
+      endWhich
+
+    method compile_etc( Logical forced=false ):
+      if (forced or slag_files.newer_than("libraries/slag/slagc/slagc.etc"))
+        if (slagc_exe.exists)
+          compile_etc_using_slagc
+        else
+          compile_etc_using_vm
+        endIf
+      endIf
+
+    method slagctest:
+      if (FileSet("libraries/slag/slagc","*.slag").newer_than("libraries/slag/slagc/slagc.etc"))
+        compile_etc
+      endIf
+      execute("slag libraries/slag/slagc/slagc.etc test.slag")
+      execute("slag test")
+
+    method make_clean:
+      delete( "platforms/" + System.os + "/build" )
+      delete( "build" )
+
+    method make_xclean:
+      delete( "bin" )
+
+    method make_bin_dist:
+      mkdir("dist")
+
+      local var zip_filename = "dist/slag-$-$-bin.zip" ...
+        (project_properties["SLAG_VERSION"],System.os)
+      delete( zip_filename )
+      zip( FileSet("bin/$"(System.os)), zip_filename, "slag/bin" )
+
+    method make_src_dist:
+      mkdir("dist")
+
+      local var dest_dir = "dist/slag-$-src" (project_properties["SLAG_VERSION"])
+      local var zip_filename = dest_dir + ".zip"
+      delete( zip_filename )
+      delete( dest_dir )
+      mkdir( dest_dir )
+      execute( "hg archive " + dest_dir )
+      zip( FileSet(dest_dir), zip_filename, "slag/" )
+      delete( dest_dir )
+
+    method install_plasmacore( String dest )
+      println( "> Install new Plasmacore project" )
+      dest = File(dest).with_forward_slashes.filepath
+
+      local var manifest = download("http://plasmaworks.com/files/plasmacore/archive/manifest.txt")
+      local String url = null
+      forEach (line in LineReader(String.create_from(manifest)))
+        if (line.begins_with("url:"))
+          url = line.after_first(' ').trim
+          escapeForEach
+        endIf
+      endForEach
+
+      mkdir( "build" )
+      File("build/temp.zip").save( download(url) )
+
+      if (dest.ends_with('/')) dest.=excluding_rightmost(1)
+      mkdir( dest )
+      dest += "/"
+      forEach (entry in ZipArchive("build/temp.zip"))
+        local var filename = entry.filename.after_first("new_project/")
+        mkdir( File(dest+filename).path )
+        File(dest+filename).save( entry.decompress )
+      endForEach
+      chmod( dest+"gogo", "a+rx" )
+      delete( "build/temp.zip" )
+
+      println( "A new Plasmacore project is installed at " + dest.excluding_rightmost(1) )
+
+endClass
+

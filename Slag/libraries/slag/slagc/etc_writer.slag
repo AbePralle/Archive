@@ -1,0 +1,852 @@
+#=====================================================================
+# etc_writer.slag
+#
+# History:
+#   2008.12.23 / Abe Pralle - Created
+#   2010.01.02 / Abe Pralle - Refactored for v3
+#=====================================================================
+
+enum CMD
+  CATEGORIES
+    cmd_set_filename_and_line
+    cmd_set_line
+    cmd_inc_line
+    cmd_structure_id
+    cmd_return_value
+    cmd_return_nil
+    cmd_block
+    cmd_trycatch
+    cmd_throw
+    cmd_if
+    cmd_contingent
+    cmd_necessary
+    cmd_sufficient
+    cmd_while
+    cmd_loop
+    cmd_escape
+    cmd_next_iteration
+    cmd_breakpoint
+    cmd_literal_string
+    cmd_literal_int64
+    cmd_literal_int32
+    cmd_literal_char
+    cmd_literal_byte
+    cmd_literal_real64
+    cmd_literal_real32
+    cmd_literal_logical_true
+    cmd_literal_logical_false
+    cmd_literal_logical_void
+    cmd_literal_null
+    cmd_this_reference
+    cmd_singleton_reference
+    cmd_singleton_write    
+    cmd_property_read
+    cmd_compound_property_read
+    cmd_local_var_read
+    cmd_property_write
+    cmd_local_var_write
+    cmd_static_call
+    cmd_dynamic_call
+    cmd_new_object
+    cmd_new_compound
+    cmd_array_create
+    cmd_array_get
+    cmd_array_set
+    cmd_narrowing_cast
+    cmd_widening_cast
+    cmd_cast_to_int64
+    cmd_cast_to_int32
+    cmd_cast_to_char
+    cmd_cast_to_byte
+    cmd_cast_to_real64
+    cmd_cast_to_real32
+    cmd_cast_to_logical
+    cmd_as
+    cmd_coerce_as
+    cmd_cmp_instance_of
+    cmd_cmp_is
+    cmd_cmp_is_not
+    cmd_cmp_is_null
+    cmd_cmp_is_not_null
+    cmd_cmp_eq
+    cmd_cmp_ne
+    cmd_cmp_le
+    cmd_cmp_lt
+    cmd_cmp_gt
+    cmd_cmp_ge
+    cmd_not
+    cmd_negate
+    cmd_add
+    cmd_sub
+    cmd_mul
+    cmd_div
+    cmd_mod
+    cmd_exp
+    cmd_and
+    cmd_or
+    cmd_xor
+    cmd_lazy_and
+    cmd_lazy_or
+    cmd_left_shifted
+    cmd_right_shifted
+    cmd_right_xshifted
+    cmd_this_property_add_and_assign
+    cmd_this_property_sub_and_assign
+    cmd_this_property_mul_and_assign
+    cmd_this_property_div_and_assign
+    cmd_this_property_mod_and_assign
+    cmd_local_var_add_and_assign
+    cmd_local_var_sub_and_assign
+    cmd_local_var_mul_and_assign
+    cmd_local_var_div_and_assign
+    cmd_local_var_mod_and_assign
+    cmd_this_property_increment
+    cmd_this_property_decrement
+    cmd_local_var_increment
+    cmd_local_var_decrement
+    cmd_array_duplicate
+endEnum
+
+
+singleton class ETCWriter
+  PROPERTIES
+    etc_version = 0x20110101 : Int32
+    platform    = "CONSOLE"  : String
+
+    out               : BitWriter
+    cur_filename      : String
+    cur_line          : Int32
+    param_info_table(512) : HashTable<<String,Int32>>
+    param_info_list(512)  : ParamInfo[]
+
+    this_type   : TypeInfo
+    this_method : MethodInfo
+
+  METHODS
+    method write( Writable<<Char>> writable )
+      write( writable.create_writer )
+
+    method write( Writer<<Char>> dest )
+      out = BitWriter(dest)
+
+      write_header( "ETC" )
+      write32( etc_version )  # bytecode version
+
+      write_header( "FILENAMES" )
+      writeX( Token.filename_list.count )
+      forEach (filepath in Token.filename_list) 
+        write_utf8( File(filepath).filename )
+      endForEach
+
+      write_header( "IDENTIFIERS" )
+      writeX( TypeManager.identifiers.count )
+      forEach (id in TypeManager.identifiers) 
+        if (id?) write_utf8( id )
+      endForEach
+
+      write_header( "TYPEINFO" )
+      writeX( TypeManager.type_list.count )
+      forEach (type in TypeManager.type_list) write_type_meta( type )
+      writeX( TypeManager.main_class.index )
+
+      write_header( "PARAMETERINFO" )
+      # Consolidated method parameter types are saved in a separate
+      # table to eliminate per-method repetition.
+      forEach (m in TypeManager.method_list)
+        local String sig = m.signature.from_first('(')
+        if (not param_info_table.contains(sig))
+          param_info_table[sig] = param_info_list.count
+          param_info_list.add( ParamInfo(m.parameters) )
+        endIf
+      endForEach
+      writeX( param_info_list.count )
+      forEach (pinfo in param_info_list) write_param_info( pinfo )
+
+      write_header( "METHODINFO" )
+      writeX( TypeManager.method_list.count )
+      forEach (m in TypeManager.method_list) write_method_meta( m )
+
+      write_header( "TYPEDEFS" )
+      forEach (type in TypeManager.type_list) write_type_def( type )
+
+      write_header( "STRINGTABLE" )
+      writeX( TypeManager.strings.count )
+      forEach (st in TypeManager.strings)
+        if (st?) write_utf8( st )
+      endForEach
+
+      write_header( "METHODDEFS" )
+      forEach (m in TypeManager.method_list) write_method_body( m )
+
+    method write_header( String header_id )
+      write8( header_id.count )
+      forEach (ch in header_id) write8(ch)
+
+    method write_type_meta( TypeInfo type )
+      writeX( TypeManager.identifiers[type.name] )
+      writeX( type.qualifiers.flags )
+
+      writeX( type.flat_base_types.count )
+      forEach (base_type in type.flat_base_types) writeX( base_type.index )
+
+      if (type.element_type?) writeX( type.element_type.index )
+      else writeX(-1)
+
+    method write_param_info( ParamInfo pinfo )
+      writeX( pinfo.parameters.count )
+      forEach (p in pinfo.parameters) writeX( p.type.index )
+
+    method write_method_meta( MethodInfo m )
+      writeX( TypeManager.identifiers[m.name] )
+      writeX( m.qualifiers.flags )
+      writeX( m.type_context.index )
+
+      writeX( param_info_table[m.signature.from_first('(')] )
+
+      if (m.return_type is null) writeX(-1)
+      else writeX( m.return_type.index )
+
+      writeX( m.num_catches )
+
+      writeX( m.local_vars.count - m.parameters.count )
+      forEach (v in m.local_vars.from(m.parameters.count)) writeX( v.type.index )
+
+
+    method write_type_def( TypeInfo type )
+      writeX( type.properties.count )
+      forEach (p in type.properties) 
+        writeX( p.type.index )
+        writeX( TypeManager.identifiers[p.name] )
+      endForEach
+      writeX( type.methods.count )
+      forEach (m in type.methods) writeX( m.index )
+
+      if (type.dispatch_table?)
+        writeX( type.dispatch_table.count )
+        forEach (m in type.dispatch_table)
+          if (m?) writeX( m.index )
+          else    writeX( -1 )
+        endForEach
+      else
+        writeX( 0 )
+      endIf
+
+    method write_method_body( MethodInfo m )
+      this_method = m
+      this_type = m.type_context
+      if (m.is_abstract and m.body.count?)
+        throw m.t.error( "[Internal] $ is abstract but has a body." (m.full_signature) )
+      endIf
+      m.body.write_etc
+        
+    method write8( Int32 value )
+      out.write( value )
+
+    method write16( Int32 value )
+      out.write( value, 16 )
+
+    method write24( Int32 value )
+      out.write( value, 24 )
+
+    method write32( Int32 value )
+      out.write( value, 32 )
+
+    method write64( Int64 value )
+      out.write_Int64( value )
+
+    method writeX( CMD cmd )
+      writeX( cmd.ordinal )
+
+    method writeX( Int32 n )
+      # %0     xxxxxxx (1 byte total)
+      # %10    xxxxxxxxxxxxxx (2 bytes)
+      # %110   xxxxxxxxxxxxxxxxxxxxx (3 bytes)
+      # %1110  xxxxxxxxxxxxxxxxxxxxxxxxxxxx (4 bytes)
+      # %11110 000xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (t5 bytes)
+      n++
+
+      if (n < 0 or n >= 0x10000000)
+        # %11110 000xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        write8( 0xf0 )
+        write32( n )
+      elseIf (n <= 0x7f)
+        # %0 xxxxxxx
+        write8( n )
+      elseIf (n <= 0x3fff)
+        # %10 xxxxxxxxxxxxxx
+        write16( 0x8000 | n )
+      elseIf (n <= 0x1fffff)
+        # %110 xxxxxxxxxxxxxxxxxxxxx
+        write24( 0xc00000 | n )
+      else  #If (n <= 0xfffffff)
+        # %1110 xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        write32( 0xe0000000 | n )
+      endIf
+
+    method write_utf8( String st )
+      local String utf8 = string_to_utf8( st )
+      writeX( st.count )
+      forEach (ch in utf8) write8(ch)
+
+    method string_to_utf8( String st ).String
+      local StringBuilder result()
+
+      forEach (ch in st)
+        if (ch < 0x80)
+          # %0xxxxxxx
+          result.print( ch )
+        elseIf (ch < 0x800)
+          # %110xxxxx 10xxxxxx
+          result.print( Char(((ch.right_shifted(6)) & 0x1f) | 0xc0) )
+          result.print( Char((ch & 0x3f) | 0x80) )
+        else
+          # %1110xxxx 10xxxxxx 10xxxxxx
+          result.print( Char(((ch.right_shifted(12)) & 15) | 0xe0) )
+          result.print( Char(((ch.right_shifted(6)) & 0x3f) | 0x80) )
+          result.print( Char((ch & 0x3f) | 0x80) )
+        endIf
+      endForEach
+
+      return result.to_String
+
+    method write_source_position( Token t )
+      if (t is null) return
+      if (t.filename isNot cur_filename)
+        cur_line = t.pos.line
+        writeX( CMD.cmd_set_filename_and_line )
+        writeX( t.file_index )
+        writeX( cur_line )
+      elseIf (t.pos.line != cur_line)
+        if (t.pos.line == cur_line+1 )
+          cur_line++
+          writeX( CMD.cmd_inc_line )
+        else
+          cur_line = t.pos.line
+          writeX( CMD.cmd_set_line )
+          writeX( cur_line )
+        endIf
+      endIf
+
+    method write_structure_id( CmdStructure cmd )
+      if (cmd.referenced)
+        writeX( CMD.cmd_structure_id )
+        writeX( cmd.id )
+      endIf
+
+endClass
+
+class ParamInfo( ParameterInfo[] parameters );
+
+augment Cmd
+    method write_etc
+      throw Error( "write_etc() undefined for type " + type_name )
+endAugment
+
+augment CmdStatementList
+    method write_etc
+      ETCWriter.writeX( statements.count )
+      forEach (statement in statements)
+        ETCWriter.write_source_position( statement.t )
+        statement.write_etc
+      endForEach
+endAugment
+
+augment CmdList
+    method write_etc
+      forEach (cmd in this) cmd.write_etc
+endAugment
+
+augment CmdEscape
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_escape )
+      ETCWriter.writeX( id )
+endAugment
+
+augment CmdNextIteration
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_next_iteration )
+      ETCWriter.writeX( id )
+endAugment
+
+augment CmdReturnNil
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_return_nil )
+endAugment
+
+augment CmdReturnValue
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_return_value )
+      operand.write_etc
+endAugment
+
+augment CmdBlock
+    method write_etc
+      ETCWriter.write_structure_id( this )
+      ETCWriter.writeX( CMD.cmd_block )
+      body.write_etc
+endAugment
+
+augment CmdTry
+    method write_etc
+      ETCWriter.write_structure_id( this )
+      ETCWriter.writeX( CMD.cmd_trycatch )
+      body.write_etc
+      ETCWriter.writeX( catches.count )
+      forEach (c in catches) c.write_etc
+endAugment
+
+augment CmdCatch
+    method write_etc
+      ETCWriter.writeX( var_info.index )
+      body.write_etc
+endAugment
+
+augment CmdThrow
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_throw )
+      operand.write_etc
+endAugment
+
+augment CmdIf
+    method write_etc
+      ETCWriter.write_structure_id( this )
+      ETCWriter.writeX( CMD.cmd_if )
+      local var num_elseifs = elseifs.count + 1
+      if (else_cmd?) num_elseifs = -num_elseifs
+
+      ETCWriter.writeX( num_elseifs )
+      condition.write_etc
+      body.write_etc
+      forEach (e in elseifs) e.write_etc
+      if (else_cmd?) else_cmd.write_etc
+endAugment
+
+augment CmdElseIf
+    method write_etc
+      condition.write_etc
+      body.write_etc
+endAugment
+
+augment CmdLoop
+    method write_etc
+      ETCWriter.write_structure_id( this )
+      ETCWriter.writeX( CMD.cmd_loop )
+      body.write_etc
+endAugment
+
+augment CmdWhile
+    method write_etc
+      ETCWriter.write_structure_id( this )
+      ETCWriter.writeX( CMD.cmd_while )
+
+      # Condition is written after body to make an optimal loop structure 
+      # (initial jump to termination test at end) easily possible.
+      body.write_etc
+      condition.write_etc
+endAugment
+
+augment CmdContingent
+    method write_etc
+      ETCWriter.write_structure_id( this )
+      ETCWriter.writeX( CMD.cmd_contingent )
+      body.write_etc
+      if (satisfied_body?)   satisfied_body.write_etc
+      else ETCWriter.writeX(0)
+      if (unsatisfied_body?) unsatisfied_body.write_etc
+      else ETCWriter.writeX(0)
+endAugment
+
+augment CmdNecessary
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_necessary )
+      ETCWriter.writeX( id )
+      operand.write_etc
+endAugment
+
+augment CmdSufficient
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_sufficient )
+      ETCWriter.writeX( id )
+      operand.write_etc
+endAugment
+
+augment CmdBreakpoint
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_breakpoint )
+      ETCWriter.writeX( id )
+endAugment
+
+augment CmdLiteralString
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_literal_string )
+      ETCWriter.writeX( TypeManager.strings[value] )
+endAugment
+
+augment CmdLiteralInt64
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_literal_int64 )
+      ETCWriter.write64( value )
+endAugment
+
+augment CmdLiteralInt32
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_literal_int32 )
+      ETCWriter.writeX( value )
+endAugment
+
+augment CmdLiteralChar
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_literal_char )
+      ETCWriter.writeX( value )
+endAugment
+
+augment CmdLiteralByte
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_literal_byte )
+      ETCWriter.writeX( value )
+endAugment
+
+augment CmdLiteralReal64
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_literal_real64 )
+      ETCWriter.write64( value as Int64 )
+endAugment
+
+augment CmdLiteralReal32
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_literal_real32 )
+      ETCWriter.writeX( value as Int32 )
+endAugment
+
+augment CmdLiteralLogical
+    method write_etc
+      which (value)
+        case true:  ETCWriter.writeX( CMD.cmd_literal_logical_true )
+        case false: ETCWriter.writeX( CMD.cmd_literal_logical_false )
+        others:     ETCWriter.writeX( CMD.cmd_literal_logical_void )
+      endWhich
+endAugment
+
+augment CmdLiteralNull
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_literal_null )
+endAugment
+
+augment CmdThisReference
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_this_reference )
+endAugment
+
+augment CmdSingletonReference
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_singleton_reference )
+      ETCWriter.writeX( of_type.index )
+endAugment
+
+augment CmdSingletonWrite
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_singleton_write )
+      ETCWriter.writeX( of_type.index )
+      new_value.write_etc
+endAugment
+
+augment CmdPropertyRead
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_property_read )
+      context.write_etc
+      ETCWriter.writeX( var_info.index )
+endAugment
+
+augment CmdCompoundPropertyRead
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_compound_property_read )
+      context.write_etc
+      ETCWriter.writeX( var_info.index )
+endAugment
+
+augment CmdLocalVarRead
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_local_var_read )
+      ETCWriter.writeX( var_info.index )
+endAugment
+
+augment CmdPropertyWrite
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_property_write )
+      context.write_etc
+      ETCWriter.writeX( var_info.index )
+      new_value.write_etc
+endAugment
+
+augment CmdLocalVarWrite
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_local_var_write )
+      ETCWriter.writeX( var_info.index )
+      new_value.write_etc
+endAugment
+
+augment CmdStaticCall
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_static_call )
+      local var index = method_info.index
+      if (index == -1)
+        throw method_info.t.error( "[Internal] $ is unvisited (called from $)." ...
+          (method_info.full_signature,ETCWriter.this_method.full_signature) )
+      endIf
+      ETCWriter.writeX( index )
+      context.write_etc
+      args.write_etc
+endAugment
+
+augment CmdDynamicCall
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_dynamic_call )
+      local var index = method_info.group.index
+      if (index == -1)
+        throw method_info.t.error( "[Internal] Bad dynamic call index for $" (method_info.full_signature) )
+      endIf
+      ETCWriter.writeX( method_info.index )
+      ETCWriter.writeX( index )
+      context.write_etc
+      args.write_etc
+endAugment
+
+augment CmdNewObject
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_new_object )
+      ETCWriter.writeX( method_info.index )
+      if (method_info.index == -1)
+        throw method_info.t.error( "[Internal] $ is unvisited (called from $)." ...
+          (method_info.full_signature,ETCWriter.this_method.full_signature) )
+      endIf
+      ETCWriter.writeX( of_type.index )
+      args.write_etc
+endAugment
+
+augment CmdNewCompound
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_new_compound )
+      ETCWriter.writeX( of_type.index )
+      forEach (arg in args.reverse_order) arg.write_etc
+endAugment
+
+augment CmdNarrowingCast
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_narrowing_cast )
+      operand.write_etc
+      ETCWriter.writeX( to_type.index )
+endAugment
+
+augment CmdWideningCast
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_widening_cast )
+      operand.write_etc
+      ETCWriter.writeX( to_type.index )
+endAugment
+
+augment CmdAs
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_as )
+      operand.write_etc
+      ETCWriter.writeX( as_type.index )
+endAugment
+
+augment CmdCoerceAs
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_coerce_as )
+      operand.write_etc
+      ETCWriter.writeX( as_type.index )
+endAugment
+
+augment CmdCmpInstanceOf
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_cmp_instance_of )
+      operand.write_etc
+      ETCWriter.writeX( of_type.index )
+endAugment
+
+augment CmdNegate
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_negate )
+      operand.write_etc
+endAugment
+
+augment CmdNot
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_not )
+      operand.write_etc
+endAugment
+
+augment CmdCastToInt64
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_cast_to_int64 )
+      operand.write_etc
+endAugment
+
+augment CmdCastToInt32
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_cast_to_int32 )
+      operand.write_etc
+endAugment
+
+augment CmdCastToChar
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_cast_to_char )
+      operand.write_etc
+endAugment
+
+augment CmdCastToByte
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_cast_to_byte )
+      operand.write_etc
+endAugment
+
+augment CmdCastToReal64
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_cast_to_real64 )
+      operand.write_etc
+endAugment
+
+augment CmdCastToReal32
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_cast_to_real32 )
+      operand.write_etc
+endAugment
+
+augment CmdCastToLogical
+  METHODS
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_cast_to_logical )
+      operand.write_etc
+endAugment
+
+augment CmdCmpRelative
+  method write_etc
+    ETCWriter.writeX( CMD.$cmd )
+    lhs.write_etc
+    rhs.write_etc
+endAugment
+
+augment CmdCmpEquivalance
+  method write_etc
+    ETCWriter.writeX( CMD.$cmd )
+    lhs.write_etc
+    rhs.write_etc
+endAugment
+
+augment CmdCmpIs
+  method write_etc
+    ETCWriter.writeX( CMD.cmd_cmp_is )
+    lhs.write_etc
+    rhs.write_etc
+endAugment
+
+augment CmdCmpIsNot
+  method write_etc
+    ETCWriter.writeX( CMD.cmd_cmp_is_not )
+    lhs.write_etc
+    rhs.write_etc
+endAugment
+
+augment CmdCmpIsNull
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_cmp_is_null )
+      operand.write_etc
+endAugment
+
+augment CmdCmpIsNotNull
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_cmp_is_not_null )
+      operand.write_etc
+endAugment
+
+augment CmdMathOp
+    method write_etc
+      ETCWriter.writeX( CMD.$cmd )
+      lhs.write_etc
+      rhs.write_etc
+endAugment
+
+augment CmdBitwiseOp
+    method write_etc
+      ETCWriter.writeX( CMD.$cmd )
+      lhs.write_etc
+      rhs.write_etc
+endAugment
+
+augment CmdLazyAnd
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_lazy_and )
+      lhs.write_etc
+      rhs.write_etc
+endAugment
+
+augment CmdLazyOr 
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_lazy_or )
+      lhs.write_etc
+      rhs.write_etc
+endAugment
+
+augment CmdBitwiseMovement
+    method write_etc
+      ETCWriter.writeX( CMD.$cmd )
+      lhs.write_etc
+      rhs.write_etc
+endAugment
+
+augment CmdArrayCreate
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_array_create )
+      ETCWriter.writeX( of_type.index )
+      size_expr.write_etc
+endAugment
+
+augment CmdArrayGet
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_array_get )
+      context.write_etc
+      index_expr.write_etc
+endAugment
+
+augment CmdArraySet
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_array_set )
+      context.write_etc
+      index_expr.write_etc
+      value_expr.write_etc
+endAugment
+
+augment CmdArrayDuplicate
+    method write_etc
+      ETCWriter.writeX( CMD.cmd_array_duplicate )
+      context.write_etc
+endAugment
+
+augment CmdModifyAndAssign
+  method write_etc
+    ETCWriter.writeX( CMD.$cmd )
+    ETCWriter.writeX( var_info.index )
+    operand.write_etc
+endAugment
+
+augment CmdStepVar
+  method write_etc
+    ETCWriter.writeX( CMD.$cmd )
+    ETCWriter.writeX( var_info.index )
+endAugment
+

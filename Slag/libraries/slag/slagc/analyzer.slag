@@ -1,0 +1,1782 @@
+#=====================================================================
+# analyzer.slag
+#
+# --------------------------------------------------------------------
+#
+# Copyright 2010 Plasmaworks LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); 
+# you may not use this file except in compliance with the License. 
+# You may obtain a copy of the License at 
+#
+#   http://www.apache.org/licenses/LICENSE-2.0 
+#
+# Unless required by applicable law or agreed to in writing, 
+# software distributed under the License is distributed on an 
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, 
+# either express or implied. See the License for the specific 
+# language governing permissions and limitations under the License.
+#
+# --------------------------------------------------------------------
+#
+# History:
+#   2009.12.19 / Abe Pralle - Revamped for slagc v3.0.
+#
+#=====================================================================
+
+[include "parser.slag"]
+
+class TestAnalyzer
+  METHODS
+    method init
+      try
+        local Stopwatch timer()
+        local SlagParser parser()
+        parser.include( "standard.slag" )
+        parser.parse("test.slag")
+        println( timer )
+        if (not SlagAnalyzer.analyze_parsed_types) Errors.print
+        println( timer )
+      catch (SlagError err)
+        println( err )
+      endTry
+endClass
+
+singleton class Context
+  PROPERTIES
+    local_var_table     : LocalVarTable
+    implicit_context    : TypeInfo[]
+    this_type           : TypeInfo
+    this_method         : MethodInfo
+    underlying_m        : MethodInfo
+
+    id_remap_table            : HashTable<<Int32,Int32>>
+      # Used to give duplicated aspect control structures unique ids
+
+    referenced_structures     : HashSet<<Int32>>
+      # Used to avoid writing out the ID for EVERY structure
+
+    next_iteration_injections : HashTable<<Int32,Cmd>>
+    foreach_fixups            : Int32[]
+
+    #meta_properties() : PropertyInfo[]
+
+
+  METHODS
+    method init( this_type, this_method, Logical resolve_phase=true )
+      if (resolve_phase)
+        local_var_table = LocalVarTable(this_method)
+        implicit_context = TypeInfo[](2)
+        id_remap_table = HashTable<<Int32,Int32>>(8,2)
+        next_iteration_injections = HashTable<<Int32,Cmd>>(4,1)
+        foreach_fixups = Int32[](4)
+      else
+        referenced_structures = HashSet<<Int32>>(8,2)
+      endIf
+
+      underlying_m = this_method.underlying_m
+
+    method create_duplicate.Context
+      local Context new_context = Context(this_type,this_method,false)
+      new_context.local_var_table = local_var_table
+      new_context.implicit_context = implicit_context
+      new_context.this_type = this_type
+      new_context.this_method = this_method
+      new_context.underlying_m = underlying_m
+      new_context.id_remap_table = id_remap_table
+      new_context.referenced_structures = referenced_structures
+      new_context.next_iteration_injections = next_iteration_injections
+      new_context.foreach_fixups = foreach_fixups
+      return new_context
+
+endClass
+
+singleton class SlagAnalyzer
+  PROPERTIES
+
+  METHODS
+    method init
+
+    method analyze_parsed_types.Logical
+      if (TypeManager.main_class is null)
+        Errors.add( SlagError("[Internal]", "No classes were defined - you must define at least one class to be the main class.") )
+        return false
+      endIf
+      if (TypeManager.main_class.placeholder_types?)
+        Errors.add(TypeManager.main_class.error( "The main class cannot be a type template." ))
+        return false
+      endIf
+
+      TypeManager.main_class.qualifiers |= Qualifiers.qual_requisite
+
+      # Integrate general augments in with their target types.
+      store_general_augments
+      if (Errors.any) return false
+
+      # Make the SlagDoc type requisite
+      if (SlagCompiler.slagdoc_type?)
+        local SlagParser parser( SlagPreprocessor("SlagDoc Type Name",SlagCompiler.slagdoc_type) )
+        TypeManager.doc_type = parser.parse_data_type
+        TypeManager.doc_type.prep
+        forEach (m in TypeManager.doc_type.methods)
+          m.qualifiers |= Qualifiers.qual_requisite
+        endForEach
+        TypeManager.doc_type.qualifiers |= Qualifiers.qual_requisite
+      endIf
+
+      # Make the Help type requisite
+      if (SlagCompiler.help_type?)
+        local SlagParser parser( SlagPreprocessor("Help Type Name",SlagCompiler.help_type.before_first("::")) )
+        TypeManager.help_type = parser.parse_data_type
+        TypeManager.help_type.prep
+        forEach (m in TypeManager.help_type.methods)
+          m.qualifiers |= Qualifiers.qual_requisite
+        endForEach
+        TypeManager.help_type.qualifiers |= Qualifiers.qual_requisite
+      endIf
+
+      # Discover 'runtime' types and generate a "TypeX : RuntimeType" for
+      # each.
+      forEach (type in TypeManager.types.to_List)
+        if (type.qualifiers? and type.is_class and type isNot TypeManager.type_null)
+          type.discover_runtime_types
+        endIf
+      endForEach
+      if (Errors.any) return false
+
+
+      # Prep types
+      forEach (type in TypeManager.types.to_List)
+        if (type.qualifiers? and type.is_requisite)
+          type.qualifiers |= Qualifiers.qual_requisite
+          try
+            type.prep
+          catch (SlagError err)
+            if (Errors.add(err)) return false
+          endTry
+        endIf
+      endForEach
+      if (Errors.any) return false
+
+      # Resolve operations on every requisite class and every
+      # requisite method of every requisite class.
+      forEach (type in TypeManager.types.to_List)
+        if (type.qualifiers? and type.is_requisite)
+          try
+            type.resolve
+            if (type.is_class)
+              forEach (m in type.methods)
+                if (m.is_requisite) 
+                  try
+                    m.resolve
+                  catch (SlagError err)
+                    if (Errors.add(err)) return false
+                  endTry
+                endIf
+              endForEach
+            endIf
+          catch (SlagError err)
+            Errors.add(err)
+            return false
+          endTry
+        endIf
+      endForEach
+
+      # Resolve main init() method.
+      try
+        local var m_init = TypeManager.main_class.find_method( "init()" )
+        if (m_init is null) 
+          throw TypeManager.main_class.t.error( 
+            //You must define "method init:" in main class $ as a program starting point."// ...
+            (TypeManager.main_class) )
+        endIf
+        m_init.resolve
+        m_init.called = true
+
+      catch (SlagError err)
+        Errors.add(err)
+      endTry
+      if (Errors.any) return false
+
+      # Collect flat list of used types ordered by property and then
+      # base class dependency.
+      forEach (type in TypeManager.types)
+        if (type.resolved) collect_type(type)
+      endForEach
+
+      # Register each 'runtime' class that by adding a line
+      # to Runtime::set_up(), then re-resolve set_up().
+      #{
+      local var m_runtime_setup = TypeInfo.type_runtime.must_find_method("set_up()")
+      m_runtime_setup.resolved = false
+      forEach (type in TypeManager.type_list)
+        if (type.is_runtime)
+          local var t = type.t
+          local var creator_type = TypeManager.get_type_reference( t, "RuntimeCreator", type )
+
+          m_runtime_setup.body.add(
+            CmdMemberAccess( t,
+              CmdConstruct( t, "runtime_creators" ),
+              CmdConstruct( t, "set",
+                CmdList(
+                  CmdLiteralString( t, type.name ),
+                  CmdConstruct( t, creator_type, CmdList() )
+                )
+              )
+            )
+          )
+        endIf
+      endForEach
+      m_runtime_setup.resolve
+      }#
+
+      # Mark appropriate types with the requires_cleanup flag.
+      forEach (type in TypeManager.type_list)
+        if (type.instance_of(TypeManager.type_requires_cleanup))
+          type.qualifiers |= Qualifiers.qual_requires_cleanup
+        endIf
+      endForEach
+
+      # Clear the bodies of aspect methods, mark singletons with their indices
+      forEach (type in TypeManager.type_list) 
+        if (type.is_aspect)
+          forEach (m in type.methods) 
+            m.body.statements.clear
+            m.supports_inlining = false
+          endForEach
+        endIf
+        forEach (m in type.methods) 
+          if (m.body.count == 0) m.qualifiers |= Qualifiers.qual_empty_body
+        endForEach
+      endForEach
+
+      # Mark extended types as such
+      forEach (type in TypeManager.type_list)
+        if (type.is_class and type isNot TypeManager.type_object)
+          type.base_class.is_extended = true
+        endIf
+      endForEach
+
+      # Remove unresolved, abstract, and aspect methods from method groups
+      forEach (group in TypeManager.method_groups)
+        forEach (m in group.methods)
+          if (m.is_abstract or not m.resolved or m.type_context.is_aspect)
+            removeCurrent m
+          endIf
+        endForEach
+      endForEach
+
+      # - Collect methods into a big list.
+      # - Figure out which structures we have to save a unique id for.
+      # - See how many times parameters & context are accessed for possible 
+      #   inlining in finalize_calls.
+      forEach (type in TypeManager.type_list)
+        forEach (m in type.methods)
+          if (m.resolved) 
+            if (not m.collected) 
+              m.collected = true
+              m.index = TypeManager.method_list.count
+              TypeManager.method_list.add(m)
+              if (not m.finalize_structure_info) return false
+            endIf
+          else 
+            removeCurrent m
+          endIf
+        endForEach
+      endForEach
+      if (Errors.any) return false
+
+      # Collect resolved methods and finalize calls.
+      # This turns dynamic calls into static calls if a method
+      # group only contains one method or if the method was
+      # never overridden.
+      forEach (m in TypeManager.method_list)
+        try
+          if (not m.finalize_calls) return false
+        catch (SlagError err)
+          Errors.add(err)
+          return false
+        endTry
+      endForEach
+
+      # Use each aspect's list of incorporating classes to create
+      # a list of "overrides" 
+      forEach (type in TypeManager.type_list)
+        if (type.is_aspect)
+          forEach (m in type.methods)
+            forEach (t2 in type.incorporating_classes)
+              local var entry = t2.methods_by_signature.find(m.signature)
+              if (entry?)
+                local var m2 = entry.value
+                if (m2.resolved) 
+                  m.overrides.add( m2 )
+                  #println( "  " + m.overrides.last.full_signature )
+                endIf
+              endIf
+            endForEach
+          endForEach
+        endIf
+      endForEach
+
+      # Clear the method groups list and re-collect by filling
+      # from dynamic calls only.
+      TypeManager.method_groups = HashTable<<String,MethodGroup>>()
+      forEach (m in TypeManager.method_list) m.group = null
+      forEach (m in TypeManager.method_list)
+        if (m.body?) m.body.group_dynamic_methods
+      endForEach
+
+      # And finalize_calls one more time to maybe convert
+      # some more dynamic calls to static calls.
+      forEach (m in TypeManager.method_list)
+        try
+          if (not m.finalize_calls) return false
+        catch (SlagError err)
+          Errors.add(err)
+          return false
+        endTry
+      endForEach
+
+
+      # Collect method groups with more than 1 method that will
+      # be used to create dispatch tables.
+      local var num_method_groups = 0
+      forEach (group in TypeManager.method_groups)
+        if (group.count > 1) 
+          group.index = num_method_groups
+          ++num_method_groups
+          TypeManager.method_group_list.add(group)
+          group.mark_called
+        endIf
+      endForEach
+
+      # Remove uncalled (inlined) methods
+      local var m_index = 0
+      forEach (m in TypeManager.method_list)
+        if (not (m.is_requisite or m.called)) 
+          m.index=-1
+          removeCurrent m
+        else 
+          m.index = m_index; ++m_index
+        endIf
+      endForEach
+
+      forEach (type in TypeManager.type_list)
+        forEach (m in type.methods)
+          if (m.index == -1) removeCurrent m
+        endForEach
+      endForEach
+
+      # Create dispatch tables
+      forEach (type in TypeManager.type_list)
+        if (type.is_class)
+          type.dispatch_table = ListOf<<MethodInfo>>[num_method_groups]
+          forEach (m in type.methods)
+            if (m.group?)
+              local var index = m.group.index
+              if (index >= 0)
+                type.dispatch_table[index] = m
+              endIf
+            endIf
+          endForEach
+        endIf
+      endForEach
+
+      # Collect identifiers.  Collect types by themselves first 
+      # so that types[index] has name identifiers[index].
+      forEach (type in TypeManager.type_list) TypeManager.identifiers[type.name]
+
+      forEach (type in TypeManager.type_list) 
+        forEach (p in type.properties) TypeManager.identifiers[p.name]
+        forEach (m in type.methods) 
+          TypeManager.identifiers[m.name]
+          forEach (p in m.parameters) TypeManager.identifiers[p.type.name]
+          forEach (v in m.local_vars) TypeManager.identifiers[v.type.name]
+        endForEach
+      endForEach
+
+      # Collect miscellaneous info.
+      local var next_singleton_index = 0
+      forEach (type in TypeManager.type_list) 
+        if (type.is_singleton)
+          if (type.is_managed)
+            # Managed singletons aren't actually singletons - get rid of that flag
+            type.qualifiers &= !Qualifiers.qual_singleton
+          else
+            type.singleton_index = next_singleton_index; ++next_singleton_index
+          endIf
+        endIf
+      endForEach
+
+      forEach (m in TypeManager.method_list)
+        m.calculate_local_var_offsets
+      endForEach
+
+      if (TypeManager.doc_type?) TypeManager.doc_type.write_slagdoc
+      if (TypeManager.help_type?) TypeManager.help_type.write_help
+
+      return true
+
+    method collect_type( TypeInfo type )
+      if (type.collected) return
+      type.collected = true
+
+      forEach (p in type.properties) collect_type(p.type)
+      forEach (b in type.flat_base_types) collect_type(b)
+
+      type.index = TypeManager.type_list.count
+      TypeManager.type_list.add(type)
+
+
+    method store_general_augments
+      # General augments have been stored in with TypeTemplates.  Identify
+      # the ones that truly are general augments and move them to 
+      # a separate augments list.
+      forEach (template_group in duplicate(TypeManager.templates))
+        forEach (template in template_group)
+          if (template.qualifiers.is_augment and template.placeholder_types is null)
+            local var entry = TypeManager.types.find(template.name)
+            if (entry? and entry.value.qualifiers?)
+              # Existing type to augment
+              local TypeInfo aug( template.t, template.name )
+
+              local var t = template.t
+              local HashTable<<String,Token[]>> mappings()
+              mappings["$ThisType"] = {Token(identifier,t.filename,t.pos,template.name)}
+
+              local SlagParser parser()
+              parser.parse_type_def( TemplateReader(template.definition,mappings),
+                  aug, template.qualifiers, template.end_type, template.end_symbol )
+
+              aug = TypeManager.augments.remove_first  # TypeInfo ref could be changed
+              TypeManager.augments.add(aug)
+              removeCurrent template
+              if (template_group.count == 0)
+                TypeManager.templates.remove(template.name)
+              endIf
+            endIf
+          endIf
+        endForEach
+      endForEach
+
+      forEach (aug in TypeManager.augments)
+        try
+          local var target = TypeManager[aug.name,aug.t]
+          target.base_types.add( aug.base_types )
+          forEach (p in aug.properties)
+            p.type_context = target
+            target.properties.add( p )
+          endForEach
+          forEach (m in aug.methods)
+            m.type_context = target
+            target.methods.add( m )
+          endForEach
+          target.singletons.add( aug.singletons )
+          target.categories.add( aug.categories )
+        catch (SlagError err)
+          Errors.add(err)
+        endTry
+      endForEach
+      TypeManager.augments.clear
+
+
+    method make_zero_value( Token t, TypeInfo for_type ).Cmd
+      if (for_type.is_reference)
+        return CmdLiteralNull(t)
+
+      elseIf (for_type.is_compound)
+        local CmdList args()
+        forEach (v in for_type.properties)
+          args.add( make_zero_value(t,v.type) )
+        endForEach
+        return CmdUnresolvedNewObject( t, for_type, args )
+
+      else
+        which (for_type)
+          case TypeInfo.type_int64:   return CmdLiteralInt64(t,0)
+          case TypeInfo.type_int32:   return CmdLiteralInt32(t,0)
+          case TypeInfo.type_char:    return CmdLiteralChar(t,0)
+          case TypeInfo.type_byte:    return CmdLiteralByte(t,0)
+          case TypeInfo.type_real64:  return CmdLiteralReal64(t,0)
+          case TypeInfo.type_real32:  return CmdLiteralReal32(t,0)
+          case TypeInfo.type_logical: return CmdLiteralLogical(t,false)
+          others:
+            throw Error( "Unhandled type in make_zero_value: $" (for_type.name) )
+        endWhich
+      endIf
+
+    method visit_with_implicit_context( Cmd cmd, TypeInfo type ).Cmd
+      Context.implicit_context.add( type )
+      try
+        cmd = cmd.resolve
+        Context.implicit_context.discard_last
+      catch (SlagError err)
+        Context.implicit_context.discard_last
+        throw err
+      endTry
+
+      # This method is only called to sort out assignment values - 
+      # make sure it results in a value.
+      require_value( cmd )
+      return cmd
+
+    method require_value( Cmd expr ).TypeInfo
+      local var type = expr.type
+      if (type isNot null) return type
+
+      if (expr instanceOf CmdCall)
+        throw expr.error( "Call to $ does not return a value." (expr.(CmdCall).method_info.full_signature) )
+      else
+        #println( "type:$ expr:$" (type,expr) )
+        throw expr.error( "Expression must result in a value." )
+      endIf
+
+    method require_value( Token t, TypeInfo type )
+      if (type is null) 
+        throw t.error( "Expression must result in a value. 2" )
+      endIf
+
+    method require_reference( Token t, TypeInfo type )
+      if (type is null or not type.is_reference)
+        throw bad_value_mesg( t, type, "an object reference" )
+      endIf
+
+    method bad_value_mesg( Cmd cmd, String expected, Token t=null ).Exception
+      if (t is null) t = cmd.t
+      local var type = cmd.type
+      return bad_value_mesg( t, type, expected )
+
+    method bad_value_mesg( Token t, TypeInfo type, String expected ).Exception
+      local var mesg = "Expression must result in $ (found " (expected)
+      if (type is null) mesg += "nil)"
+      else mesg += type.name + ")"
+      return t.error( mesg )
+
+    method require_standard_numerical( Token t, TypeInfo type )
+      if (type is null or not type_is_standard_numerical(type))
+        throw bad_value_mesg( t, type, "an Int32, Int64, Real32, or Real64" )
+      endIf
+
+    method require_standard_primitive( Token t, TypeInfo type )
+      if (type is null or not (type_is_standard_numerical(type) or type.is_logical))
+        throw bad_value_mesg( t, type, "a standard primitive" )
+      endIf
+
+    method require_standard_integer( Cmd cmd )
+      local var type = cmd.type
+      if (type is null or not (type is TypeInfo.type_int32 or type is TypeInfo.type_int64))
+        throw bad_value_mesg( cmd, "an Int32 or Int64" )
+      endIf
+
+    method require_standard_integer_or_logical( Token t, TypeInfo type )
+      if (type is null or not (type is TypeInfo.type_int32 or type is TypeInfo.type_int64 or type is TypeInfo.type_logical))
+        throw bad_value_mesg( t, type, "an Int32, Int64, or Logical value" )
+      endIf
+
+    method require_type( Cmd cmd, TypeInfo required_type ).TypeInfo
+      local var type = cmd.type
+      if (type is null or not type.instance_of(required_type))
+        throw bad_value_mesg( cmd, "instanceOf " + required_type.name )
+      endIf
+      return type
+
+    method require_int32( Cmd cmd )
+      local var type = cmd.type
+      if (type isNot TypeInfo.type_int32)
+        throw bad_value_mesg( cmd, "an Int32" )
+      endIf
+
+    method require_logical( Cmd expr, Token t=null )
+      local var type = require_value( expr )
+      if (not type.instance_of(TypeInfo.type_logical))
+        throw bad_value_mesg( expr, "a Logical value", t )
+      endIf
+
+    method type_is_standard_numerical( TypeInfo type ).Logical
+      return (type is TypeInfo.type_int32 or type is TypeInfo.type_int64 or type.is_real)
+
+    method cast_compatible( Cmd value, TypeInfo to_type ).Cmd
+      local var value_type = value.type
+      if (value_type.is_reference and not value_type.instance_of(to_type)) return value
+      return create_cast( value, to_type )
+
+    method create_cast( Cmd code, TypeInfo to_type, Logical allow_logical=false ).Cmd
+      local var code_type = require_value(code)
+      require_value( code.t, to_type )
+
+      if (code_type == to_type) return code
+
+      if (not allow_logical and (code_type.is_logical xor to_type.is_logical))
+        throw code.error( "Cast required to convert to or from a logical type." )
+      endIf
+
+      if (code_type.is_reference)
+        if (to_type.is_reference)
+          # reference to reference
+          if (to_type.instance_of(code_type) or to_type.is_aspect)
+            return CmdNarrowingCast( code.t, code, to_type )
+          elseIf (code_type.instance_of(to_type))
+            return CmdWideningCast( code.t, code, to_type )
+          else
+            throw code.error( "Cast error - types are unrelated." )
+          endIf
+        else
+          # reference -> primitive/compound
+          return resolve_call( code.t, code_type, code, "to_$" (to_type.name), CmdList() )
+        endIf
+
+      elseIf (code_type.is_primitive)
+        if (to_type.is_reference)
+          # from primitive to reference
+          return resolve_call( code.t, to_type, null, "create_from", CmdList(code) )
+            # in create_cast
+        elseIf (to_type.is_primitive)
+          # primitive to primitive
+          if (to_type is TypeInfo.type_int64)
+            if (code_type is TypeInfo.type_real64 or code_type is TypeInfo.type_real32)
+              return CmdCastToInt64( code.t, code ).optimize
+            else
+              return CmdCastToInt64( code.t, CmdCastToInt32(code.t,code).optimize ).optimize
+            endIf
+
+          elseIf (to_type is TypeInfo.type_int32)
+            return CmdCastToInt32( code.t, code ).optimize
+
+          elseIf (to_type is TypeInfo.type_char)
+            return CmdCastToChar( code.t, CmdCastToInt32(code.t,code).optimize ).optimize
+
+          elseIf (to_type is TypeInfo.type_byte)
+            return CmdCastToByte( code.t, CmdCastToInt32(code.t,code).optimize ).optimize
+
+          elseIf (to_type is TypeInfo.type_logical)
+            if (code_type.is_real) return CmdCastToLogical( code.t, CmdCastToReal64(code.t,code).optimize ).optimize
+            else return CmdCastToLogical( code.t, CmdCastToInt32(code.t,code).optimize ).optimize
+
+          elseIf (to_type is TypeInfo.type_real64)
+            if (code_type is TypeInfo.type_int64 or code_type is TypeInfo.type_real32 or 
+                code_type is TypeInfo.type_int32)
+                return CmdCastToReal64( code.t, code ).optimize
+            else
+              return CmdCastToReal64( code.t, CmdCastToInt32(code.t,code).optimize ).optimize
+            endIf
+
+          elseIf (to_type is TypeInfo.type_real32)
+            if (code_type is TypeInfo.type_int64 or code_type is TypeInfo.type_real64 or 
+                code_type is TypeInfo.type_int32)
+                return CmdCastToReal32( code.t, code ).optimize
+            else
+              return CmdCastToReal32( code.t, CmdCastToInt32(code.t,code).optimize ).optimize
+            endIf
+
+          else
+            # shouldn't ever happen
+            throw code.error( "Unknown cast-to type!" )
+
+          endIf
+
+        else
+          # primitive to compound
+          throw code.error( "Cannot cast a primitive to a compound type." )
+        endIf
+
+      else
+        return resolve_call( code.t, Context.this_type, null, "to_$" (to_type.name), CmdList(code) )
+      endIf
+
+    method cast_operands_to_standard_numerical( CmdBinary cmd ).TypeInfo
+      local var type = determine_compatible_op_type( cmd.t, cmd.lhs, cmd.rhs )
+
+      require_standard_numerical( cmd.t, type )
+      cmd.lhs = create_cast( cmd.lhs, type )
+      cmd.rhs = create_cast( cmd.rhs, type )
+
+      return type
+
+    method cast_operands_to_standard_value_types( CmdBinary cmd ).TypeInfo
+      local var t = cmd.t
+      local var type = determine_compatible_op_type( t, cmd.lhs, cmd.rhs )
+
+      if (not type.is_compound) require_standard_primitive( t, type )
+
+      cmd.lhs = create_cast( cmd.lhs, type )
+      cmd.rhs = create_cast( cmd.rhs, type )
+
+      return type
+
+    method cast_operands_to_standard_integer_or_logical( CmdBinary cmd ).TypeInfo
+      local var t = cmd.t
+      local var type = determine_compatible_op_type( t, cmd.lhs, cmd.rhs )
+
+      require_standard_integer_or_logical( t, type )
+
+      cmd.lhs = create_cast( cmd.lhs, type )
+      cmd.rhs = create_cast( cmd.rhs, type )
+
+      return type
+
+    method determine_compatible_op_type( Token t, Cmd lhs, Cmd rhs ).TypeInfo
+      return determine_compatible_op_type( t, require_value(lhs), require_value(rhs) )
+
+    method determine_compatible_op_type( Token t, TypeInfo lhs_type, TypeInfo rhs_type ).TypeInfo
+      if (lhs_type.is_reference) return lhs_type
+      if (rhs_type.is_reference) return rhs_type
+
+      if (lhs_type.is_compound) return lhs_type
+      if (rhs_type.is_compound) return rhs_type
+
+      # both are primitives
+      if (lhs_type.is_logical or rhs_type.is_logical)
+        # Return Logical
+        if (lhs_type.is_logical xor rhs_type.is_logical)
+          throw t.error( "Invalid operation between types $ and $ - both operands must be logical or both must be numerical." (lhs_type,rhs_type))
+        endIf
+        return TypeInfo.type_logical
+
+      elseIf (lhs_type.is_real or rhs_type.is_real)
+        # Return Real64 or Real32
+        if (lhs_type is TypeInfo.type_real64 or rhs_type is TypeInfo.type_real64) 
+          return TypeInfo.type_real64
+        else
+          return TypeInfo.type_real32
+        endIf
+
+      else
+        # Return Int64 or Int32
+        if (lhs_type is TypeInfo.type_int64 or rhs_type is TypeInfo.type_int64)
+          return TypeInfo.type_int64
+        else
+          return TypeInfo.type_int32
+        endIf
+      endIf
+
+      throw t.error( "Invalid operation between types $ and $." (lhs_type,rhs_type))
+      
+    method prep_binary_operator( CmdBinary cmd, String operator_method_name ).Cmd
+      cmd.lhs = cmd.lhs.resolve
+      local var lhs_type = cmd.lhs.type
+      if (not cmd.lhs.type?) throw cmd.error( "Left-hand side of operator should result in a value." )
+      cmd.rhs = visit_with_implicit_context( cmd.rhs, lhs_type )
+
+      if (operator_method_name?) return operator_method_check( cmd, operator_method_name )
+      return null
+
+    method operator_method_check( CmdBinary cmd, String op_name ).Cmd
+      local var t = cmd.t
+      local var lhs_type = cmd.lhs.type
+      local var rhs_type = cmd.rhs.type
+      # E.g. call op== for references and compounds:
+      #   1) obj == rhs -> obj.op==(rhs)
+      #   2) lhs == obj -> obj::type.create_from(lhs).op==(rhs)
+      #   3) compound == rhs -> compound::type.op==(compound,compound::type.create_from(rhs))
+      #   4) lhs == compound -> compound::type.op==(compound::type.create_from(lhs),compound)
+      if (lhs_type.is_reference)
+        return resolve_call( t, lhs_type, cmd.lhs, op_name, CmdList(cmd.rhs) )
+          # in operator_method_check
+
+      elseIf (rhs_type.is_reference)
+        cmd.lhs = resolve_call( t, rhs_type, null, "create_from", CmdList(cmd.lhs) )
+        return resolve_call( t, rhs_type, cmd.lhs, op_name, CmdList(cmd.rhs) )
+          # in operator_method_check
+
+      elseIf (lhs_type.is_compound)
+        if (not lhs_type.methods_by_name.contains(op_name) ...
+            and (op_name=="op==" or op_name=="op!=")) return null
+            return resolve_call( t, lhs_type, null, op_name, CmdList(cmd.lhs,cmd.rhs) )
+          # in operator_method_check
+
+      elseIf (rhs_type.is_compound)
+        if (not rhs_type.methods_by_name.contains(op_name) ...
+            and (op_name=="op==" or op_name=="op!=")) return null
+            return resolve_call( t, rhs_type, null, op_name, CmdList(cmd.lhs,cmd.rhs) )
+          # in operator_method_check
+
+      else
+        return null
+      endIf
+
+    method create_property_get( Token t, TypeInfo type, Cmd context, String name ).Cmd
+      local PropertyInfo v
+      local var base_name = name
+      if (base_name[0] == '&') base_name = base_name.substring(1)
+
+      if (context?) 
+        # if an object context is given
+        if (not type?) throw context.error( "Context must result in a value." )
+
+        local var type_has_get_method = type.get_methods.contains(name)
+        if (type_has_get_method and (type.is_aspect or not type.get_methods[name].is_automatic))
+          local var result = resolve_call( t, type, context, name, null )
+          return result
+          # in create_property_get
+        endIf
+
+        if (type.is_aspect and name[0]=='&')
+          throw t.error("Properties may not be directly accessed using an aspect reference.")
+        endIf
+
+        v = type.find_property(base_name)
+        if (v?)
+          if (type.is_compound) 
+            return CmdCompoundPropertyRead( t, context, v )
+          else
+            return CmdPropertyRead( t, context, v )
+          endIf
+        endIf
+
+        # Don't let singletons be looked at if we have a method in this class
+        # with the proper name and zero or one parameters.
+        if (type_has_get_method) return null
+
+        # For StringIDAccess base types, map obj.id to obj.get("id")
+        if (type.instance_of(TypeManager.type_string_id_access))
+          if (type.methods_by_signature[name+"()"]?) return null
+          local var id_string = CmdLiteralString( t, name )
+          return CmdMemberAccess( t,
+              context,
+              CmdConstruct( t, "get", CmdList(id_string) )
+            ).resolve
+        endIf
+
+        # try implicit singletons
+        forEach (s in type.singletons)
+          if (s.get_methods.contains(name) or s.find_property(base_name)?)
+            local var context_has_side_effects = (not context.no_side_effects)
+            local var singleton_get = create_property_get( t, s, 
+            CmdSingletonReference(t,s).resolve, name )
+            if (singleton_get? and context_has_side_effects)
+              throw t.error( "Singleton calls cannot have a context expression." )
+            endIf
+            return singleton_get
+          endIf
+        endForEach
+
+        return null
+      endIf
+
+      if (Context.this_type.get_methods.contains(name) and
+          (Context.this_type.is_aspect or not Context.this_type.get_methods[name].is_automatic))
+        if (Context.this_method.name != name or not Context.this_type.find_property(name)?)
+          # Don't map to method if we're already in that method
+          context = CmdThisReference( t, Context.this_type )
+          return resolve_call( t, Context.this_type, context, name, null )
+            # in create_property_get
+        endIf
+      endIf
+
+      # try properties of this object
+      v = Context.this_type.find_property(base_name)
+      if (v?) 
+        context = CmdThisReference( t, Context.this_type )
+        return CmdPropertyRead( t, context, v )
+      endIf
+
+      # For StringIDAccess base types, map obj.id to obj.get("id")
+      if (Context.this_type.instance_of(TypeManager.type_string_id_access))
+        context = CmdThisReference( t, Context.this_type )
+        local var id_string = CmdLiteralString( t, name )
+        return CmdMemberAccess( t,
+            context,
+            CmdConstruct( t, "get", CmdList(id_string) )
+          ).resolve
+      endIf
+
+      # try singletons in this type
+      forEach (s in Context.this_type.singletons)
+        if (s.get_methods.contains(name) or s.find_property(base_name)?)
+          return create_property_get( t, s, CmdSingletonReference(t,s).resolve, name )
+        endIf
+      endForEach
+
+      # try singletons in implicit context types
+      forEach (c in Context.implicit_context)
+        forEach (s in c.singletons)
+          if (s.get_methods.contains(name) or s.find_property(base_name)?)
+            return create_property_get( t, s, CmdSingletonReference(t,s).resolve, name )
+          endIf
+        endForEach
+      endForEach
+
+      return null
+
+    method create_property_set( Token t, TypeInfo type, Cmd context, String name, Cmd new_value ).Cmd
+      local PropertyInfo v
+      local var base_name = name
+      if (base_name[0] == '&') base_name = base_name.substring(1)
+ 
+      if (type?) new_value = visit_with_implicit_context(new_value,type)
+
+      if (context?) 
+        if (not type?) throw context.error( "Context must result in a value." )
+
+        # if an object context is given
+        if (type.set_methods.contains(name))
+          return resolve_call( t, type, context, "$"(name), CmdList(new_value) )
+        endIf
+
+        if (type.is_aspect and name[0]=='&')
+          throw t.error("Properties may not be directly accessed using an aspect reference.")
+        endIf
+
+        v = type.find_property(base_name)
+        if (v?) 
+          if (type.is_compound) throw t.error( "Compound properties may not be written to.  "...
+              "Create a new compound with the modified properties instead." )
+          return CmdPropertyWrite( t, context, v, cast_compatible(new_value,v.type) ).resolve
+        endIf
+
+        # For StringIDAccess base types, map obj.id = value to obj.set("id",value)
+        if (type.instance_of(TypeManager.type_string_id_access))
+          local var id_string = CmdLiteralString( t, name )
+          return CmdMemberAccess( t,
+              context,
+              CmdConstruct( t, "set", CmdList(id_string,new_value) )
+            ).resolve
+        endIf
+
+        forEach (s in type.singletons)
+          if (s.set_methods.contains(name)? or s.find_property(base_name)?)
+            return create_property_set( t, s, CmdSingletonReference(t,s).resolve, name, new_value )
+          endIf
+        endForEach
+
+        return null
+      endIf
+
+      # check for local var
+      if (Context.local_var_table[name]?)
+        local var local_v = Context.local_var_table[name]
+        type = local_v.type
+        new_value = visit_with_implicit_context(new_value,type)
+        return CmdLocalVarWrite( t, local_v, cast_compatible(new_value,type) ).resolve
+      endIf
+
+      local var set_methods = Context.this_type.set_methods
+      local var have_set_method = false
+      if (set_methods.contains(name))
+        have_set_method = true
+        if (Context.this_type.is_aspect or not set_methods[name].is_automatic)
+          if (Context.this_method.name != name or not Context.this_type.find_property(name)?)
+            # Don't map to method if we're already in that method
+            context = CmdThisReference( t, Context.this_type )
+            new_value = new_value.resolve
+            require_value( new_value )
+
+            return resolve_call( t, Context.this_type, context, "$"(name), CmdList(new_value) )
+            # in create_property_set
+          else
+            have_set_method = false
+          endIf
+        endIf
+      endIf
+
+      # try properties of this object
+      v = Context.this_type.find_property(base_name)
+      if (v?) 
+        context = CmdThisReference( t, Context.this_type )
+        new_value = new_value.resolve
+        require_value( new_value )
+        if (have_set_method and new_value.type isNot v.type)
+          # call the property-set method after all
+          return resolve_call( t, Context.this_type, context, "$"(name), CmdList(new_value) )
+        endIf
+
+        local var cast_cmd = cast_compatible( new_value, v.type )
+        return CmdPropertyWrite( t, context, v, cast_cmd ).resolve
+      endIf
+
+      # For StringIDAccess base types, map obj.id = value to obj.set("id",value)
+      if (Context.this_type.instance_of(TypeManager.type_string_id_access))
+        local var id_string = CmdLiteralString( t, name )
+        context = CmdThisReference( t, Context.this_type )
+        return CmdMemberAccess( t,
+            context,
+            CmdConstruct( t, "set", CmdList(id_string,new_value) )
+          ).resolve
+      endIf
+
+      # singletons in this type
+      forEach (s in Context.this_type.singletons)
+        if (s.set_methods.contains(name) or s.find_property(base_name)?)
+          return create_property_set( t, s, CmdSingletonReference(t,s).resolve, name, new_value )
+        endIf
+      endForEach
+
+      # try singletons in all implicit context types
+      forEach (implicit_con in Context.implicit_context)
+        forEach (s in implicit_con.singletons)
+          if (s.set_methods.contains(name) or s.find_property(base_name)?)
+            return create_property_set( t, s, CmdSingletonReference(t,s).resolve, name, new_value )
+          endIf
+        endForEach
+      endForEach
+
+      if (type is null) type = Context.this_type
+      if (name[0]=='&') throw t.error( "No such property '$' in type '$'." (base_name,type) )
+      throw t.error( "No such property or local variable '$' in type '$'." (name,type) )
+
+
+    method resolve_call( Token t, TypeInfo type_context, Cmd context, 
+        String method_name, CmdList args ).Cmd
+      local var original_args = args
+      if (not args?) args = CmdList()
+
+      forEach (arg in args) require_value(arg)
+
+      #----Build list of candidate methods with the same name.----
+      local MethodInfo[] candidates()
+
+      if (method_name == "init")
+        # Special cases for object and compound initialization methods 
+        if (type_context.is_aspect)
+          throw t.error( "Aspect types cannot be instantiated as objects." )
+        elseIf (type_context.is_class)
+          local var all_inherited = true
+          forEach (m in type_context.methods_by_name[method_name])
+            # Add non-inherited init() methods first
+            if (m.type_context is type_context)
+              all_inherited = false
+              candidates.add( m )
+            endIf
+          endForEach
+          if (all_inherited?)
+            forEach (m in type_context.methods_by_name[method_name])
+              # If there are no non-inherited init() methods, add inherited
+              # init() methods.
+              if (not candidates.contains(m))
+                candidates.add( m )
+              endIf
+            endForEach
+          endIf
+        elseIf (type_context.is_compound)
+          candidates.add( type_context.methods )  # add the regular init()
+          local var base_name = type_context.name.before_first('<')
+          local var mgr_name = "$()$()$()" (base_name,"Manager",
+              type_context.name.substring(base_name.count))
+          method_name = "create_from"
+          forEach (m in TypeManager.types[mgr_name].methods_by_name["create_from"])
+            if (not candidates.contains(m)) candidates.add( m )
+          endForEach
+        endIf
+
+      else
+        # Not an init() method
+
+        # Add all methods with same name
+        forEach (m in type_context.methods_by_name[method_name])
+          if (not candidates.contains(m)) 
+            candidates.add( m )
+          endIf
+        endForEach
+
+        forEach (s in type_context.singletons)
+          forEach (m in s.methods_by_name[method_name])
+            if (not candidates.contains(m)) candidates.add( m )
+          endForEach
+        endForEach
+
+        if (not context?)
+          # Add methods from implict context
+          forEach (index of Context.implicit_context)
+            local var type = Context.implicit_context[index]
+            if (type isNot Context.this_type and Context.implicit_context.index_of(type) == index)
+              # There could be duplicates in implicit_context - this 'if' avoids them.
+              forEach (s in type.singletons)
+                forEach (m in s.methods_by_name[method_name])
+                  if (not candidates.contains(m)) 
+                    candidates.add( m )
+                  endIf
+                endForEach
+              endForEach
+            endIf
+          endForEach
+        endIf
+
+        if (type_context.is_aspect)
+          # Add methods from class "Object"
+          forEach (m in TypeInfo.type_object.methods_by_name[method_name])
+            if (not candidates.contains(m)) candidates.add( m )
+          endForEach
+        endIf
+      endIf
+
+      local MethodInfo[] matches = MethodInfo[]( candidates.count )
+      local Int32 callchain_arg_count = 0
+      local MethodInfo callchain_method
+
+      contingent
+        necessary  (candidates.count > 0)
+
+        # Eliminate candidates with too few parameters, saving the ones that return instanceOf
+        # their own type for possible call chaining.
+        local var args_count = args.count
+        forEach (m in candidates)
+          local var param_count = m.parameters.count
+          if (param_count >= args_count and args_count >= m.min_params) 
+            matches.add(m)
+          else
+            if (param_count < args_count and param_count > 0)
+              if (m.return_type? and m.return_type.instance_of(m.type_context))
+                if (callchain_arg_count == 0 or param_count < callchain_arg_count)
+                  contingent
+                    local var params = m.parameters
+                    forEach (index of args)
+                      local var param = params[index % params.count]
+                      local var arg = args[index]
+                      necessary (arg.type.is_compatible_with(param.type))
+                    endForEach
+                  satisfied
+                    callchain_method = m
+                    callchain_arg_count = param_count
+                  endContingent
+                endIf
+              endIf
+            endIf
+          endIf
+        endForEach
+        necessary  (matches.count > 0)
+        candidates.clear
+        candidates.add(matches)
+        matches.clear
+
+        # Eliminate candidates with incompatible parameters.
+        forEach (m in candidates)
+          contingent
+            forEach (index of args)
+              local var param = m.parameters[index]
+              local var arg = args[index]
+              necessary (arg.type.is_compatible_with(param.type))
+            endForEach
+          satisfied
+            matches.add(m)
+          endContingent
+        endForEach
+
+        if (matches.count == 0)
+          # Allow a Readable<<Type>> to match a Reader<<Type>> and then call
+          # "create_reader" if that resolves the call.
+          local CmdList old_args = null
+          forEach (m in candidates)
+            contingent
+              forEach (index of args)
+                local var param = m.parameters[index]
+                local var arg = args[index]
+                if (not arg.type.is_compatible_with(param.type))
+                  local var readable_type = arg.type.readable_type
+                  local var reader_type   = param.type.reader_type
+                  if (readable_type? and readable_type is reader_type)
+                    if (old_args is null) old_args = duplicate(args)
+                    args[index] = CmdMemberAccess( arg.t, arg, CmdConstruct( arg.t, "create_reader", null ) ).resolve
+                  else
+                    necessary (false)
+                  endIf
+                endIf
+              endForEach
+            satisfied
+              matches.add(m)
+            endContingent
+          endForEach
+          if (matches.count != 1) 
+            matches.clear
+            if (old_args?) args = old_args
+          endIf
+        endIf
+
+        necessary  (matches.count > 0)
+        candidates.clear
+        candidates.add(matches)
+        matches.clear
+
+        # If there are methods from the given context, keep only
+        # them.
+        if (type_context.is_compound)
+          # Eliminate methods that aren't in context of the current compound's
+          # manager long as that leaves at least 1 method.
+          local var mgr_type = TypeManager.types[type_context.manager_name]
+          forEach (m in candidates)
+            if (m.type_context is mgr_type)
+              matches.add(m)
+            endIf
+          endForEach
+
+          if (matches.count > 0)
+            candidates.clear
+            candidates.add(matches)
+            matches.clear
+            sufficient (candidates.count == 1)
+          else
+            matches.clear
+          endIf
+        else
+          if (context?)
+            local var context_type = context.type
+            forEach (m in candidates)
+              if (context_type.instance_of(m.type_context)) 
+                matches.add(m)
+              endIf
+            endForEach
+
+            if (matches.count > 0)
+              candidates.clear
+              candidates.add(matches)
+            endIf
+
+            matches.clear
+
+            sufficient (candidates.count == 1)
+
+          else
+            # Eliminate methods that aren't in context of the current class
+            # long as that leaves at least 1 method.
+            forEach (m in candidates)
+              if (Context.this_type.instance_of(m.type_context)) 
+                matches.add(m)
+              endIf
+            endForEach
+
+            if (matches.count > 0)
+              candidates.clear
+              candidates.add(matches)
+              matches.clear
+              sufficient (candidates.count == 1)
+            else
+              matches.clear
+            endIf
+          endIf
+        endIf
+
+        # Only keep exact matches if there are any.
+        forEach (m in candidates)
+          contingent
+            forEach (index of args)
+              local var param = m.parameters[index]
+              local var arg = args[index]
+              necessary (arg.type is param.type)
+            endForEach
+          satisfied
+            matches.add(m)
+          endContingent
+        endForEach
+
+        if (matches.count > 0)
+          candidates.clear
+          candidates.add(matches)
+          matches.clear
+          sufficient (candidates.count == 1)
+        else
+          matches.clear
+        endIf
+
+        # Start being more picky on the types.
+        # Between any pair of methods (m1,m2), eliminate m1 if every parameter
+        # in m2 is instanceOf the same parameter in m1.  In other words, if a call
+        # to paint(Circle) has candidate methods { paint(Object), paint(Shape) },
+        # paint(Object) will be culled.
+        forEach (m1 in candidates)
+          if (not other_method_improves_references(m1, args, candidates)) matches.add(m1)
+        endForEach
+        necessary  (matches.count > 0)
+        candidates.clear
+        candidates.add(matches)
+        matches.clear
+        sufficient (candidates.count == 1)
+
+        # Between any pair of methods (m1,m2), eliminate m1 if at least one param type
+        # is lower precision than one of arg types AND no m2 param type is lower
+        # precision than an arg type.
+        forEach (m1 in candidates)
+          if (not other_method_improves_precision(m1, args, candidates)) matches.add(m1)
+        endForEach
+        necessary  (matches.count > 0)
+        candidates.clear
+        candidates.add(matches)
+        matches.clear
+        sufficient (candidates.count == 1)
+
+        # Between any pair of methods (m1,m2), eliminate m1 if every param in m1 is
+        # >= precision than in in m2 AND no param in m2 has lesser precision than
+        # corresponding arg.
+        forEach (m1 in candidates)
+          if (not other_method_closer_precision(m1, args, candidates)) matches.add(m1)
+        endForEach
+        necessary  (matches.count > 0)
+        candidates.clear
+        candidates.add(matches)
+        matches.clear
+        sufficient (candidates.count == 1)
+
+        # Eliminate methods that aren't in context of the current class.
+        # If a context exists then we already did this.
+        if (not context?)
+          forEach (m in candidates)
+            if (Context.this_type.instance_of(m.type_context)) matches.add(m)
+          endForEach
+
+          necessary(matches.count > 0)
+          candidates.clear
+          candidates.add(matches)
+          matches.clear
+          sufficient (candidates.count == 1)
+        endIf
+
+        # Between any pair of methods (m1,m2), eliminate m1 if m2.type_context is
+        # instanceOf m1.type_context.
+        forEach (m1 in candidates)
+          contingent
+            forEach (m2 in candidates)
+              if (m1 is m2) nextIteration
+              local var t1 = m1.type_context
+              local var t2 = m2.type_context
+              sufficient (t1 isNot t2 and t2.instance_of(t1))
+            endForEach
+            matches.add(m1)
+          endContingent
+        endForEach
+
+        necessary (matches.count > 0)
+        candidates.clear
+        candidates.add(matches)
+        matches.clear
+        sufficient (candidates.count == 1)
+
+        # Prefer methods with non-Readable, non-Reader types
+        # (mainly to get rid of ambiguities when "null" is sent).
+        forEach (m in candidates)
+          contingent
+            forEach (param in m.parameters)
+              local var param_type_name = param.type.name
+              if (param_type_name.contains("Read"))
+                necessary (not (param_type_name.contains("Readable") or 
+                    param_type_name.contains("Reader")))
+              endIf
+            endForEach
+          satisfied
+            matches.add(m)
+          endContingent
+        endForEach
+
+        if (matches.count == 0)
+          matches.add( candidates )
+        endIf
+
+        necessary  (matches.count == 1)
+        candidates.clear
+        candidates.add(matches)
+        matches.clear
+
+      satisfied
+        local var match = candidates.first
+         
+        if (args.count < match.parameters.count)
+          # fill in default parameters
+          while (args.count < match.parameters.count)
+            local var param = match.parameters[args.count]
+            if (not param.default_value?)
+              throw t.error( "Missing default parameter value." )
+            endIf
+            args.add( duplicate(param.default_value).resolve )
+          endWhile
+          return resolve_call( t, type_context, context, method_name, args )
+            # in resolve_call
+        endIf
+
+        # Cast every argument to its parameter type
+        forEach (index of args)
+          local var arg = args[index]
+          local var param = match.parameters[index]
+          args[index] = create_cast( arg, param.type )
+        endForEach
+
+        # intercept bitwise ops
+        if (match.type_context.name == "BitwiseOperations")
+          if (args.count == 2)
+            local var lhs = args[0]
+            local var rhs = args[1]
+            if ((lhs.type == TypeInfo.type_int64 or lhs.type == TypeInfo.type_int32) ...
+                and (rhs.type == TypeInfo.type_int32))
+
+              local Cmd result = null
+
+              which (method_name)
+                case "left_shifted":   result = CmdLeftShifted( t, lhs, rhs )
+                case "right_shifted":  result = CmdRightShifted( t, lhs, rhs )
+                case "right_xshifted": result = CmdRightXShifted( t, lhs, rhs )
+              endWhich
+
+              if (result?)
+                if (context? and context.no_side_effects) context = null
+
+                if (context?) throw t.error( "Bitwise operations are not methods and cannot " ...
+                  "be called with an object context." )
+                return result
+              endIf
+            endIf
+          endIf
+        endIf
+
+        local CmdDynamicCall call
+        contingent
+          necessary (match.type_context.is_singleton)
+          necessary (match.type_context isNot type_context)
+          necessary (context is null or match.type_context isNot context.type)
+
+        satisfied
+          # singleton call
+          if (context? and not context.no_side_effects)
+            throw context.error( ...
+                "'$' is a singleton call and should not have a context expression." (method_name) )
+          endIf
+          context = CmdSingletonReference( t, match.type_context ).resolve
+          call = CmdDynamicCall( t, context, match, args )
+
+
+        unsatisfied
+          # regular call
+          if (context is null) context = CmdThisReference(t,Context.this_type)
+          local var context_type = context.type
+          if (context_type.is_array)
+            context_type.resolve
+            #{
+            if (method_name == "get")
+              if (args.count != 1) throw t.error( "A single array index is required." )
+              if (args[0].type isNot TypeInfo.type_int32) throw args.first.error( "An Int32 array index is required." )
+              return CmdArrayGet( t, context, args[0] )
+            elseIf (method_name == "set")
+              if (args.count != 2) throw t.error( "An index and a new value are required." )
+              if (args[0].type isNot TypeInfo.type_int32) throw args.first.error( "An Int32 array index is required." )
+              if (not args[1].type.instance_of(context.type.element_type)) 
+                throw args[1].error( "A $ value is required." (context.type.element_type.name) )
+              endIf
+              return CmdArraySet( t, context, args[0], args[1] )
+            endIf
+            }#
+            if (method_name == "get")
+              if (args.count == 1 and args[0].type == TypeInfo.type_int32)
+                return CmdArrayGet( t, context, args[0] )
+              endIf
+            elseIf (method_name == "set")
+              if (args.count == 2 and args[0].type == TypeInfo.type_int32 ...
+                  and args[1].type == context_type.element_type)
+                return CmdArraySet( t, context, args[0], args[1] )
+              endIf
+            endIf
+          endIf
+
+          call = CmdDynamicCall( t, context, match, args )
+        endContingent
+
+        return call.resolve
+
+      unsatisfied
+        local String kind
+        if (method_name.contains('<'))
+          throw t.error( "No such class '$'." (method_name) )
+        endIf
+
+        if (method_name == "init")
+          kind = "initializer method"
+        elseIf (context?)
+          if (original_args?) kind = "method"
+          else kind = "property or method"
+
+        elseIf (original_args?)
+          kind = "class or method"
+        else
+          kind = "class, method, or property"
+        endIf
+
+        local String context_name
+        if (type_context?) context_name = type_context.name
+        else context_name = Context.this_type.name
+
+        if (candidates.count == 0)
+          if (original_args?) 
+            local StringBuilder buffer(method_name)
+            buffer.print('(')
+            local var first = true
+            forEach (arg in args)
+              if (first) first = false
+              else buffer.print(',')
+              buffer.print( arg.type.name )
+            endForEach
+            buffer.print(')')
+            #println( System.stack_trace )
+            throw t.error( "No such $ '$' in type $." (kind,buffer,context_name) )
+          else
+            throw t.error( "No such $ '$' in type $." (kind,method_name,context_name) )
+          endIf
+
+        elseIf (matches.count == 0)
+          if (callchain_arg_count > 0 and args.count % callchain_arg_count == 0)
+            # Assume that fn(a,b,c) should be fn(a).fn(b).fn(c).
+            local Cmd cmd = context
+            while (args.count?)
+              local CmdList args_subset()
+              forEach (1..callchain_arg_count) args_subset.add(args.remove_first)
+              cmd = resolve_call( t,type_context,cmd,method_name,args_subset )
+            endWhile
+            return cmd.resolve
+          endIf
+
+          if (args.count==1 and args.first.type.is_compound ...
+            and (method_name.begins_with("print") or method_name == "to_String" ...
+            or method_name=="op+"))
+            # Ambiguous call with a single compound - if the method name begins with
+            # 'print' or 'to_String', the call will accept a String, and the compound type 
+            # has a to_String, then call to_String on the argument and retry.
+            local var arg = args.first
+            local var mgr_type = TypeManager.types[arg.type.manager_name]
+            if (mgr_type.find_method("to_String($)"(arg.type.name))?)
+              forEach (m in candidates)
+                if (m.parameters.count? ...
+                    and m.parameters.first.type.instance_of(TypeInfo.type_string))
+                  args.remove_first
+                  args.add( CmdMemberAccess(arg.t,arg,CmdConstruct(arg.t,"to_String",null)).resolve )
+                  return resolve_call( t, type_context, context, method_name, args )
+                endIf
+              endForEach
+            endIf
+          endIf
+
+          local StringBuilder buffer()
+          buffer.print( "No call exactly matches $()$ in type $.\n\nCandidates:\n" ...
+              (method_name, create_call_signature(args), context_name) )
+          forEach (m in candidates)
+            buffer.println( "  $" (m.full_signature) )
+          endForEach
+          local var err = t.error( buffer.to_String )
+
+          throw t.error( buffer.to_String )
+
+        else
+          # matches.count > 0
+          local StringBuilder buffer()
+          buffer.print( "Ambiguous call $()$ could be to one of several methods:\n" ...
+              (method_name, create_call_signature(args)) )
+          forEach (m in candidates)
+            buffer.println( "  $" (m.full_signature) )
+          endForEach
+          throw t.error( buffer.to_String )
+
+        endIf
+      endContingent
+
+    method create_call_signature( CmdList args ).String
+      local StringBuilder buffer()
+      buffer.print('(')
+      local var first = true
+      forEach (arg in args)
+        if (first) first = false
+        else buffer.print(',')
+        buffer.print( arg.type.name )
+      endForEach
+      buffer.print(')')
+      return buffer.to_String
+
+    method other_method_closer_precision( MethodInfo m1, CmdList args, MethodInfo[] m_candidates ).Logical
+      # In this situation:
+      #
+      #   call: fn(Int32)
+      #   m1:   fn(Real64)
+      #   m2:   fn(Int64)
+      # 
+      # We want to identify m2 as being a better fit so we can remove m1.
+
+      forEach::next_method (m2 in m_candidates)
+        if (m1 is m2) nextIteration
+
+        local var one_m2_lower = false
+        forEach (index of args)
+          local var m1_type = m1.parameters[index].type
+          local var m2_type = m2.parameters[index].type
+          local var arg_type = args[index].type
+
+          # ensure no m1.param is lesser precision than m2.param
+          if (m1_type.is_lower_precision_than(m2_type))  nextIteration next_method
+
+          # ensure no m2.param is lesser precision than arg
+          if (m2_type.is_lower_precision_than(arg_type)) nextIteration next_method
+
+          # find at least one m2 param that's lower precision than m1 param
+          if (m2_type.is_lower_precision_than(m1_type)) one_m2_lower = true
+        endForEach
+
+        return one_m2_lower
+
+      endForEach
+
+      return false
+
+    method other_method_improves_precision( MethodInfo m1, CmdList args, MethodInfo[] m_candidates ).Logical
+      contingent
+        # see if m1 fails anywhere (has lower precision for a param)
+        forEach (index of args)
+          if (m1.parameters[index].type.is_lower_precision_than(args[index].type))
+            sufficient(true)
+          endIf
+        endForEach
+
+        return false
+
+      satisfied
+        # find a method m2 that has at least the precision we need for all params
+        forEach::next_method (m2 in m_candidates)
+          if (m1 is m2) nextIteration
+
+          forEach (index of args)
+            if (m2.parameters[index].type.is_lower_precision_than(args[index].type))
+              nextIteration next_method
+            endIf
+          endForEach
+
+          return true
+        endForEach
+
+        return false
+
+      endContingent
+
+    method other_method_improves_references( MethodInfo m1, CmdList args, MethodInfo[] m_candidates ).Logical
+      forEach::next_method (m2 in m_candidates)
+
+        if (m1 is m2) nextIteration
+
+        local var found_one_different_type = false
+        forEach (index of args)
+          local var m1_type = m1.parameters[index].type
+          local var m2_type = m2.parameters[index].type
+          if (not m2_type.instance_of(m1_type)) nextIteration next_method
+          if (m1_type isNot m2_type) found_one_different_type = true
+        endForEach
+
+        return found_one_different_type
+
+      endForEach
+
+      return false
+
+    method find_common_element_type( Token t, TypeInfo type1, TypeInfo type2 ).TypeInfo
+      if (type1.is_reference)
+        if (type2.is_reference)
+          if (type2.instance_of(type1)) return type1
+          if (type1.instance_of(type2)) return type2
+
+          local var readable_type = type1.readable_type
+          if (readable_type?)
+            if (type2.instance_of(readable_type)) return readable_type
+            if (readable_type.instance_of(type2)) return type2
+          endIf
+          readable_type = type2.readable_type
+          if (readable_type?)
+            if (type1.instance_of(readable_type)) return readable_type
+            if (readable_type.instance_of(type1)) return type1
+          endIf
+
+          local var cur_type = type1.base_class
+          while (not type2.instance_of(cur_type)) cur_type = cur_type.base_class
+          return cur_type
+            
+        else
+          return find_common_element_type( t, type2, type1 )
+        endIf
+      else
+        # type1 is primitive or compound
+        if (type2.is_reference)
+          local var readable_type = type2.readable_type
+          if (not readable_type? or readable_type.is_reference) return null
+          type2 = readable_type
+        endIf
+        return determine_common_data_type( type1, type2 )
+      endIf
+
+    method determine_common_data_type( TypeInfo type1, TypeInfo type2 ).TypeInfo
+      # Similar to determine_compatible_op_type except this method may result
+      # in 8 or 16 bit values.
+      if (type1 is type2) return type1
+
+      if (type1.is_compound) return type1
+      if (type2.is_compound) return type2
+
+      if (type1.is_logical xor type2.is_logical) return null
+
+      if (type1 is TypeInfo.type_real64) return type1
+      if (type2 is TypeInfo.type_real64) return type2
+      if (type1 is TypeInfo.type_real32) return type1
+      if (type2 is TypeInfo.type_real32) return type2
+      if (type1 is TypeInfo.type_int64) return type1
+      if (type2 is TypeInfo.type_int64) return type2
+      if (type1 is TypeInfo.type_int32) return type1
+      if (type2 is TypeInfo.type_int32) return type2
+      if (type1 is TypeInfo.type_char)
+        if (type2 is TypeInfo.type_byte) return type1
+        else return TypeInfo.type_int32
+      elseIf (type2 is TypeInfo.type_char)
+        if (type1 is TypeInfo.type_byte) return type2
+        else return TypeInfo.type_int32
+      endIf
+      return TypeInfo.type_logical
+
+    method find_common_element_type( Token t, Cmd[] list ).TypeInfo
+      if (list.count == 0) return null
+
+      local TypeInfo common_type = list[0].type
+
+      forEach (arg in list.from(1))
+        local var cur_type = arg.type
+        common_type = find_common_element_type( t, common_type, cur_type )
+        if (not common_type?) escapeForEach
+      endForEach
+
+      return common_type
+
+    method assemble_list( Token t, TypeInfo list_type, Cmd[] args, Int32 capacity ).Cmd
+      if (args.count > 8)
+        # subdivide - create list composed of two sublists
+        local Int32 midpoint = args.count / 2
+        local Int32 rhs_size = args.count - midpoint
+        local var lhs = assemble_list( t, list_type, args.subset(0,midpoint-1).(Cmd[]), capacity )
+        local var rhs = assemble_list( t, list_type, args.subset(midpoint,args.count-1).(Cmd[]), rhs_size )
+        return CmdMemberAccess( t, lhs, CmdConstruct(lhs.t,"add",CmdList(rhs)) )
+      else
+        # create single list
+        local Cmd list = CmdUnresolvedNewObject( t, list_type, CmdList(CmdLiteralInt32(t,capacity)) )
+        forEach (arg in args)
+          list = CmdMemberAccess( arg.t, list, CmdConstruct(arg.t,"add",CmdList(arg)) )
+        endForEach
+        return list
+      endIf
+
+endClass
+
+class LocalVarTable
+  PROPERTIES
+    this_method : MethodInfo
+    scopes()    : HashTable<<String,LocalVarInfo>>[]
+
+  METHODS
+    method init( this_method )
+
+    method define( LocalVarInfo v ).LocalVarInfo
+      if (get(v.name)?) 
+        throw v.t.prior_error( //A local variable named "$" already exists.// ...
+            (v.name), get(v.name).t )
+      endIf
+      v.index = this_method.local_vars.count
+      this_method.local_vars.add( v )
+      scopes.last[v.name] = v
+      return v
+
+    method get( String name ).LocalVarInfo
+      forEach (scope in scopes)
+        local var entry = scope.find(name)
+        if (entry?) return entry.value
+      endForEach
+      return null
+      
+    method open_scope
+      scopes.add( HashTable<<String,LocalVarInfo>>(4) )
+
+    method close_scope
+      scopes.discard_last
+
+endClass
+
