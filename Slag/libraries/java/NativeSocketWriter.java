@@ -1,10 +1,10 @@
-package com.plasmaworks.bard;
+package com.plasmaworks.slag;
 
 public class NativeSocketWriter
 {
   static public void write( ClassObject writer, char ch )
   {
-    Bard.log( "TODO: NativeSocketWriter::write()" );
+    Slag.log( "TODO: NativeSocketWriter::write()" );
   }
 }
 

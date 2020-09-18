@@ -1,4 +1,4 @@
-package com.plasmaworks.bard;
+package com.plasmaworks.slag;
 
 public class NativeString
 {
@@ -54,9 +54,9 @@ public class NativeString
     return new ClassString( st.data.substring(i1,i2+1) );
   }
 
-  static public char[] to_Array( ClassString bard_st )
+  static public char[] to_Array( ClassString slag_st )
   {
-    String st = bard_st.data;
+    String st = slag_st.data;
 
     int count = st.length();
     char[] result = new char[ count ];

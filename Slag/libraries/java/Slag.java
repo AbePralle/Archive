@@ -1,9 +1,9 @@
 //=============================================================================
-// Bard.java
+// Slag.java
 //
 // $(PLASMACORE_VERSION) $(DATE)
 //
-// Bard standard library Native Layer implementation for Java.
+// Slag standard library Native Layer implementation for Java.
 // 
 // ----------------------------------------------------------------------------
 //
@@ -23,11 +23,11 @@
 //
 //=============================================================================
 
-package com.plasmaworks.bard;
+package com.plasmaworks.slag;
 
 import java.util.Arrays;
 
-public class Bard
+public class Slag
 {
   static public enum CallInit
   {
@@ -36,7 +36,7 @@ public class Bard
 
   static public void configure()
   {
-    BardSingletons.singleton_ClassGlobal.property_stdout = new ClassStdOutWriter();
+    SlagSingletons.singleton_ClassGlobal.property_stdout = new ClassStdOutWriter();
   }
 
   static public void log( String mesg )

@@ -1,4 +1,4 @@
-package com.plasmaworks.bard;
+package com.plasmaworks.slag;
 
 public class ClassException extends RuntimeException
 {
@@ -11,9 +11,9 @@ public class ClassException extends RuntimeException
     init();
   }
 
-  public ClassException( Bard.CallInit call_init )
+  public ClassException( Slag.CallInit call_init )
   {
-    if (call_init == Bard.CallInit.TRUE) init_object();
+    if (call_init == Slag.CallInit.TRUE) init_object();
   }
 
   public ClassException( ClassString local_0_message)

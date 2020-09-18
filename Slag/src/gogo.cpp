@@ -1,11 +1,11 @@
-#include "bard_version.h"
+#include "slag_version.h"
 #define USAGE "GoGo Build System " VERSION "\nUsage: gogo [target-name]\n"
 
 /*
  *=============================================================================
  *  gogo.cpp
  *
- *  $(BARD_VERSION)
+ *  $(SLAG_VERSION)
  *  ---------------------------------------------------------------------------
  *
  *  Copyright 2008-2011 Plasmaworks LLC
@@ -29,17 +29,17 @@
  *=============================================================================
 */
 
-#include "bard.h"
+#include "slag.h"
 #include "unzip.h"
 #include "zip.h"
 #include "gd.h"
 #include "png.h"
 
 #if defined(_WIN32)
-#  define BARDIC_FILENAME  "bardic.exe"
+#  define SLAGC_FILENAME  "slagc.exe"
 #  define PATH_CHAR       "\\"
 #else
-#  define BARDIC_FILENAME  "bardic"
+#  define SLAGC_FILENAME  "slagc"
 #  define PATH_CHAR       "/"
 #endif
 
@@ -54,7 +54,7 @@ extern "C" int png_check_sig( png_byte* sig, int num )
 char** final_args  = 0;
 char*  bin_path    = 0;
 char*  src_path    = 0;
-char*  bardic_path  = 0;
+char*  slagc_path  = 0;
 char*  etc_name = 0;
 
 int alpha_to_gd_alpha_map[256] =
@@ -87,11 +87,11 @@ int gd_alpha_to_alpha_map[128] =
   15, 13, 11, 9, 7, 5, 3, 0
 };
 
-struct BardBitmap : BardObject
+struct SlagBitmap : SlagObject
 {
-  BardArray*    pixels;
-  BardInt32     width;
-  BardInt32     height;
+  SlagArray*    pixels;
+  SlagInt32     width;
+  SlagInt32     height;
 };
 
 void Bitmap__init__ArrayList_of_Byte();
@@ -106,7 +106,7 @@ void Bitmap__flip_vertical();
 void Bitmap__resize_horizontal__Int32();
 void Bitmap__resize_vertical__Int32();
 
-void NativeLayer_init_bitmap( BardObject* bitmap_obj, char* raw_data, int data_size );
+void NativeLayer_init_bitmap( SlagObject* bitmap_obj, char* raw_data, int data_size );
 
 void ZipArchive__decompress__Int32();
 void ZipArchive__load_entries();
@@ -124,7 +124,7 @@ int main( int argc, char** argv )
 {
   try
   {
-    bard_set_raw_exe_filepath( argv[0] );
+    slag_set_raw_exe_filepath( argv[0] );
 
     argc = process_args( argc-1, argv+1 );
     argv = final_args;
@@ -132,7 +132,7 @@ int main( int argc, char** argv )
     find_executables();
     check_build_etc();
 
-    BardLoader loader;
+    SlagLoader loader;
     if (etc_name) loader.load(etc_name);
     else          loader.load("build.etc");
 
@@ -155,20 +155,20 @@ int main( int argc, char** argv )
         "add(String,Int64,ArrayList<<Byte>>,Int32,Int32,Logical,Int32,Int32)",
         ZipArchive__add__String_Int64_ArrayList_of_Byte_Int32_Int32_Logical_Int32_Int32 );
 
-    bard_configure();
-    bard_set_command_line_args( argv, argc );
-    bard_launch();
-    bard_shut_down();
+    slag_configure();
+    slag_set_command_line_args( argv, argc );
+    slag_launch();
+    slag_shut_down();
 
     if (final_args)  delete final_args;
-    if (bardic_path)  delete bardic_path;
+    if (slagc_path)  delete slagc_path;
 
     printf( "\n" );
     return 0;
   }
   catch (int err)
   {
-    if (err && bard_error_message.value) fprintf( stderr, "%s\n", bard_error_message.value );
+    if (err && slag_error_message.value) fprintf( stderr, "%s\n", slag_error_message.value );
     return err;
   }
 }
@@ -215,14 +215,14 @@ int process_args( int argc, char** argv )
     else if (0==strcmp(argv[i],"-create"))
     {
       ++i;
-      FILE* fp = fopen( "build.bard", "rb" );
+      FILE* fp = fopen( "build.slag", "rb" );
       if (fp)
       {
-        printf( "-create: build.bard already exists!\n" );
+        printf( "-create: build.slag already exists!\n" );
       }
       else
       {
-        fp = fopen( "build.bard", "w" );
+        fp = fopen( "build.slag", "w" );
         fprintf( fp, "class Main : GoGo\n" );
         fprintf( fp, "  METHODS\n" );
         fprintf( fp, "    method build( String cmd )\n" );
@@ -235,7 +235,7 @@ int process_args( int argc, char** argv )
         fprintf( fp, "endClass\n" );
 
         fclose(fp);
-        printf( "Created build.bard starter file.\n" );
+        printf( "Created build.slag starter file.\n" );
         exit(1);
       }
     }
@@ -268,32 +268,32 @@ void find_executables()
   if (bin_path)
   {
     char filepath[PATH_MAX];
-    sprintf( filepath, "%s%s%s", bin_path, PATH_CHAR, BARDIC_FILENAME );
-    if ( !exists(filepath) ) error( BARDIC_FILENAME " not found on executable path." );
-    bardic_path = new_string(filepath);
+    sprintf( filepath, "%s%s%s", bin_path, PATH_CHAR, SLAGC_FILENAME );
+    if ( !exists(filepath) ) error( SLAGC_FILENAME " not found on executable path." );
+    slagc_path = new_string(filepath);
   }
   else
   {
-    bardic_path  = new_string(BARDIC_FILENAME);
+    slagc_path  = new_string(SLAGC_FILENAME);
   }
 }
 
 void check_build_etc()
 {
-  // If we're running a custom etc (as a Bard VM more than as a build system),
-  // skip the whole build.bard check.
+  // If we're running a custom etc (as a Slag VM more than as a build system),
+  // skip the whole build.slag check.
   if (etc_name) return;
 
-  if (!exists("build_core.bard") && !exists("build.bard"))
+  if (!exists("build_core.slag") && !exists("build.slag"))
   {
-    error( "No build file found.\nType \"gogo -create\" to create a build.bard starter file." );
+    error( "No build file found.\nType \"gogo -create\" to create a build.slag starter file." );
   }
 
-  if (!exists("build.bard"))
+  if (!exists("build.slag"))
   {
-    FILE* fp = fopen("build.bard","wb");
+    FILE* fp = fopen("build.slag","wb");
 
-    fprintf( fp, "[include \"build_core.bard\"]\n" );
+    fprintf( fp, "[include \"build_core.slag\"]\n" );
     fprintf( fp, "\n" );
     fprintf( fp, "class CustomBuild : BuildCore\n" );
     fprintf( fp, "  METHODS\n" );
@@ -309,7 +309,7 @@ void check_build_etc()
 void compile_buildfile()
 {
   char cmd[PATH_MAX];
-  sprintf( cmd, "%s build.bard -include gogo.bard -quiet", bardic_path );
+  sprintf( cmd, "%s build.slag -include gogo.slag -quiet", slagc_path );
   if (bin_path && !src_path) 
   {
     src_path = new char[strlen(bin_path)*2 + 64];
@@ -329,38 +329,38 @@ void compile_buildfile()
   //printf( "\n" );
 }
 
-void bard_adjust_filename_for_os( char* filename, int len );
+void slag_adjust_filename_for_os( char* filename, int len );
 
-void bard_adjust_filename_for_os( char* filename, int len )
+void slag_adjust_filename_for_os( char* filename, int len )
 {
 }
 
 void Bitmap__init__ArrayList_of_Byte()
 {
   // Bitmap::init(Byte[])
-  BardArrayList* list = (BardArrayList*) BARD_POP_REF();
-  BardObject* bitmap_obj = BARD_POP_REF();
+  SlagArrayList* list = (SlagArrayList*) SLAG_POP_REF();
+  SlagObject* bitmap_obj = SLAG_POP_REF();
 
   NativeLayer_init_bitmap( bitmap_obj, (char*) list->array->data, list->count );
 }
 
 void Bitmap__rotate_right()
 {
-  BardBitmap* bitmap_obj = (BardBitmap*) BARD_POP_REF();
+  SlagBitmap* bitmap_obj = (SlagBitmap*) SLAG_POP_REF();
 
-  BardInt32 w = bitmap_obj->width;
-  BardInt32 h = bitmap_obj->height;
+  SlagInt32 w = bitmap_obj->width;
+  SlagInt32 h = bitmap_obj->height;
 
-  BardInt32* rotate_buffer = new BardInt32[w*h];
-  BardInt32* dest_start = rotate_buffer + h - 1;
+  SlagInt32* rotate_buffer = new SlagInt32[w*h];
+  SlagInt32* dest_start = rotate_buffer + h - 1;
   int di = h;
   int dj = -1;
 
-  BardInt32* src = (BardInt32*) (bitmap_obj->pixels->data);
+  SlagInt32* src = (SlagInt32*) (bitmap_obj->pixels->data);
   --src;  // prepare for preincrement ahead
   for (int j=h; j>0; --j)
   {
-    BardInt32* dest = dest_start;
+    SlagInt32* dest = dest_start;
     for (int i=w; i>0; --i)
     {
       *(dest) = *(++src);
@@ -378,21 +378,21 @@ void Bitmap__rotate_right()
 
 void Bitmap__rotate_left()
 {
-  BardBitmap* bitmap_obj = (BardBitmap*) BARD_POP_REF();
+  SlagBitmap* bitmap_obj = (SlagBitmap*) SLAG_POP_REF();
 
-  BardInt32 w = bitmap_obj->width;
-  BardInt32 h = bitmap_obj->height;
+  SlagInt32 w = bitmap_obj->width;
+  SlagInt32 h = bitmap_obj->height;
 
-  BardInt32* rotate_buffer = new BardInt32[w*h];
-  BardInt32* dest_start = rotate_buffer + w*h - h;
+  SlagInt32* rotate_buffer = new SlagInt32[w*h];
+  SlagInt32* dest_start = rotate_buffer + w*h - h;
   int di = -h;
   int dj = 1;
 
-  BardInt32* src = (BardInt32*) (bitmap_obj->pixels->data);
+  SlagInt32* src = (SlagInt32*) (bitmap_obj->pixels->data);
   --src;  // prepare for preincrement ahead
   for (int j=h; j>0; --j)
   {
-    BardInt32* dest = dest_start;
+    SlagInt32* dest = dest_start;
     for (int i=w; i>0; --i)
     {
       *(dest) = *(++src);
@@ -410,17 +410,17 @@ void Bitmap__rotate_left()
 
 void Bitmap__rotate_180()
 {
-  BardBitmap* bitmap_obj = (BardBitmap*) BARD_POP_REF();
-  BardInt32 w = bitmap_obj->width;
-  BardInt32 h = bitmap_obj->height;
-  BardInt32* src  = (BardInt32*) (bitmap_obj->pixels->data);
-  BardInt32* dest = src + w*h;
+  SlagBitmap* bitmap_obj = (SlagBitmap*) SLAG_POP_REF();
+  SlagInt32 w = bitmap_obj->width;
+  SlagInt32 h = bitmap_obj->height;
+  SlagInt32* src  = (SlagInt32*) (bitmap_obj->pixels->data);
+  SlagInt32* dest = src + w*h;
   --src;
 
   int count = (w*h/2) + 1;
   while (--count)
   {
-    BardInt32 c = *(++src);
+    SlagInt32 c = *(++src);
     *src = *(--dest);
     *dest = c;
   }
@@ -428,22 +428,22 @@ void Bitmap__rotate_180()
 
 void Bitmap__flip_horizontal()
 {
-  BardBitmap* bitmap_obj = (BardBitmap*) BARD_POP_REF();
+  SlagBitmap* bitmap_obj = (SlagBitmap*) SLAG_POP_REF();
 
-  BardInt32 w = bitmap_obj->width;
-  BardInt32 h = bitmap_obj->height;
+  SlagInt32 w = bitmap_obj->width;
+  SlagInt32 h = bitmap_obj->height;
 
-  BardInt32* src_start = (BardInt32*) (bitmap_obj->pixels->data);
+  SlagInt32* src_start = (SlagInt32*) (bitmap_obj->pixels->data);
 
   int j = h + 1;
   while (--j)
   {
-    BardInt32* src = src_start - 1;
-    BardInt32* dest = src_start + w;
+    SlagInt32* src = src_start - 1;
+    SlagInt32* dest = src_start + w;
     int count = (w>>1) + 1;
     while (--count)
     {
-      BardInt32 c = *(++src);
+      SlagInt32 c = *(++src);
       *src = *(--dest);
       *dest = c;
     }
@@ -453,13 +453,13 @@ void Bitmap__flip_horizontal()
 
 void Bitmap__flip_vertical()
 {
-  BardBitmap* bitmap_obj = (BardBitmap*) BARD_POP_REF();
+  SlagBitmap* bitmap_obj = (SlagBitmap*) SLAG_POP_REF();
 
-  BardInt32 w = bitmap_obj->width;
-  BardInt32 h = bitmap_obj->height;
+  SlagInt32 w = bitmap_obj->width;
+  SlagInt32 h = bitmap_obj->height;
 
-  BardInt32* src  = ((BardInt32*) (bitmap_obj->pixels->data)) - 1;
-  BardInt32* dest = ((BardInt32*) (bitmap_obj->pixels->data)) + w*h - w - 1;
+  SlagInt32* src  = ((SlagInt32*) (bitmap_obj->pixels->data)) - 1;
+  SlagInt32* dest = ((SlagInt32*) (bitmap_obj->pixels->data)) + w*h - w - 1;
 
   int j = (h>>1) + 1;
   while (--j)
@@ -467,7 +467,7 @@ void Bitmap__flip_vertical()
     int i = w + 1;
     while (--i)
     {
-      BardInt32 c = *(++src);
+      SlagInt32 c = *(++src);
       *src = *(++dest);
       *dest = c;
     }
@@ -477,22 +477,22 @@ void Bitmap__flip_vertical()
 
 void Bitmap__resize_horizontal__Int32()
 {
-  BardInt32 new_w = (BardInt32) BARD_POP_INTEGER();
-  BardBitmap* bitmap_obj = (BardBitmap*) BARD_POP_REF();
+  SlagInt32 new_w = (SlagInt32) SLAG_POP_INTEGER();
+  SlagBitmap* bitmap_obj = (SlagBitmap*) SLAG_POP_REF();
 
-  BardInt32 w = bitmap_obj->width;
-  BardInt32 h = bitmap_obj->height;
+  SlagInt32 w = bitmap_obj->width;
+  SlagInt32 h = bitmap_obj->height;
 
   if (w == new_w) return;
   if (new_w <= 0) return;
 
-  BardArray* original_data = bitmap_obj->pixels;
+  SlagArray* original_data = bitmap_obj->pixels;
   while (new_w <= w/2 && (w&1)==0)
   {
     // average every two horizontal pixels to speed up the process
     int count = w*h / 2 + 1;
-    BardInt32* src  = ((BardInt32*) (original_data->data)) - 1;
-    BardInt32* dest  = src;
+    SlagInt32* src  = ((SlagInt32*) (original_data->data)) - 1;
+    SlagInt32* dest  = src;
     while (--count)
     {
       int c = *(++src);
@@ -513,19 +513,19 @@ void Bitmap__resize_horizontal__Int32()
     bitmap_obj->width = w;
   }
 
-  BARD_PUSH_REF( (BardObject*) original_data );
-  BARD_PUSH_REF( (BardObject*) bitmap_obj );  // to retrieve after possible gc
-  BARD_PUSH_REF( (BardObject*) bitmap_obj );  // for init() call
-  BARD_PUSH_INTEGER( new_w );
-  BARD_PUSH_INTEGER( h );
-  BARD_CALL( bitmap_obj->type, "init(Int32,Int32)" );
-  bitmap_obj = (BardBitmap*) BARD_POP_REF();  // recover ref after possible gc
-  original_data = (BardArray*) BARD_POP_REF();
+  SLAG_PUSH_REF( (SlagObject*) original_data );
+  SLAG_PUSH_REF( (SlagObject*) bitmap_obj );  // to retrieve after possible gc
+  SLAG_PUSH_REF( (SlagObject*) bitmap_obj );  // for init() call
+  SLAG_PUSH_INTEGER( new_w );
+  SLAG_PUSH_INTEGER( h );
+  SLAG_CALL( bitmap_obj->type, "init(Int32,Int32)" );
+  bitmap_obj = (SlagBitmap*) SLAG_POP_REF();  // recover ref after possible gc
+  original_data = (SlagArray*) SLAG_POP_REF();
 
-  BardArray* new_data = bitmap_obj->pixels;
+  SlagArray* new_data = bitmap_obj->pixels;
 
-  BardInt32* src  = ((BardInt32*) (original_data->data)) - 1;
-  BardInt32* dest = ((BardInt32*) (new_data->data)) - 1;
+  SlagInt32* src  = ((SlagInt32*) (original_data->data)) - 1;
+  SlagInt32* dest = ((SlagInt32*) (new_data->data)) - 1;
 
   double sum_a, sum_r, sum_g, sum_b;
   sum_a = sum_r = sum_g = sum_b = 0.0;
@@ -603,21 +603,21 @@ void Bitmap__resize_horizontal__Int32()
 
 void Bitmap__resize_vertical__Int32()
 {
-  BardInt32 new_h = (BardInt32) BARD_POP_INTEGER();
-  BardBitmap* bitmap_obj = (BardBitmap*) BARD_POP_REF();
+  SlagInt32 new_h = (SlagInt32) SLAG_POP_INTEGER();
+  SlagBitmap* bitmap_obj = (SlagBitmap*) SLAG_POP_REF();
 
-  BardInt32 w = bitmap_obj->width;
-  BardInt32 h = bitmap_obj->height;
+  SlagInt32 w = bitmap_obj->width;
+  SlagInt32 h = bitmap_obj->height;
 
   if (h == new_h) return;
   if (new_h <= 0) return;
 
-  BardArray* original_data = bitmap_obj->pixels;
+  SlagArray* original_data = bitmap_obj->pixels;
   while (new_h <= h/2 && (h&1)==0)
   {
     // average every two vertical pixels to speed up the process
-    BardInt32* src  = ((BardInt32*) (original_data->data)) - 1;
-    BardInt32* dest = ((BardInt32*) (original_data->data)) - 1;
+    SlagInt32* src  = ((SlagInt32*) (original_data->data)) - 1;
+    SlagInt32* dest = ((SlagInt32*) (original_data->data)) - 1;
     int lines = h/2 + 1;
     while (--lines)
     {
@@ -644,19 +644,19 @@ void Bitmap__resize_vertical__Int32()
     bitmap_obj->height = h;
   }
 
-  BARD_PUSH_REF( (BardObject*) original_data );
-  BARD_PUSH_REF( (BardObject*) bitmap_obj );  // to retrieve after possible gc
-  BARD_PUSH_REF( (BardObject*) bitmap_obj );  // for init() call
-  BARD_PUSH_INTEGER( w );
-  BARD_PUSH_INTEGER( new_h );
-  BARD_CALL( bitmap_obj->type, "init(Int32,Int32)" );
-  bitmap_obj = (BardBitmap*) BARD_POP_REF();  // recover ref after possible gc
-  original_data = (BardArray*) BARD_POP_REF();
+  SLAG_PUSH_REF( (SlagObject*) original_data );
+  SLAG_PUSH_REF( (SlagObject*) bitmap_obj );  // to retrieve after possible gc
+  SLAG_PUSH_REF( (SlagObject*) bitmap_obj );  // for init() call
+  SLAG_PUSH_INTEGER( w );
+  SLAG_PUSH_INTEGER( new_h );
+  SLAG_CALL( bitmap_obj->type, "init(Int32,Int32)" );
+  bitmap_obj = (SlagBitmap*) SLAG_POP_REF();  // recover ref after possible gc
+  original_data = (SlagArray*) SLAG_POP_REF();
 
-  BardArray* new_data = bitmap_obj->pixels;
+  SlagArray* new_data = bitmap_obj->pixels;
 
-  BardInt32* src_start  = ((BardInt32*) (original_data->data));
-  BardInt32* dest_start = ((BardInt32*) (new_data->data));
+  SlagInt32* src_start  = ((SlagInt32*) (original_data->data));
+  SlagInt32* dest_start = ((SlagInt32*) (new_data->data));
 
   double sum_a, sum_r, sum_g, sum_b;
   sum_a = sum_r = sum_g = sum_b = 0.0;
@@ -669,8 +669,8 @@ void Bitmap__resize_vertical__Int32()
   int columns = w + 1;
   while (--columns)
   {
-    BardInt32* src  = src_start;
-    BardInt32* dest = dest_start;
+    SlagInt32* src  = src_start;
+    SlagInt32* dest = dest_start;
     int rows = h;
     int dest_rows = new_h;
     while (rows--)
@@ -742,28 +742,28 @@ void Bitmap__resize_vertical__Int32()
 
 void Bitmap__copy_pixels_to__Int32_Int32_Int32_Int32_Bitmap_Int32_Int32_Logical()
 {
-  BardInt32 blend_alpha = (BardInt32) BARD_POP_INTEGER();
-  BardInt32 dest_y = (BardInt32) BARD_POP_INTEGER();
-  BardInt32 dest_x = (BardInt32) BARD_POP_INTEGER();
-  BardObject* dest_obj = BARD_POP_REF();
-  BardInt32 height = (BardInt32) BARD_POP_INTEGER();
-  BardInt32 width  = (BardInt32) BARD_POP_INTEGER();
-  BardInt32 src_y  = (BardInt32) BARD_POP_INTEGER();
-  BardInt32 src_x  = (BardInt32) BARD_POP_INTEGER();
-  BardObject* src_obj = BARD_POP_REF();
+  SlagInt32 blend_alpha = (SlagInt32) SLAG_POP_INTEGER();
+  SlagInt32 dest_y = (SlagInt32) SLAG_POP_INTEGER();
+  SlagInt32 dest_x = (SlagInt32) SLAG_POP_INTEGER();
+  SlagObject* dest_obj = SLAG_POP_REF();
+  SlagInt32 height = (SlagInt32) SLAG_POP_INTEGER();
+  SlagInt32 width  = (SlagInt32) SLAG_POP_INTEGER();
+  SlagInt32 src_y  = (SlagInt32) SLAG_POP_INTEGER();
+  SlagInt32 src_x  = (SlagInt32) SLAG_POP_INTEGER();
+  SlagObject* src_obj = SLAG_POP_REF();
 
   BVM_NULL_CHECK( src_obj,  return );
   BVM_NULL_CHECK( dest_obj, return );
 
-  BARD_GET( BardInt32, src_width, src_obj,   "width" );
-  BARD_GET( BardInt32, dest_width, dest_obj,  "width" );
-  BARD_GET( BardArray*, src_array, src_obj,   "data" );
-  BARD_GET( BardArray*, dest_array, dest_obj, "data" );
-  BardInt32* src_data = (BardInt32*) src_array->data;
-  BardInt32* dest_data = (BardInt32*) dest_array->data;
+  SLAG_GET( SlagInt32, src_width, src_obj,   "width" );
+  SLAG_GET( SlagInt32, dest_width, dest_obj,  "width" );
+  SLAG_GET( SlagArray*, src_array, src_obj,   "data" );
+  SLAG_GET( SlagArray*, dest_array, dest_obj, "data" );
+  SlagInt32* src_data = (SlagInt32*) src_array->data;
+  SlagInt32* dest_data = (SlagInt32*) dest_array->data;
 
-  BardInt32 dest_skip_width = dest_width - width;
-  BardInt32 src_skip_width  = src_width - width;
+  SlagInt32 dest_skip_width = dest_width - width;
+  SlagInt32 src_skip_width  = src_width - width;
 
   src_data  += src_y * src_width + src_x - 1;
   dest_data += dest_y * dest_width + dest_x - 1;
@@ -788,7 +788,7 @@ void Bitmap__copy_pixels_to__Int32_Int32_Int32_Int32_Bitmap_Int32_Int32_Logical(
         tr += ((r * inv_alpha) / 255);
         tg += ((g * inv_alpha) / 255);
         tb += ((b * inv_alpha) / 255);
-        *dest_data = (BardInt32) (0xff000000 | (tr<<16) | (tg<<8) | tb);
+        *dest_data = (SlagInt32) (0xff000000 | (tr<<16) | (tg<<8) | tb);
       }
       dest_data += dest_skip_width;
       src_data  += src_skip_width;
@@ -810,7 +810,7 @@ void Bitmap__copy_pixels_to__Int32_Int32_Int32_Int32_Bitmap_Int32_Int32_Logical(
 
 void Bitmap__to_png_bytes()
 {
-  BardBitmap* bitmap_obj = (BardBitmap*) BARD_POP_REF();
+  SlagBitmap* bitmap_obj = (SlagBitmap*) SLAG_POP_REF();
   int w = bitmap_obj->width;
   int h = bitmap_obj->height;
 
@@ -835,14 +835,14 @@ void Bitmap__to_png_bytes()
   char* bytes = (char*) gdImagePngPtr( img, &size );
   gdImageDestroy(img);
 
-  BARD_PUSH_REF( bard_create_byte_list( bytes, size ) );
+  SLAG_PUSH_REF( slag_create_byte_list( bytes, size ) );
   gdFree( bytes );
 }
 
 void Bitmap__to_jpg_bytes__Real64()
 {
-  double compression = BARD_POP_REAL();
-  BardBitmap* bitmap_obj = (BardBitmap*) BARD_POP_REF();
+  double compression = SLAG_POP_REAL();
+  SlagBitmap* bitmap_obj = (SlagBitmap*) SLAG_POP_REF();
   int w = bitmap_obj->width;
   int h = bitmap_obj->height;
 
@@ -864,12 +864,12 @@ void Bitmap__to_jpg_bytes__Real64()
   int size;
   char* bytes = (char*) gdImageJpegPtr( img, &size, int(compression*100) );
   gdImageDestroy(img);
-  BARD_PUSH_REF( bard_create_byte_list( bytes, size ) );
+  SLAG_PUSH_REF( slag_create_byte_list( bytes, size ) );
   gdFree( bytes );
 }
 
 
-void NativeLayer_init_bitmap( BardObject* bitmap_obj, char* raw_data, int data_size )
+void NativeLayer_init_bitmap( SlagObject* bitmap_obj, char* raw_data, int data_size )
 {
   gdImagePtr img = gdImageCreateFromPngPtr( data_size, raw_data );
 
@@ -887,8 +887,8 @@ void NativeLayer_init_bitmap( BardObject* bitmap_obj, char* raw_data, int data_s
     gdImagePtr true_color_img = gdImageCreateTrueColor( width, height );
     for (int j=0; j<height; ++j)
     {
-      BardByte* src = ((BardByte*) (img->pixels[j])) - 1;
-      BardInt32* dest = ((BardInt32*) (true_color_img->tpixels[j])) - 1;
+      SlagByte* src = ((SlagByte*) (img->pixels[j])) - 1;
+      SlagInt32* dest = ((SlagInt32*) (true_color_img->tpixels[j])) - 1;
       int count = width + 1;
       while (--count)
       {
@@ -906,24 +906,24 @@ void NativeLayer_init_bitmap( BardObject* bitmap_obj, char* raw_data, int data_s
     int width = img->sx;
     int height = img->sy;
 
-    BARD_PUSH_REF( bitmap_obj );
-    BARD_PUSH_REF( bitmap_obj );
-    BARD_PUSH_INTEGER( width );
-    BARD_PUSH_INTEGER( height );
-    BARD_CALL( bitmap_obj->type, "init(Int32,Int32)" );
-    BARD_GET_REF( array_obj, BARD_PEEK_REF(), "data" );
-    BardArray* array = (BardArray*) array_obj;
-    BARD_POP_REF();
+    SLAG_PUSH_REF( bitmap_obj );
+    SLAG_PUSH_REF( bitmap_obj );
+    SLAG_PUSH_INTEGER( width );
+    SLAG_PUSH_INTEGER( height );
+    SLAG_CALL( bitmap_obj->type, "init(Int32,Int32)" );
+    SLAG_GET_REF( array_obj, SLAG_PEEK_REF(), "data" );
+    SlagArray* array = (SlagArray*) array_obj;
+    SLAG_POP_REF();
     
     // premultiply the alpha
-    BardInt32* dest = ((BardInt32*) array->data) - 1;
+    SlagInt32* dest = ((SlagInt32*) array->data) - 1;
     for (int j=0; j<height; ++j)
     {
-      BardInt32* cur = ((BardInt32*) img->tpixels[j]) - 1;
+      SlagInt32* cur = ((SlagInt32*) img->tpixels[j]) - 1;
       int count = width + 1;
       while (--count)
       {
-        BardInt32 color = *(++cur);
+        SlagInt32 color = *(++cur);
         int a = gd_alpha_to_alpha_map[(color >> 24) & 255];
         int r = (color >> 16) & 255;
         int g = (color >> 8) & 255;
@@ -944,15 +944,15 @@ void NativeLayer_init_bitmap( BardObject* bitmap_obj, char* raw_data, int data_s
 void ZipArchive__decompress__Int32()
 {
   // ZipArchive::decompress(Int32).Byte[]
-  BardInt32 index = (BardInt32) BARD_POP_INTEGER();
-  BardObject* archive_obj = BARD_POP_REF();
+  SlagInt32 index = (SlagInt32) SLAG_POP_INTEGER();
+  SlagObject* archive_obj = SLAG_POP_REF();
   BVM_NULL_CHECK( archive_obj, bvm.type_null_reference_error );
 
-  BARD_GET_REF( archive_filename_obj, archive_obj, "archive_filename" );
+  SLAG_GET_REF( archive_filename_obj, archive_obj, "archive_filename" );
   BVM_NULL_CHECK( archive_filename_obj, bvm.type_null_reference_error );
 
   char archive_filename[PATH_MAX];
-  ((BardString*)archive_filename_obj)->to_ascii( archive_filename, PATH_MAX );
+  ((SlagString*)archive_filename_obj)->to_ascii( archive_filename, PATH_MAX );
 
   unzFile zfp = unzOpen( archive_filename );
 
@@ -971,16 +971,16 @@ void ZipArchive__decompress__Int32()
         //int compressed_count = file_info.compressed_size;
         int uncompressed_count = file_info.uncompressed_size;
 
-        BardInt64 ztime = file_info.tmu_date.tm_year;  // year eg 2009
+        SlagInt64 ztime = file_info.tmu_date.tm_year;  // year eg 2009
         ztime = (ztime * 100) + (file_info.tmu_date.tm_mon + 1);  // month 1..12
         ztime = (ztime * 100) + (file_info.tmu_date.tm_mday);  // day 1..31
         ztime = (ztime * 100) + (file_info.tmu_date.tm_hour);  // hour 0..23
         ztime = (ztime * 100) + (file_info.tmu_date.tm_min);   // minute 0..59
         ztime = (ztime * 100) + (file_info.tmu_date.tm_sec);   // second 0..59
 
-        BARD_FIND_TYPE( type_byte_array, "Array<<Byte>>" );
-        BardArray*    bytes = type_byte_array->create( uncompressed_count );
-        BARD_PUSH_REF( bytes );
+        SLAG_FIND_TYPE( type_byte_array, "Array<<Byte>>" );
+        SlagArray*    bytes = type_byte_array->create( uncompressed_count );
+        SLAG_PUSH_REF( bytes );
 
         unzOpenCurrentFile( zfp );
         unzReadCurrentFile( zfp, ((char*) bytes->data), uncompressed_count );
@@ -993,28 +993,28 @@ void ZipArchive__decompress__Int32()
   }
 
 printf("error 1\n");
-  bard_throw_file_error( archive_filename );
+  slag_throw_file_error( archive_filename );
   return;
 }
 
 
 void ZipArchive__load_entries()
 {
-  BardObject* archive_obj = BARD_PEEK_REF();
+  SlagObject* archive_obj = SLAG_PEEK_REF();
   BVM_NULL_CHECK( archive_obj, bvm.type_null_reference_error );
 
-  BARD_GET_REF( archive_filename_obj, archive_obj, "archive_filename" );
+  SLAG_GET_REF( archive_filename_obj, archive_obj, "archive_filename" );
   BVM_NULL_CHECK( archive_filename_obj, bvm.type_null_reference_error );
 
   char archive_filename[PATH_MAX];
-  ((BardString*)archive_filename_obj)->to_ascii( archive_filename, PATH_MAX );
+  ((SlagString*)archive_filename_obj)->to_ascii( archive_filename, PATH_MAX );
 
   unzFile zfp = unzOpen( archive_filename );
   if ( !zfp ) 
   {
     zfp = zipOpen( archive_filename, APPEND_STATUS_CREATE );
     zipClose( zfp, NULL );
-    BARD_POP_REF();
+    SLAG_POP_REF();
     return;
   }
 
@@ -1027,18 +1027,18 @@ void ZipArchive__load_entries()
     status = unzGetCurrentFileInfo( zfp, &file_info, current_filename, 256, NULL, 0, NULL, 0 );
     if (UNZ_OK == status)
     {
-      BardInt64 ztime = file_info.tmu_date.tm_year;  // year eg 2009
+      SlagInt64 ztime = file_info.tmu_date.tm_year;  // year eg 2009
       ztime = (ztime * 100) + (file_info.tmu_date.tm_mon + 1);  // month 1..12
       ztime = (ztime * 100) + (file_info.tmu_date.tm_mday);  // day 1..31
       ztime = (ztime * 100) + (file_info.tmu_date.tm_hour);  // hour 0..23
       ztime = (ztime * 100) + (file_info.tmu_date.tm_min);   // minute 0..59
       ztime = (ztime * 100) + (file_info.tmu_date.tm_sec);   // second 0..59
 
-      BARD_PUSH_REF( archive_obj );
-      BARD_PUSH_INTEGER( index );
-      BARD_PUSH_REF( BardString::create(current_filename) );
-      BARD_PUSH_INTEGER( ztime );  // timestamp
-      BARD_CALL( archive_obj->type, "add_entry(Int32,String,Int64)" );
+      SLAG_PUSH_REF( archive_obj );
+      SLAG_PUSH_INTEGER( index );
+      SLAG_PUSH_REF( SlagString::create(current_filename) );
+      SLAG_PUSH_INTEGER( ztime );  // timestamp
+      SLAG_CALL( archive_obj->type, "add_entry(Int32,String,Int64)" );
 
       status = unzGoToNextFile(zfp);
     }
@@ -1046,21 +1046,21 @@ void ZipArchive__load_entries()
   }
   unzClose(zfp);
 
-  BARD_POP_REF();  // archive_obj
+  SLAG_POP_REF();  // archive_obj
 }
 
 void ZipArchive__load_raw__Int32()
 {
   // ZipArchive::load_raw(Int32).RawZipData
-  BardInt32 index = (BardInt32) BARD_POP_INTEGER();
-  BardObject* archive_obj = BARD_POP_REF();
+  SlagInt32 index = (SlagInt32) SLAG_POP_INTEGER();
+  SlagObject* archive_obj = SLAG_POP_REF();
   BVM_NULL_CHECK( archive_obj, bvm.type_null_reference_error );
 
-  BARD_GET_REF( archive_filename_obj, archive_obj, "archive_filename" );
+  SLAG_GET_REF( archive_filename_obj, archive_obj, "archive_filename" );
   BVM_NULL_CHECK( archive_filename_obj, bvm.type_null_reference_error );
 
   char archive_filename[PATH_MAX];
-  ((BardString*)archive_filename_obj)->to_ascii( archive_filename, PATH_MAX );
+  ((SlagString*)archive_filename_obj)->to_ascii( archive_filename, PATH_MAX );
 
   unzFile zfp = unzOpen( archive_filename );
 
@@ -1084,7 +1084,7 @@ void ZipArchive__load_raw__Int32()
         int compressed_count = file_info.compressed_size;
         int uncompressed_count = file_info.uncompressed_size;
 
-        BardInt64 ztime = file_info.tmu_date.tm_year;  // year eg 2009
+        SlagInt64 ztime = file_info.tmu_date.tm_year;  // year eg 2009
         ztime = (ztime * 100) + (file_info.tmu_date.tm_mon + 1);  // month 1..12
         ztime = (ztime * 100) + (file_info.tmu_date.tm_mday);  // day 1..31
         ztime = (ztime * 100) + (file_info.tmu_date.tm_hour);  // hour 0..23
@@ -1095,24 +1095,24 @@ void ZipArchive__load_raw__Int32()
 
         unzOpenCurrentFile2( zfp, &compression_method, &compression_level, 1 );
 
-        BARD_FIND_TYPE( type_raw_zip_data, "RawZipData" );
-        BARD_PUSH_REF( type_raw_zip_data->create() );
-        BARD_DUPLICATE_REF();
+        SLAG_FIND_TYPE( type_raw_zip_data, "RawZipData" );
+        SLAG_PUSH_REF( type_raw_zip_data->create() );
+        SLAG_DUPLICATE_REF();
 
-        BARD_FIND_TYPE( type_byte_array, "Array<<Byte>>" );
-        BardArray* array = type_byte_array->create(compressed_count);
-        BARD_PUSH_REF( array );
+        SLAG_FIND_TYPE( type_byte_array, "Array<<Byte>>" );
+        SlagArray* array = type_byte_array->create(compressed_count);
+        SLAG_PUSH_REF( array );
         char* data = (char*) array->data;
 
         unzReadCurrentFile( zfp, data, compressed_count );
 
-        BARD_PUSH_INTEGER( uncompressed_count );
-        BARD_PUSH_INTEGER( ztime );
-        BARD_PUSH_INTEGER( compression_method );
-        BARD_PUSH_INTEGER( compression_level );
-        BARD_PUSH_INTEGER( crc32 );
+        SLAG_PUSH_INTEGER( uncompressed_count );
+        SLAG_PUSH_INTEGER( ztime );
+        SLAG_PUSH_INTEGER( compression_method );
+        SLAG_PUSH_INTEGER( compression_level );
+        SLAG_PUSH_INTEGER( crc32 );
 
-        BARD_CALL( type_raw_zip_data, "init(Array<<Byte>>,Int32,Int64,Int32,Int32,Int32)" )
+        SLAG_CALL( type_raw_zip_data, "init(Array<<Byte>>,Int32,Int64,Int32,Int32,Int32)" )
         unzClose(zfp);
         return;
       }
@@ -1129,36 +1129,36 @@ void ZipArchive__load_raw__Int32()
   // This happens once in a while - gradually tracking down what's happening
   // with the printfs above.
   printf( "Please try again\n" );
-  bard_throw_file_error( archive_filename );
+  slag_throw_file_error( archive_filename );
   return;
 }
 
 void ZipArchive__add__String_Int64_ArrayList_of_Byte_Int32_Int32_Logical_Int32_Int32()
 {
-  BardInt32 crc32 = (BardInt32) BARD_POP_INTEGER();
-  BardInt32 uncompressed_count = (BardInt32) BARD_POP_INTEGER();
-  BardInt32 raw = (BardInt32) BARD_POP_INTEGER();
+  SlagInt32 crc32 = (SlagInt32) SLAG_POP_INTEGER();
+  SlagInt32 uncompressed_count = (SlagInt32) SLAG_POP_INTEGER();
+  SlagInt32 raw = (SlagInt32) SLAG_POP_INTEGER();
 
-  BardInt32 compression_level = (BardInt32) BARD_POP_INTEGER();
+  SlagInt32 compression_level = (SlagInt32) SLAG_POP_INTEGER();
   if (compression_level < 0) compression_level = 0;
   else if (compression_level > 9) compression_level = 9;
 
-  BardInt32 compression_method = (BardInt32) BARD_POP_INTEGER();
+  SlagInt32 compression_method = (SlagInt32) SLAG_POP_INTEGER();
   if (compression_method != 0) compression_method = Z_DEFLATED;
 
-  BardArrayList* byte_list = (BardArrayList*) BARD_POP_REF();
-  BardInt64 ztime = BARD_POP_INTEGER();
-  BardString* filename_obj = (BardString*) BARD_POP_REF();
-  BardObject* archive_obj = BARD_PEEK_REF();
+  SlagArrayList* byte_list = (SlagArrayList*) SLAG_POP_REF();
+  SlagInt64 ztime = SLAG_POP_INTEGER();
+  SlagString* filename_obj = (SlagString*) SLAG_POP_REF();
+  SlagObject* archive_obj = SLAG_PEEK_REF();
 
   BVM_NULL_CHECK( archive_obj, bvm.type_null_reference_error );
   BVM_NULL_CHECK( filename_obj, bvm.type_null_reference_error );
   BVM_NULL_CHECK( byte_list, bvm.type_null_reference_error );
 
-  BARD_GET_REF( archive_filename_obj, archive_obj, "archive_filename" );
+  SLAG_GET_REF( archive_filename_obj, archive_obj, "archive_filename" );
   BVM_NULL_CHECK( archive_filename_obj, bvm.type_null_reference_error );
   char archive_filename[PATH_MAX];
-  ((BardString*)archive_filename_obj)->to_ascii( archive_filename, PATH_MAX );
+  ((SlagString*)archive_filename_obj)->to_ascii( archive_filename, PATH_MAX );
 
   char filename[PATH_MAX];
   filename_obj->to_ascii( filename, PATH_MAX );
@@ -1172,7 +1172,7 @@ void ZipArchive__add__String_Int64_ArrayList_of_Byte_Int32_Int32_Logical_Int32_I
   timestamp.tm_sec  = (int) (ztime % 100); 
 
   int count = byte_list->count;
-  BardByte* data = (BardByte*) byte_list->array->data;
+  SlagByte* data = (SlagByte*) byte_list->array->data;
 
   zipFile zfp = zipOpen( archive_filename, APPEND_STATUS_ADDINZIP );
   if ( !zfp ) zfp = zipOpen( archive_filename, APPEND_STATUS_CREATE );
@@ -1180,7 +1180,7 @@ void ZipArchive__add__String_Int64_ArrayList_of_Byte_Int32_Int32_Logical_Int32_I
   if ( !zfp )
   {
 printf("error 3\n");
-    bard_throw_file_error( archive_filename );
+    slag_throw_file_error( archive_filename );
     return;
   }
 
@@ -1202,10 +1202,10 @@ printf("error 3\n");
   if (error)
   {
 printf("error 4\n");
-    bard_throw_file_error( archive_filename );
+    slag_throw_file_error( archive_filename );
     return;
   }
 
-  BARD_POP_REF();
+  SLAG_POP_REF();
 }
 

@@ -1,4 +1,4 @@
-package com.plasmaworks.bard;
+package com.plasmaworks.slag;
 
 
 public class NativeStdOutWriter
@@ -9,7 +9,7 @@ public class NativeStdOutWriter
   {
     if (ch == 10)
     {
-      Bard.log(log_buffer.toString());
+      Slag.log(log_buffer.toString());
       log_buffer.setLength(0);
     }
     else
@@ -22,7 +22,7 @@ public class NativeStdOutWriter
   {
     if (ch == 10)
     {
-      Bard.log( log_buffer.toString() );
+      Slag.log( log_buffer.toString() );
       log_buffer.setLength(0);
     }
     else
@@ -33,7 +33,7 @@ public class NativeStdOutWriter
 
   static public void print( ClassStdOutWriter obj, ClassString st )
   {
-    Bard.log( st.data );
+    Slag.log( st.data );
   }
 
   static public void flush( ClassStdOutWriter obj )

@@ -3,9 +3,9 @@
 if [ `uname` == "Darwin" ]; then
   platform="mac"
   gogo_exe="bin/${platform}/gogo"
-  bard_exe="bin/${platform}/bard"
-  bardic_exe="bin/${platform}/bardic"
-  bard_libs="bin/mac/libraries"
+  slag_exe="bin/${platform}/slag"
+  slagc_exe="bin/${platform}/slagc"
+  slag_libs="bin/mac/libraries"
   config_filename="~/.profile"
 
   if [ "$1" == "rebuild" ]; then
@@ -24,28 +24,28 @@ if [ `uname` == "Darwin" ]; then
     chmod a+rx $gogo_exe
   fi
 
-  if [ ! -e $bard_exe ]; then
+  if [ ! -e $slag_exe ]; then
     echo -------------------------------------------------------------------------------
-    echo "> COMPILING BARD VIRTUAL MACHINE..."
+    echo "> COMPILING SLAG VIRTUAL MACHINE..."
     echo 
     pushd platforms/mac
-    xcodebuild -target bard
+    xcodebuild -target slag
     popd
-    cp platforms/mac/build/Release/bard $bard_exe
-    chmod a+rx $bard_exe
+    cp platforms/mac/build/Release/slag $slag_exe
+    chmod a+rx $slag_exe
   fi
 
-  if [ ! -e $bardic_exe ]; then
+  if [ ! -e $slagc_exe ]; then
     echo -------------------------------------------------------------------------------
-    echo "> COMPILING BARD COMPILER... (this may take a while)"
+    echo "> COMPILING SLAG COMPILER... (this may take a while)"
     echo 
     mkdir -p build
-    $bard_exe libraries/bard/bardic/bardic.etc bardic.bard -src_path "libraries/bard/standard;libraries/bard/bardic" -dest_path build -cpp
+    $slag_exe libraries/slag/slagc/slagc.etc slagc.slag -src_path "libraries/slag/standard;libraries/slag/slagc" -dest_path build -cpp
     pushd platforms/mac
-    xcodebuild -target bardic
+    xcodebuild -target slagc
     popd
-    cp platforms/mac/build/Release/bardic $bardic_exe
-    chmod a+rx $bardic_exe
+    cp platforms/mac/build/Release/slagc $slagc_exe
+    chmod a+rx $slagc_exe
   fi
 
 else
@@ -54,10 +54,10 @@ else
   else
     platform="unix"
   fi
-  bard_exe="bin/${platform}/bard"
-  bardic_exe="bin/${platform}/bardic"
+  slag_exe="bin/${platform}/slag"
+  slagc_exe="bin/${platform}/slagc"
   gogo_exe="bin/${platform}/gogo"
-  bard_libs="bin/${platform}/libraries"
+  slag_libs="bin/${platform}/libraries"
   config_filename="~/.bashrc"
 
   if [ "$1" == "rebuild" ]; then
@@ -73,33 +73,33 @@ else
     popd
   fi
 
-  if [ ! -e $bard_exe ]; then
+  if [ ! -e $slag_exe ]; then
     pushd platforms/${platform}
     echo -------------------------------------------------------------------------------
-    echo "> COMPILING BARD VIRTUAL MACHINE..."
+    echo "> COMPILING SLAG VIRTUAL MACHINE..."
     echo 
-    make bard
+    make slag
     popd
   fi
 
-  if [ ! -e $bardic_exe ]; then
+  if [ ! -e $slagc_exe ]; then
     pushd platforms/${platform}
     echo -------------------------------------------------------------------------------
-    echo "> COMPILING BARD COMPILER... (this may take a while)"
+    echo "> COMPILING SLAG COMPILER... (this may take a while)"
     echo 
-    make bardic
+    make slagc
     popd
   fi
 fi
 
-if [ ! -e $bard_libs ]; then
+if [ ! -e $slag_libs ]; then
   echo -------------------------------------------------------------------------------
-  echo "> COPYING BARD LIBRARIES..."
-  echo "$gogo_exe -bin \"bin/$platform\" all -src_path \"libraries/bard;libraries/bard/standard\""
-  $gogo_exe -bin "bin/$platform" libs -src_path "libraries/bard;libraries/bard/standard"
+  echo "> COPYING SLAG LIBRARIES..."
+  echo "$gogo_exe -bin \"bin/$platform\" all -src_path \"libraries/slag;libraries/slag/standard\""
+  $gogo_exe -bin "bin/$platform" libs -src_path "libraries/slag;libraries/slag/standard"
 fi
 
-if [ "`which bardic`" == "" ]; then
+if [ "`which slagc`" == "" ]; then
   echo "*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*"
   echo "ATTENTION"
   echo ""
@@ -108,8 +108,8 @@ if [ "`which bardic`" == "" ]; then
   echo ""
   echo "  `pwd`/bin/$platform"
   echo ""
-  echo "After opening a new terminal you will be able to type 'bardic filename[.bard]'"
-  echo "to compile and 'bard filename[.etc]' to execute."
+  echo "After opening a new terminal you will be able to type 'slagc filename[.slag]'"
+  echo "to compile and 'slag filename[.etc]' to execute."
   echo "*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*"
 else
   if [ "$1" == "rebuild" ]; then

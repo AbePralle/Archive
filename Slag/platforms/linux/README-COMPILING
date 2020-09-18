@@ -1,4 +1,4 @@
-Bard supports both 32-bit and 64-bit architectures.
+Slag supports both 32-bit and 64-bit architectures.
 
 You may need to install additional gcc libraries for a 32-bit compile.  On
 Ubuntu:

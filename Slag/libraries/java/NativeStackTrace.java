@@ -1,4 +1,4 @@
-package com.plasmaworks.bard;
+package com.plasmaworks.slag;
 
 public class NativeStackTrace
 {

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -47,8 +47,8 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\..\libraries\native\zlib-1.2.3;..\..\..\libraries\native\zlib-1.2.3\contrib\minizip;..\..\..\libraries\native\bard;..\..\..\libraries\native\lpng141;..\..\..\libraries\native\jpeg-8a;..\..\..\libraries\native\gd-2.0.36RC1;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;BARD_VM;HAVE_LIBPNG;HAVE_LIBJPEG;NONDLL=1;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\..\libraries\native\zlib-1.2.3;..\..\..\libraries\native\zlib-1.2.3\contrib\minizip;..\..\..\libraries\native\slag;..\..\..\libraries\native\lpng141;..\..\..\libraries\native\jpeg-8a;..\..\..\libraries\native\gd-2.0.36RC1;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;SLAG_VM;HAVE_LIBPNG;HAVE_LIBJPEG;NONDLL=1;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
@@ -69,8 +69,8 @@
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>..\..\..\libraries\native\zlib-1.2.3;..\..\..\libraries\native\zlib-1.2.3\contrib\minizip;..\..\..\libraries\native\bard;..\..\..\libraries\native\lpng141;..\..\..\libraries\native\jpeg-8a;..\..\..\libraries\native\gd-2.0.36RC1;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;BARD_VM;HAVE_LIBPNG;HAVE_LIBJPEG;NONDLL=1;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\..\libraries\native\zlib-1.2.3;..\..\..\libraries\native\zlib-1.2.3\contrib\minizip;..\..\..\libraries\native\slag;..\..\..\libraries\native\lpng141;..\..\..\libraries\native\jpeg-8a;..\..\..\libraries\native\gd-2.0.36RC1;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;SLAG_VM;HAVE_LIBPNG;HAVE_LIBJPEG;NONDLL=1;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <PrecompiledHeader>
@@ -189,14 +189,14 @@
     <ClCompile Include="..\..\..\libraries\native\zlib-1.2.3\uncompr.c" />
     <ClCompile Include="..\..\..\libraries\native\zlib-1.2.3\zutil.c" />
     <ClCompile Include="..\..\..\src\gogo.cpp" />
-    <ClCompile Include="..\..\..\libraries\native\bard\bard_mm.cpp" />
-    <ClCompile Include="..\..\..\libraries\native\bard\bard_runtime.cpp" />
-    <ClCompile Include="..\..\..\libraries\native\bard\bard_stdlib.cpp" />
-    <ClCompile Include="..\..\..\libraries\native\bard\bard_vm.cpp" />
+    <ClCompile Include="..\..\..\libraries\native\slag\slag_mm.cpp" />
+    <ClCompile Include="..\..\..\libraries\native\slag\slag_runtime.cpp" />
+    <ClCompile Include="..\..\..\libraries\native\slag\slag_stdlib.cpp" />
+    <ClCompile Include="..\..\..\libraries\native\slag\slag_vm.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\libraries\native\bard\bard_mm.h" />
-    <ClInclude Include="..\..\..\libraries\native\bard\bard_stdlib.h" />
+    <ClInclude Include="..\..\..\libraries\native\slag\slag_mm.h" />
+    <ClInclude Include="..\..\..\libraries\native\slag\slag_stdlib.h" />
     <ClInclude Include="..\..\..\libraries\native\jpeg-8a\jconfig.h" />
     <ClInclude Include="..\..\..\libraries\native\jpeg-8a\jdct.h" />
     <ClInclude Include="..\..\..\libraries\native\jpeg-8a\jerror.h" />

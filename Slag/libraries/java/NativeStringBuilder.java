@@ -1,11 +1,11 @@
-package com.plasmaworks.bard;
+package com.plasmaworks.slag;
 
 public class NativeStringBuilder
 {
-  static public void native_copy( ClassObject builder, ClassString bard_st, 
+  static public void native_copy( ClassObject builder, ClassString slag_st, 
       char[] array, int to_index )
   {
-    String st = bard_st.data;
+    String st = slag_st.data;
     int len = st.length();
     for (int i=0; i<len; ++i)
     {

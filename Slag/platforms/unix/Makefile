@@ -1,20 +1,20 @@
 LIBDIR    = ../../libraries/native
 BINDIR    = ../../bin/unix
 BUILDDIR  = ../../build
-BARD_LIBS = ../../libraries/bard
-BARDIC_ETC = $(BARD_LIBS)/bardic/bardic.etc
+SLAG_LIBS = ../../libraries/slag
+SLAGC_ETC = $(SLAG_LIBS)/slagc/slagc.etc
 SRCDIR = ../../src
 
-VM_DEFINES    = -DBARD_VM
-BARDIC_DEFINES = -DBARD_XC
-FLAGS         = -O3 -w -fno-strict-aliasing -I $(LIBDIR)/bard -lnsl -lpthread -D_REENTRANT -D UNIX -fdiagnostics-show-option 
+VM_DEFINES    = -DSLAG_VM
+SLAGC_DEFINES = -DSLAG_XC
+FLAGS         = -O3 -w -fno-strict-aliasing -I $(LIBDIR)/slag -lnsl -lpthread -D_REENTRANT -D UNIX -fdiagnostics-show-option 
 
 CC       = g++ 
 
-BARD_H    = $(LIBDIR)/bard/bard.h $(LIBDIR)/bard/bard_runtime.h $(LIBDIR)/bard/bard_mm.h $(LIBDIR)/bard/bard_stdlib.h $(BARDIC_ETC)
-BARD_CPP  = $(LIBDIR)/bard/bard_runtime.cpp $(LIBDIR)/bard/bard_mm.cpp $(LIBDIR)/bard/bard_stdlib.cpp
-VM_H      = $(BARD_H) $(LIBDIR)/bard/bard_vm.h
-VM_CPP    = $(BARD_CPP) $(LIBDIR)/bard/bard_vm.cpp
+SLAG_H    = $(LIBDIR)/slag/slag.h $(LIBDIR)/slag/slag_runtime.h $(LIBDIR)/slag/slag_mm.h $(LIBDIR)/slag/slag_stdlib.h $(SLAGC_ETC)
+SLAG_CPP  = $(LIBDIR)/slag/slag_runtime.cpp $(LIBDIR)/slag/slag_mm.cpp $(LIBDIR)/slag/slag_stdlib.cpp
+VM_H      = $(SLAG_H) $(LIBDIR)/slag/slag_vm.h
+VM_CPP    = $(SLAG_CPP) $(LIBDIR)/slag/slag_vm.cpp
 GOGO_FLAGS = $(FLAGS) \
              -Wno-write-strings \
              -D HAVE_LIBPNG \
@@ -22,7 +22,7 @@ GOGO_FLAGS = $(FLAGS) \
              -I $(LIBDIR)/lpng141 \
              -I $(LIBDIR)/jpeg-8a \
              -I $(LIBDIR)/gd-2.0.36RC1 \
-             -I $(LIBDIR)/bard \
+             -I $(LIBDIR)/slag \
              -I $(LIBDIR)/zlib-1.2.3 \
              -I $(LIBDIR)/zlib-1.2.3/contrib/minizip 
 
@@ -39,8 +39,8 @@ ZLIB_C  = -x c $(LIBDIR)/zlib-1.2.3/adler32.c \
           -x c $(LIBDIR)/zlib-1.2.3/contrib/minizip/ioapi.c \
           -x c $(LIBDIR)/zlib-1.2.3/contrib/minizip/unzip.c \
           -x c $(LIBDIR)/zlib-1.2.3/contrib/minizip/zip.c
-BARDIC_H   = $(BARD_H) $(LIBDIR)/bard/bard_xc.h $(BUILDDIR)/bardic_xc.h
-BARDIC_CPP = $(BARD_CPP) $(LIBDIR)/bard/bard_xc.cpp $(BUILDDIR)/bardic_xc.cpp
+SLAGC_H   = $(SLAG_H) $(LIBDIR)/slag/slag_xc.h $(BUILDDIR)/slagc_xc.h
+SLAGC_CPP = $(SLAG_CPP) $(LIBDIR)/slag/slag_xc.cpp $(BUILDDIR)/slagc_xc.cpp
 
 
 GOGO_CPP  = $(VM_CPP) \
@@ -135,31 +135,31 @@ GOGO_C    = $(ZLIB_C) \
             -x c $(LIBDIR)/lpng141/pngwtran.c \
             -x c $(LIBDIR)/lpng141/pngwutil.c
 
-all: bard bardic gogo
+all: slag slagc gogo
 
-bard: $(BINDIR)/bard
+slag: $(BINDIR)/slag
 
-bardic: $(BINDIR)/bardic
+slagc: $(BINDIR)/slagc
 
 gogo: $(BINDIR)/gogo
 
-$(BINDIR)/bard: $(VM_H) $(VM_CPP) $(SRCDIR)/bard.cpp
+$(BINDIR)/slag: $(VM_H) $(VM_CPP) $(SRCDIR)/slag.cpp
 	mkdir -p $(BINDIR)
-	$(CC) -o $(BINDIR)/bard $(FLAGS) $(VM_DEFINES) $(VM_CPP) $(SRCDIR)/bard.cpp
-	chmod 0775 $(BINDIR)/bard
+	$(CC) -o $(BINDIR)/slag $(FLAGS) $(VM_DEFINES) $(VM_CPP) $(SRCDIR)/slag.cpp
+	chmod 0775 $(BINDIR)/slag
 
 $(BINDIR)/gogo: $(VM_H) $(VM_CPP) $(GOGO_CPP)
 	mkdir -p $(BINDIR)
 	$(CC) -o $(BINDIR)/gogo $(GOGO_FLAGS) $(VM_DEFINES) $(VM_CPP) $(GOGO_CPP) $(GOGO_C) $(ZLIB_C)
 	chmod 0775 $(BINDIR)/gogo
 
-$(BINDIR)/bardic: $(BARDIC_H) $(BARDIC_CPP) $(SRCDIR)/bardic.cpp
-	$(CC) -o $(BINDIR)/bardic $(FLAGS) $(BARDIC_DEFINES) $(BARDIC_CPP) $(SRCDIR)/bardic.cpp
-	chmod 0775 $(BINDIR)/bardic
+$(BINDIR)/slagc: $(SLAGC_H) $(SLAGC_CPP) $(SRCDIR)/slagc.cpp
+	$(CC) -o $(BINDIR)/slagc $(FLAGS) $(SLAGC_DEFINES) $(SLAGC_CPP) $(SRCDIR)/slagc.cpp
+	chmod 0775 $(BINDIR)/slagc
 	
-$(BUILDDIR)/bardic_xc.h: $(BARDIC_ETC)
+$(BUILDDIR)/slagc_xc.h: $(SLAGC_ETC)
 	mkdir -p $(BUILDDIR)
-	$(BINDIR)/bard $(BARDIC_ETC) bardic.bard -cpp -src_path "$(BARD_LIBS)/standard;$(BARD_LIBS)/bardic" -dest_path $(BUILDDIR)
+	$(BINDIR)/slag $(SLAGC_ETC) slagc.slag -cpp -src_path "$(SLAG_LIBS)/standard;$(SLAG_LIBS)/slagc" -dest_path $(BUILDDIR)
 
 clean:
 	rm -r $(BUILDDIR)
