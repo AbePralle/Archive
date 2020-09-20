@@ -76,7 +76,7 @@
 SlagReal64 Slag_pi;
 */
 
-#define BVM_FILE_BUFFER_SIZE 512
+#define VM_FILE_BUFFER_SIZE 512
 
 struct SlagFileInfo : SlagResource
 {
@@ -909,14 +909,14 @@ void GenericArray__clear__Int32_Int32()
   SlagInt32 i2 = SLAG_POP_INT32();
   SlagInt32 i1 = SLAG_POP_INT32();
   SlagArray* array = (SlagArray*) SLAG_POP_REF();
-  BVM_NULL_CHECK( array, return );
+  VM_NULL_CHECK( array, return );
 
   if (i1 > i2) return;
 
 #if defined(SLAG_VM)
   if ( i1 < 0 || i2 >= array->array_count)
   {
-    BVM_THROW_TYPE( bvm.type_invalid_operand_error, return );
+    VM_THROW_TYPE( vm.type_invalid_operand_error, return );
   }
 #endif
 
@@ -944,7 +944,7 @@ void GenericArray__clear__Int32_Int32()
 void GenericArray__count()
 {
   SlagArray* array = (SlagArray*) SLAG_POP_REF();
-  BVM_NULL_CHECK( array, return );
+  VM_NULL_CHECK( array, return );
   SLAG_PUSH_INT32( array->array_count );
 }
 
@@ -960,7 +960,7 @@ void GenericArray__copy_from__GenericArray_Int32_Int32_Int32()
 
   if ( !count ) return;
 
-  BVM_NULL_CHECK( src_array && dest_array && count > 0, return );
+  VM_NULL_CHECK( src_array && dest_array && count > 0, return );
 
   SlagTypeInfo* src_type  = src_array->type;
 
@@ -975,7 +975,7 @@ void GenericArray__copy_from__GenericArray_Int32_Int32_Int32()
     if ( (src_type->is_reference_array() ^ dest_type->is_reference_array())
         || (b != dest_type->element_size) )
     {
-      BVM_THROW_TYPE( bvm.type_invalid_operand_error, return );
+      VM_THROW_TYPE( vm.type_invalid_operand_error, return );
     }
   }
 #endif
@@ -988,7 +988,7 @@ void GenericArray__copy_from__GenericArray_Int32_Int32_Int32()
       || src_i2  >= src_array->array_count
       || dest_i2 >= dest_array->array_count)
   {
-    BVM_THROW_TYPE( bvm.type_invalid_operand_error, return );
+    VM_THROW_TYPE( vm.type_invalid_operand_error, return );
   }
 #endif
 
@@ -1593,7 +1593,7 @@ void FileReader__init__String()
 #if defined(SLAG_VM)
   if ( !filename_string || !reader )
   {
-    bvm.throw_exception( bvm.type_null_reference_error );
+    vm.throw_exception( vm.type_null_reference_error );
     return;
   }
 #endif
@@ -1657,14 +1657,14 @@ static void close_reader( SlagObject* reader )
 void FileReader__close()
 {
   SlagObject* reader = SLAG_POP_REF();
-  BVM_NULL_CHECK( reader, return );
+  VM_NULL_CHECK( reader, return );
   close_reader(reader);
 }
 
 void FileReader__has_another()
 {
   SlagObject* reader = SLAG_POP_REF();
-  BVM_NULL_CHECK( reader, return );
+  VM_NULL_CHECK( reader, return );
 
   // Slag files auto-close after the last character so if it's still open that
   // means there's another.
@@ -1675,7 +1675,7 @@ void FileReader__has_another()
 void FileReader__peek()
 {
   SlagObject* reader = SLAG_POP_REF();
-  BVM_NULL_CHECK( reader, return );
+  VM_NULL_CHECK( reader, return );
 
   SlagFileInfo* info = get_reader_file_info(reader);
   if (info && info->fp)
@@ -1693,7 +1693,7 @@ void FileReader__peek()
 void FileReader__read()
 {
   SlagObject* reader = SLAG_POP_REF();
-  BVM_NULL_CHECK( reader, return );
+  VM_NULL_CHECK( reader, return );
 
   SlagFileInfo* info = get_reader_file_info(reader);
   if (info && info->fp)
@@ -1721,12 +1721,12 @@ void FileReader__read__Array_of_Byte_Int32_Int32()
   SlagArray* array = (SlagArray*) SLAG_POP_REF();
   SlagObject* reader = SLAG_POP_REF();
 
-  BVM_NULL_CHECK( reader && array, return );
+  VM_NULL_CHECK( reader && array, return );
 
 #if defined(SLAG_VM)
   if (index < 0 || count < 0 || index+count > array->array_count)
   {
-    bvm.throw_exception( bvm.type_out_of_bounds_error );
+    vm.throw_exception( vm.type_out_of_bounds_error );
     return;
   }
 #endif
@@ -1767,12 +1767,12 @@ void FileReader__read__Array_of_Char_Int32_Int32()
   SlagArray*  array = (SlagArray*) SLAG_POP_REF();
   SlagObject* reader = SLAG_POP_REF();
 
-  BVM_NULL_CHECK( reader && array, return );
+  VM_NULL_CHECK( reader && array, return );
 
 #if defined(SLAG_VM)
   if (index < 0 || count < 0 || index+count > array->array_count)
   {
-    bvm.throw_exception( bvm.type_out_of_bounds_error );
+    vm.throw_exception( vm.type_out_of_bounds_error );
     return;
   }
 #endif
@@ -1818,7 +1818,7 @@ void FileReader__read__Array_of_Char_Int32_Int32()
 void FileReader__remaining()
 {
   SlagObject* reader = SLAG_POP_REF();
-  BVM_NULL_CHECK( reader, return );
+  VM_NULL_CHECK( reader, return );
 
   SlagFileInfo* info = get_reader_file_info(reader);
   SLAG_PUSH_INT32( (info ? info->remaining : 0) );
@@ -1829,7 +1829,7 @@ void FileReader__skip__Int32()
   SlagInt32   skip_count = SLAG_POP_INT32();
   SlagObject* reader = SLAG_POP_REF();
 
-  BVM_NULL_CHECK( reader, return );
+  VM_NULL_CHECK( reader, return );
 
   SlagFileInfo* info = get_reader_file_info(reader);
   if (info)
@@ -1857,7 +1857,7 @@ void FileReader__skip__Int32()
 void FileReader__position()
 {
   SlagObject* reader = SLAG_POP_REF();
-  BVM_NULL_CHECK( reader, return );
+  VM_NULL_CHECK( reader, return );
 
   SlagFileInfo* info = get_reader_file_info(reader);
   if (info)
@@ -1952,7 +1952,7 @@ void FileWriter__write__Array_of_Char_Int32_Int32()
   SlagArray*  array  = (SlagArray*) SLAG_POP_REF();
   SlagObject* writer = SLAG_POP_REF();
 
-  BVM_NULL_CHECK( array, return );
+  VM_NULL_CHECK( array, return );
 
   SlagFileInfo* info = get_writer_file_info(writer);
   if (info)
@@ -1985,7 +1985,7 @@ void FileWriter__write__Array_of_Byte_Int32_Int32()
   SlagArray*  array  = (SlagArray*) SLAG_POP_REF();
   SlagObject* writer = SLAG_POP_REF();
 
-  BVM_NULL_CHECK( array, return );
+  VM_NULL_CHECK( array, return );
 
   SlagFileInfo* info = get_writer_file_info(writer);
   if (info)
@@ -2010,7 +2010,7 @@ void FileWriter__write__String()
   SlagString* st     = (SlagString*) SLAG_POP_REF();
   SlagObject* writer = SLAG_POP_REF();
 
-  BVM_NULL_CHECK( st, return );
+  VM_NULL_CHECK( st, return );
 
   SlagFileInfo* info = get_writer_file_info(writer);
   if (info)
@@ -2240,7 +2240,7 @@ void Object__hash_code()
 {
   // Object memory address is the default hash code
   SlagObject* context = SLAG_POP_REF();
-  BVM_NULL_CHECK( context, return );
+  VM_NULL_CHECK( context, return );
 #ifdef __amd64__
   SLAG_PUSH_INT32( (SlagInt32)(int)(uint64_t)context );
 #else
@@ -2266,8 +2266,8 @@ void ParseReader__prep_data()
 
   SlagParseReader* reader = (SlagParseReader*) context;
 
-  BVM_NULL_CHECK( reader, return );
-  BVM_NULL_CHECK( reader->property_data, return );
+  VM_NULL_CHECK( reader, return );
+  VM_NULL_CHECK( reader->property_data, return );
 
   if (reader->property_spaces_per_tab < 0) reader->property_spaces_per_tab = 0;
   int spaces_per_tab = reader->property_spaces_per_tab;
@@ -2427,7 +2427,7 @@ void Process__init__String()
   SlagString* cmd_line_string = (SlagString*) SLAG_POP_REF();
   SlagObject* process_obj = SLAG_POP_REF();
 
-  BVM_NULL_CHECK( process_obj && cmd_line_string, return );
+  VM_NULL_CHECK( process_obj && cmd_line_string, return );
 
   char* cmd_line = cmd_line_string->to_new_ascii();
   int result = system(cmd_line);
@@ -2461,11 +2461,11 @@ void Runtime__find_type_index__String()
   SlagString* name_obj = (SlagString*) SLAG_POP_REF();
   SLAG_DISCARD_REF();  // discard singleton context
 
-  BVM_NULL_CHECK( name_obj, bvm.type_null_reference_error, return );
+  VM_NULL_CHECK( name_obj, vm.type_null_reference_error, return );
 
   char buffer[256];
   name_obj->to_ascii( buffer, 256 );
-  SlagTypeInfo* type = bvm_find_type( buffer );
+  SlagTypeInfo* type = vm_find_type( buffer );
 
   if (type)
   {
@@ -2473,7 +2473,7 @@ void Runtime__find_type_index__String()
   }
   else
   {
-    bvm_throw_exception_of_type( bvm.type_invalid_operand_error );
+    vm_throw_exception_of_type( vm.type_invalid_operand_error );
   }
 }
 
@@ -2488,7 +2488,7 @@ static SlagMethodInfo* get_method_info()
   SLAG_GET( SlagObject*, context, obj, "context" );
   if ( !context )
   {
-    bvm_throw_exception_of_type( bvm.type_null_reference_error );
+    vm_throw_exception_of_type( vm.type_null_reference_error );
     return NULL;
   }
 
@@ -2498,7 +2498,7 @@ static SlagMethodInfo* get_method_info()
 
   if ((unsigned int) method_index >= (unsigned int) type->num_methods)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
     return NULL;
   }
 
@@ -2541,7 +2541,7 @@ void RuntimeMethod__parameter_types()
 
     SLAG_FIND_TYPE( type_runtime_type_list, "ArrayList<<RuntimeType>>" );
 
-    bvm_push_new_arraylist( type_runtime_type_list, num_params, true );
+    vm_push_new_arraylist( type_runtime_type_list, num_params, true );
     SlagArrayList** arraylist_ptr = (SlagArrayList**) &SLAG_PEEK_REF();
 
     for (int i=0; i<num_params; ++i)
@@ -2565,7 +2565,7 @@ void RuntimeMethod__arg__Object()
 
   if (introspection_ref_stack_count == INTROSPECTION_MAX_REF_STACK_SIZE)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
   }
 
   introspection_ref_stack[introspection_ref_stack_count++].retain( param );
@@ -2575,7 +2575,7 @@ void RuntimeMethod__arg__Int64()
 {
   if (introspection_data_stack_count + 8 >= INTROSPECTION_MAX_DATA_STACK_SIZE)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
   }
 
   introspection_data_stack_ptr -= 8;
@@ -2587,7 +2587,7 @@ void RuntimeMethod__arg__Int32()
 {
   if (introspection_data_stack_count + 4 >= INTROSPECTION_MAX_DATA_STACK_SIZE)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
   }
 
   introspection_data_stack_ptr -= 4;
@@ -2606,7 +2606,7 @@ SlagMethodInfo* RuntimeMethod_call_helper()
   SLAG_GET( SlagObject*, call_context, obj, "context" );
   if ( !call_context )
   {
-    bvm_throw_exception_of_type( bvm.type_null_reference_error );
+    vm_throw_exception_of_type( vm.type_null_reference_error );
     return NULL;
   }
 
@@ -2614,7 +2614,7 @@ SlagMethodInfo* RuntimeMethod_call_helper()
   if (introspection_data_stack_count != param_info->param_data_size
       || (introspection_ref_stack_count + 1) != param_info->num_ref_params)
   {
-    bvm_throw_exception_of_type( bvm.type_invalid_operand_error );
+    vm_throw_exception_of_type( vm.type_invalid_operand_error );
     return NULL;
   }
 
@@ -2629,13 +2629,13 @@ SlagMethodInfo* RuntimeMethod_call_helper()
   int bytes = introspection_data_stack_count;
   if (bytes)
   {
-    bvm.regs.stack.data -= bytes;
-    memcpy( bvm.regs.stack.data, introspection_data_stack_ptr, bytes );
+    vm.regs.stack.data -= bytes;
+    memcpy( vm.regs.stack.data, introspection_data_stack_ptr, bytes );
     introspection_data_stack_ptr = introspection_data_stack + INTROSPECTION_MAX_DATA_STACK_SIZE;
     introspection_data_stack_count = 0;
   }
 
-  bvm_call( m );
+  vm_call( m );
 
   return m;
 }
@@ -2652,7 +2652,7 @@ void RuntimeMethod__call_Object()
   {
     if ( !(m->return_type && m->return_type->is_reference()) )
     {
-      bvm_throw_exception_of_type( bvm.type_type_cast_error );
+      vm_throw_exception_of_type( vm.type_type_cast_error );
     }
   }
 }
@@ -2664,7 +2664,7 @@ void RuntimeMethod__call_Int64()
   {
     if ( !(m->return_type && m->return_type->stack_size == 8) )
     {
-      bvm_throw_exception_of_type( bvm.type_type_cast_error );
+      vm_throw_exception_of_type( vm.type_type_cast_error );
     }
   }
 }
@@ -2676,7 +2676,7 @@ void RuntimeMethod__call_Int32()
   {
     if ( !(m->return_type && m->return_type->stack_size == 4) )
     {
-      bvm_throw_exception_of_type( bvm.type_type_cast_error );
+      vm_throw_exception_of_type( vm.type_type_cast_error );
     }
   }
 }
@@ -2691,7 +2691,7 @@ void RuntimeMethods__array_count
   SlagObject* obj = SLAG_POP_REF();
 
   SLAG_GET( SlagObject*, context, obj, "context" );
-  BVM_NULL_CHECK( context, bvm.type_null_reference_error, return );
+  VM_NULL_CHECK( context, vm.type_null_reference_error, return );
 
   SLAG_PUSH_INTEGER( context->type->num_methods );
 }
@@ -2705,7 +2705,7 @@ void RuntimeProperties__array_count
   SlagObject* obj = SLAG_POP_REF();
 
   SLAG_GET( SlagObject*, context, obj, "context" );
-  BVM_NULL_CHECK( context, bvm.type_null_reference_error, return );
+  VM_NULL_CHECK( context, vm.type_null_reference_error, return );
 
   SLAG_PUSH_INTEGER( context->type->num_properties );
 }
@@ -2720,14 +2720,14 @@ void RuntimeProperty__type()
   SlagObject* obj = SLAG_POP_REF();
 
   SLAG_GET( SlagObject*, context, obj, "context" );
-  BVM_NULL_CHECK( context, bvm.type_null_reference_error, return );
+  VM_NULL_CHECK( context, vm.type_null_reference_error, return );
   SlagTypeInfo* type = context->type;
 
   SLAG_GET( SlagInt32, property_index, obj, "property_index" );
 
   if ((unsigned int) property_index >= (unsigned int) type->num_properties)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
     return;
   }
 
@@ -2740,14 +2740,14 @@ void RuntimeProperty__name()
   SlagObject* obj = SLAG_POP_REF();
 
   SLAG_GET( SlagObject*, context, obj, "context" );
-  BVM_NULL_CHECK( context, bvm.type_null_reference_error, return );
+  VM_NULL_CHECK( context, vm.type_null_reference_error, return );
   SlagTypeInfo* type = context->type;
 
   SLAG_GET( SlagInt32, property_index, obj, "property_index" );
 
   if ((unsigned int) property_index >= (unsigned int) type->num_properties)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
     return;
   }
 
@@ -2763,11 +2763,11 @@ void RuntimeProperty__as_Object()
   SLAG_GET( SlagObject*, context, obj, "context" );
   SLAG_GET( SlagInt32,   property_index, obj, "property_index" );
 
-  BVM_NULL_CHECK( context, bvm.type_null_reference_error, return );
+  VM_NULL_CHECK( context, vm.type_null_reference_error, return );
 
   if ((unsigned int) property_index >= (unsigned int) context->type->num_properties)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
     return;
   }
 
@@ -2775,12 +2775,12 @@ void RuntimeProperty__as_Object()
 
   if ( !context_type->property_types[property_index]->is_reference() )
   {
-    bvm_throw_exception_of_type( bvm.type_type_cast_error );
+    vm_throw_exception_of_type( vm.type_type_cast_error );
     return;
   }
 
   int offset = context_type->property_offsets[property_index];
-  SLAG_PUSH_REF( BVM_DEREFERENCE(SlagObject*, context, offset) );
+  SLAG_PUSH_REF( VM_DEREFERENCE(SlagObject*, context, offset) );
 }
 
 void RuntimeProperty__as_Object__Object()
@@ -2791,13 +2791,13 @@ void RuntimeProperty__as_Object__Object()
   SLAG_GET( SlagObject*, context, obj, "context" );
   SLAG_GET( SlagInt32,   property_index, obj, "property_index" );
 
-  BVM_NULL_CHECK( context, bvm.type_null_reference_error, return );
+  VM_NULL_CHECK( context, vm.type_null_reference_error, return );
 
   SlagTypeInfo* context_type = context->type;
 
   if ((unsigned int) property_index >= (unsigned int) context_type->num_properties)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
     return;
   }
 
@@ -2805,18 +2805,18 @@ void RuntimeProperty__as_Object__Object()
 
   if ( !property_type->is_reference() )
   {
-    bvm_throw_exception_of_type( bvm.type_type_cast_error );
+    vm_throw_exception_of_type( vm.type_type_cast_error );
     return;
   }
 
   if (new_value && !new_value->type->instance_of(property_type))
   {
-    bvm_throw_exception_of_type( bvm.type_invalid_operand_error );
+    vm_throw_exception_of_type( vm.type_invalid_operand_error );
     return;
   }
 
   int offset = context_type->property_offsets[property_index];
-  BVM_DEREFERENCE(SlagObject*, context, offset) = new_value;
+  VM_DEREFERENCE(SlagObject*, context, offset) = new_value;
 }
 
 void RuntimeProperty_read_primitive( int size )
@@ -2826,11 +2826,11 @@ void RuntimeProperty_read_primitive( int size )
   SLAG_GET( SlagObject*, context, obj, "context" );
   SLAG_GET( SlagInt32,   property_index, obj, "property_index" );
 
-  BVM_NULL_CHECK( context, bvm.type_null_reference_error, return );
+  VM_NULL_CHECK( context, vm.type_null_reference_error, return );
 
   if ((unsigned int) property_index >= (unsigned int) context->type->num_properties)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
     return;
   }
 
@@ -2839,19 +2839,19 @@ void RuntimeProperty_read_primitive( int size )
 
   if ( property_type->is_reference() || property_type->data_size != size)
   {
-    bvm_throw_exception_of_type( bvm.type_type_cast_error );
+    vm_throw_exception_of_type( vm.type_type_cast_error );
     return;
   }
 
   int offset = context_type->property_offsets[property_index];
   switch (size)
   {
-    case 8: SLAG_PUSH_INTEGER( BVM_DEREFERENCE(SlagInt64,context,offset) ); break;
-    case 4: SLAG_PUSH_INTEGER( BVM_DEREFERENCE(SlagInt32,context,offset) ); break;
-    case 2: SLAG_PUSH_INTEGER( BVM_DEREFERENCE(SlagChar,context,offset) ); break;
-    case 1: SLAG_PUSH_INTEGER( BVM_DEREFERENCE(SlagByte,context,offset) ); break;
+    case 8: SLAG_PUSH_INTEGER( VM_DEREFERENCE(SlagInt64,context,offset) ); break;
+    case 4: SLAG_PUSH_INTEGER( VM_DEREFERENCE(SlagInt32,context,offset) ); break;
+    case 2: SLAG_PUSH_INTEGER( VM_DEREFERENCE(SlagChar,context,offset) ); break;
+    case 1: SLAG_PUSH_INTEGER( VM_DEREFERENCE(SlagByte,context,offset) ); break;
     default:
-      bvm_throw_exception_of_type( bvm.type_invalid_operand_error );
+      vm_throw_exception_of_type( vm.type_invalid_operand_error );
   }
 }
 
@@ -2862,11 +2862,11 @@ void RuntimeProperty_write_primitive( int size )
   SLAG_GET( SlagObject*, context, obj, "context" );
   SLAG_GET( SlagInt32,   property_index, obj, "property_index" );
 
-  BVM_NULL_CHECK( context, bvm.type_null_reference_error, return );
+  VM_NULL_CHECK( context, vm.type_null_reference_error, return );
 
   if ((unsigned int) property_index >= (unsigned int) context->type->num_properties)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
     return;
   }
 
@@ -2875,7 +2875,7 @@ void RuntimeProperty_write_primitive( int size )
 
   if ( property_type->is_reference() || property_type->data_size != size)
   {
-    bvm_throw_exception_of_type( bvm.type_type_cast_error );
+    vm_throw_exception_of_type( vm.type_type_cast_error );
     return;
   }
 
@@ -2885,33 +2885,33 @@ void RuntimeProperty_write_primitive( int size )
     case 8:
       {
         SlagInt64 new_value = SLAG_POP_INT64();
-        BVM_DEREFERENCE(SlagInt64,context,offset) = new_value; 
+        VM_DEREFERENCE(SlagInt64,context,offset) = new_value; 
         break;
       }
 
     case 4:
       {
         SlagInt32 new_value = SLAG_POP_INT32();
-        BVM_DEREFERENCE(SlagInt32,context,offset) = new_value; 
+        VM_DEREFERENCE(SlagInt32,context,offset) = new_value; 
         break;
       }
 
     case 2:
       {
         SlagChar new_value = (SlagChar) SLAG_POP_INT32();
-        BVM_DEREFERENCE(SlagChar,context,offset) = new_value; 
+        VM_DEREFERENCE(SlagChar,context,offset) = new_value; 
         break;
       }
 
     case 1:
       {
         SlagByte new_value = (SlagByte) SLAG_POP_INT32();
-        BVM_DEREFERENCE(SlagByte,context,offset) = new_value; 
+        VM_DEREFERENCE(SlagByte,context,offset) = new_value; 
         break;
       }
 
     default:
-      bvm_throw_exception_of_type( bvm.type_invalid_operand_error );
+      vm_throw_exception_of_type( vm.type_invalid_operand_error );
   }
 }
 
@@ -2933,18 +2933,18 @@ void RuntimeType__name()
   SlagObject* obj = SLAG_POP_REF();
   SLAG_GET( SlagInt32, index, obj, "index" );
 
-  if ((unsigned int) index >= (unsigned int) bvm.num_types)
+  if ((unsigned int) index >= (unsigned int) vm.num_types)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
     return;
   }
 
-  SlagTypeInfo* type = &bvm.types[index];
+  SlagTypeInfo* type = &vm.types[index];
 
   SlagObject* name_obj = type->name_string_obj;
   if ( !name_obj )
   {
-    name_obj = bvm_create_permanent_string(type->name.data);
+    name_obj = vm_create_permanent_string(type->name.data);
     type->name_string_obj = name_obj;
   }
   SLAG_PUSH_REF( name_obj );
@@ -2954,21 +2954,21 @@ void RuntimeType__instance_of__RuntimeType()
 {
   // RuntimeType::instance_of(RuntimeType).Logical
   SlagObject* obj2 = SLAG_POP_REF();
-  BVM_NULL_CHECK( obj2, bvm.type_null_reference_error, return );
+  VM_NULL_CHECK( obj2, vm.type_null_reference_error, return );
   SLAG_GET( SlagInt32, type2_index, obj2, "index" );
 
   SlagObject* obj = SLAG_POP_REF();
   SLAG_GET( SlagInt32, type1_index, obj, "index" );
 
-  if ( ((unsigned int) type1_index >= (unsigned int) bvm.num_types)
-      || ((unsigned int) type2_index >= (unsigned int) bvm.num_types) )
+  if ( ((unsigned int) type1_index >= (unsigned int) vm.num_types)
+      || ((unsigned int) type2_index >= (unsigned int) vm.num_types) )
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
     return;
   }
 
-  SlagTypeInfo* type1 = &bvm.types[type1_index];
-  SlagTypeInfo* type2 = &bvm.types[type2_index];
+  SlagTypeInfo* type1 = &vm.types[type1_index];
+  SlagTypeInfo* type2 = &vm.types[type2_index];
 
   SLAG_PUSH_INTEGER( type1->instance_of(type2) );
 }
@@ -2978,13 +2978,13 @@ void RuntimeType__create_instance()
   SlagObject* obj = SLAG_POP_REF();
   SLAG_GET( SlagInt32, index, obj, "index" );
 
-  if ((unsigned int) index >= (unsigned int) bvm.num_types)
+  if ((unsigned int) index >= (unsigned int) vm.num_types)
   {
-    bvm_throw_exception_of_type( bvm.type_out_of_bounds_error );
+    vm_throw_exception_of_type( vm.type_out_of_bounds_error );
     return;
   }
 
-  SLAG_PUSH_REF( bvm_create_object( &bvm.types[index] ) );
+  SLAG_PUSH_REF( vm_create_object( &vm.types[index] ) );
 }
 */
 
@@ -3068,7 +3068,7 @@ void Socket__native_init__String_Int32()
 void Socket__connection_pending()
 {
   SlagObject* context = SLAG_POP_REF();
-  BVM_NULL_CHECK( context, return );
+  VM_NULL_CHECK( context, return );
 
   SocketInfo* socket = get_socket_socket_info(context);
   int result = 0;
@@ -3079,7 +3079,7 @@ void Socket__connection_pending()
 void Socket__is_connected()
 {
   SlagObject* context = SLAG_POP_REF();
-  BVM_NULL_CHECK( context, return );
+  VM_NULL_CHECK( context, return );
 
   SocketInfo* socket = get_socket_socket_info(context);
   int result = 0;
@@ -3090,10 +3090,10 @@ void Socket__is_connected()
 void Socket__native_remote_ip()
 {
   SlagObject* socket_obj = SLAG_POP_REF();
-  BVM_NULL_CHECK( socket_obj, return );
+  VM_NULL_CHECK( socket_obj, return );
 
   SocketInfo* socket = get_socket_socket_info(socket_obj);
-  BVM_NULL_CHECK( socket, return );
+  VM_NULL_CHECK( socket, return );
 
   SLAG_PUSH_REF( SlagString::create(socket->remote_ip) );
 }
@@ -3101,7 +3101,7 @@ void Socket__native_remote_ip()
 void Socket__close()
 {
   SlagObject* socket_obj = SLAG_POP_REF();
-  BVM_NULL_CHECK( socket_obj, return );
+  VM_NULL_CHECK( socket_obj, return );
   close_socket(socket_obj);
 }
 
@@ -3109,7 +3109,7 @@ void Socket__close()
 void SocketReader__available()
 {
   SlagObject* reader_obj = SLAG_POP_REF();
-  BVM_NULL_CHECK( reader_obj, return );
+  VM_NULL_CHECK( reader_obj, return );
   SocketInfo* socket = get_reader_socket_info(reader_obj);
   if (socket)
   {
@@ -3124,7 +3124,7 @@ void SocketReader__available()
 void SocketReader__peek()
 {
   SlagObject* reader_obj = SLAG_POP_REF();
-  BVM_NULL_CHECK( reader_obj, return );
+  VM_NULL_CHECK( reader_obj, return );
 
   SocketInfo* socket = get_reader_socket_info(reader_obj);
   if (socket)
@@ -3140,7 +3140,7 @@ void SocketReader__peek()
 void SocketReader__read()
 {
   SlagObject* reader_obj = SLAG_POP_REF();
-  BVM_NULL_CHECK( reader_obj, return );
+  VM_NULL_CHECK( reader_obj, return );
 
   SocketInfo* socket = get_reader_socket_info(reader_obj);
   if (socket)
@@ -3157,7 +3157,7 @@ void SocketWriter__write__Char()
 {
   SlagChar value = SLAG_POP_CHAR();
   SlagObject* writer_obj = SLAG_POP_REF();
-  BVM_NULL_CHECK( writer_obj, return );
+  VM_NULL_CHECK( writer_obj, return );
 
   SocketInfo* socket = get_writer_socket_info(writer_obj);
   if ( !(socket && socket->write(value)) )
@@ -3183,7 +3183,7 @@ void ServerSocket__native_init__Int32()
 void ServerSocket__is_connected()
 {
   SlagObject* server_socket_obj = SLAG_POP_REF();
-  BVM_NULL_CHECK( server_socket_obj, return );
+  VM_NULL_CHECK( server_socket_obj, return );
 
   ServerSocketInfo* server_socket = get_server_socket_info(server_socket_obj);
   if (server_socket)
@@ -3199,7 +3199,7 @@ void ServerSocket__is_connected()
 void ServerSocket__get_pending_info()
 {
   SlagObject* server_socket_obj = SLAG_POP_REF();
-  BVM_NULL_CHECK( server_socket_obj, return );
+  VM_NULL_CHECK( server_socket_obj, return );
 
   ServerSocketInfo* server_socket = get_server_socket_info(server_socket_obj);
   if (server_socket)
@@ -3215,7 +3215,7 @@ void ServerSocket__get_pending_info()
 void ServerSocket__close()
 {
   SlagObject* server_socket_obj = SLAG_POP_REF();
-  BVM_NULL_CHECK( server_socket_obj, return );
+  VM_NULL_CHECK( server_socket_obj, return );
   close_server_socket( server_socket_obj );
 }
 
@@ -3302,7 +3302,7 @@ void StringBuilder__native_copy__String_Array_of_Char_Int32()
 #if defined(SLAG_VM)
   if (dest_offset + st->count > array->array_count)
   {
-    bvm.throw_exception( bvm.type_out_of_bounds_error );
+    vm.throw_exception( vm.type_out_of_bounds_error );
     return;
   }
 #endif
@@ -3337,7 +3337,7 @@ void StringManager__create_from__Char()
 void String__count()
 {
   SlagString* context = (SlagString*) SLAG_POP_REF();
-  BVM_NULL_CHECK( context, return );
+  VM_NULL_CHECK( context, return );
   SLAG_PUSH_INT32( context->count );
 }
 
@@ -3345,7 +3345,7 @@ void String__get__Int32()
 {
   SlagInt32   index = SLAG_POP_INT32();
   SlagString* context = (SlagString*) SLAG_POP_REF();
-  BVM_NULL_CHECK( context, return );
+  VM_NULL_CHECK( context, return );
 
   SLAG_PUSH_CHAR( context->characters[index] );
 }
@@ -3367,7 +3367,7 @@ void String__opCMP__String()
   SlagString* st2 = (SlagString*) SLAG_POP_REF();
   SlagString* st1 = (SlagString*) SLAG_POP_REF();
 
-  BVM_NULL_CHECK( st1 && st2, return );
+  VM_NULL_CHECK( st1 && st2, return );
 
   int count1 = st1->count;
   int count2 = st2->count;
@@ -3411,7 +3411,7 @@ void String__opEQ__String()
   SlagString* st2 = (SlagString*) SLAG_POP_REF();
   SlagString* st1 = (SlagString*) SLAG_POP_REF();
 
-  BVM_NULL_CHECK( st1, return );
+  VM_NULL_CHECK( st1, return );
 
   if ( !st2 )
   {
@@ -3446,7 +3446,7 @@ void String__opADD__String()
   SlagString* b = (SlagString*) SLAG_POP_REF();
   SlagString* a = (SlagString*) SLAG_POP_REF();
 
-  BVM_NULL_CHECK( a, return );
+  VM_NULL_CHECK( a, return );
 
   SLAG_PUSH_REF(a);
   SLAG_PUSH_REF(b);
@@ -3482,7 +3482,7 @@ void String__opADD__Char()
   SlagChar ch = SLAG_POP_CHAR();
   SlagString* st = (SlagString*) SLAG_POP_REF();
 
-  BVM_NULL_CHECK( st, return );
+  VM_NULL_CHECK( st, return );
   SLAG_PUSH_REF( st );
 
   SlagString* result;
@@ -3503,7 +3503,7 @@ void String__substring__Int32_Int32()
   SlagInt32 i1 = SLAG_POP_INT32();
   SlagString* st = (SlagString*) SLAG_POP_REF();
 
-  BVM_NULL_CHECK( st, return );
+  VM_NULL_CHECK( st, return );
   SLAG_PUSH_REF( st );
 
   if (i1 < 0) i1 = 0;
@@ -3537,7 +3537,7 @@ void String__to_Array()
 {
   SlagString* st = (SlagString*) SLAG_POP_REF();
 
-  BVM_NULL_CHECK( st, return );
+  VM_NULL_CHECK( st, return );
   SLAG_PUSH_REF( st );
 
   SlagArray* new_array = SLAG_TYPE_ARRAY_OF_CHAR->create( st->count );
@@ -3633,7 +3633,7 @@ void System__get__String()
   SlagString* name_string = (SlagString*) SLAG_POP_REF();
   SLAG_DISCARD_REF();
 
-  BVM_NULL_CHECK( name_string, return );
+  VM_NULL_CHECK( name_string, return );
 
   char name[128];
   name_string->to_ascii( name, 128 );
@@ -3737,7 +3737,7 @@ void System__raw_exe_filepath()
 {
   SLAG_DISCARD_REF();
 #if defined(SLAG_VM)
-  SLAG_PUSH_REF( SlagString::create( bvm.raw_exe_filepath ) );
+  SLAG_PUSH_REF( SlagString::create( vm.raw_exe_filepath ) );
 #else
   SLAG_PUSH_REF( SlagString::create( sxc_raw_exe_filepath ) );
 #endif
@@ -3758,7 +3758,7 @@ void WeakReference__object__Object()
   // Set
   SlagObject* object = SLAG_POP_REF();
   SlagWeakRef* ref = (SlagWeakRef*) SLAG_POP_REF();
-  BVM_NULL_CHECK( ref, return );
+  VM_NULL_CHECK( ref, return );
 
   ref->set( object );
 }
@@ -3767,7 +3767,7 @@ void WeakReference__object()
 {
   // Get
   SlagWeakRef* ref = (SlagWeakRef*) SLAG_POP_REF();
-  BVM_NULL_CHECK( ref, return );
+  VM_NULL_CHECK( ref, return );
 
   SLAG_PUSH_REF( ref->object );
 }

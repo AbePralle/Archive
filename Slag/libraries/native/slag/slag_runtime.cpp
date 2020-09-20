@@ -174,7 +174,7 @@ void SlagNativeDataDeleteResource( void* data )
 SlagNativeData* SlagNativeData::create( void* data, SlagNativeDataDeleteFn delete_fn )
 {
   SlagNativeData* result = (SlagNativeData*) mm.create_object( 
-      bvm.type_native_data, sizeof(SlagNativeData) );
+      vm.type_native_data, sizeof(SlagNativeData) );
   result->init( data, delete_fn );
   return result;
 }
@@ -203,7 +203,7 @@ void slag_shut_down()
   slag_custom_shutdown_functions.clear();
 
 #if defined(SLAG_VM)
-  bvm.shut_down();
+  vm.shut_down();
 #else
   sxc.shut_down();
 #endif
@@ -213,7 +213,7 @@ void slag_init()
 {
   mm.init();
 #if defined(SLAG_VM)
-  bvm.init();
+  vm.init();
 #else
   sxc.init();
 #endif
@@ -243,7 +243,7 @@ void slag_configure()
 #endif
 
 #if defined(SLAG_VM)
-  bvm.configure();
+  vm.configure();
 #else
   sxc_configure();
 #endif
@@ -278,7 +278,7 @@ void slag_launch()
 void slag_register_native_method( const char* class_name, const char* method_name, SlagNativeFn fn_ptr )
 {
 #if defined(SLAG_VM)
-  bvm.register_native_method( class_name, method_name, fn_ptr );
+  vm.register_native_method( class_name, method_name, fn_ptr );
 #endif
 }
 

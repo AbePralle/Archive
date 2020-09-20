@@ -1,9 +1,9 @@
 #include "slag_version.h"
-#define USAGE "GoGo Build System " VERSION "\nUsage: gogo [target-name]\n"
+#define USAGE "GSlag Virtual Machine " VERSION "\nUsage: slag filename.etc [args]\n"
 
 /*
  *=============================================================================
- *  gogo.cpp
+ *  gslag.cpp
  *
  *  $(SLAG_VERSION)
  *  ---------------------------------------------------------------------------
@@ -114,27 +114,16 @@ void ZipArchive__load_raw__Int32();
 void ZipArchive__add__String_Int64_ArrayList_of_Byte_Int32_Int32_Logical_Int32_Int32();
 
 void error( const char* mesg );
-int  process_args( int argc, char** argv );
-bool exists( const char* filename );
-void find_executables();
-void check_build_etc();
-void compile_buildfile();
 
 int main( int argc, char** argv )
 {
   try
   {
     slag_set_raw_exe_filepath( argv[0] );
-
-    argc = process_args( argc-1, argv+1 );
-    argv = final_args;
-
-    find_executables();
-    check_build_etc();
+    if (argc < 2) { fprintf( stderr, USAGE ); return 1; }
 
     SlagLoader loader;
-    if (etc_name) loader.load(etc_name);
-    else          loader.load("build.etc");
+    loader.load(argv[1]);
 
     vm.register_native_method("Bitmap","init(ArrayList<<Byte>>)", Bitmap__init__ArrayList_of_Byte );
     vm.register_native_method("Bitmap","to_png_bytes()", Bitmap__to_png_bytes );
@@ -156,7 +145,7 @@ int main( int argc, char** argv )
         ZipArchive__add__String_Int64_ArrayList_of_Byte_Int32_Int32_Logical_Int32_Int32 );
 
     slag_configure();
-    slag_set_command_line_args( argv, argc );
+    slag_set_command_line_args( argv+2, argc-2 );
     slag_launch();
     slag_shut_down();
 
@@ -181,152 +170,12 @@ void error( const char* mesg )
   exit(1);
 }
 
-int process_args( int argc, char** argv )
-{
-  final_args = new char*[argc];
-  memset( final_args, 0, sizeof(char*)*argc );
-  int final_count = 0;
-  for (int i=0; i<argc; ++i)
-  {
-    if (0==strcmp(argv[i],"-bin"))
-    {
-      if (i+1 == argc)
-      {
-        error( "Path expected after -bin" );
-      }
-      bin_path = argv[++i];
-    }
-    else if (0==strcmp(argv[i],"-etc"))
-    {
-      if (i+1 == argc)
-      {
-        error( "Path expected after -etc" );
-      }
-      etc_name = argv[++i];
-    }
-    else if (0==strcmp(argv[i],"-src_path"))
-    {
-      if (i+1 == argc)
-      {
-        error( "Path expected after -src_path" );
-      }
-      src_path = argv[++i];
-    }
-    else if (0==strcmp(argv[i],"-create"))
-    {
-      ++i;
-      FILE* fp = fopen( "build.slag", "rb" );
-      if (fp)
-      {
-        printf( "-create: build.slag already exists!\n" );
-      }
-      else
-      {
-        fp = fopen( "build.slag", "w" );
-        fprintf( fp, "class Main : GoGo\n" );
-        fprintf( fp, "  METHODS\n" );
-        fprintf( fp, "    method build( String cmd )\n" );
-        fprintf( fp, "      which (cmd)\n" );
-        fprintf( fp, "        case \"hi\":\n" );
-        fprintf( fp, "          execute(\"echo hi\")\n" );
-        fprintf( fp, "        others:\n" );
-        fprintf( fp, "          println( \"default build (try \\\"gogo hi\\\")\" )\n" );
-        fprintf( fp, "      endWhich\n" );
-        fprintf( fp, "endClass\n" );
-
-        fclose(fp);
-        printf( "Created build.slag starter file.\n" );
-        exit(1);
-      }
-    }
-    else
-    {
-      final_args[final_count++] = argv[i];
-    }
-  }
-  return final_count;
-}
-
-bool exists( const char* filename )
-{
-  FILE* fp = fopen(filename,"rb");
-  if ( !fp ) return false;
-  fclose(fp);
-  return true;
-}
-
 char* new_string( const char* st )
 {
   int len = strlen(st);
   char* buffer = new char[len+1];
   strcpy(buffer,st);
   return buffer;
-}
-
-void find_executables()
-{
-  if (bin_path)
-  {
-    char filepath[PATH_MAX];
-    sprintf( filepath, "%s%s%s", bin_path, PATH_CHAR, SLAGC_FILENAME );
-    if ( !exists(filepath) ) error( SLAGC_FILENAME " not found on executable path." );
-    slagc_path = new_string(filepath);
-  }
-  else
-  {
-    slagc_path  = new_string(SLAGC_FILENAME);
-  }
-}
-
-void check_build_etc()
-{
-  // If we're running a custom etc (as a Slag VM more than as a build system),
-  // skip the whole build.slag check.
-  if (etc_name) return;
-
-  if (!exists("build_core.slag") && !exists("build.slag"))
-  {
-    error( "No build file found.\nType \"gogo -create\" to create a build.slag starter file." );
-  }
-
-  if (!exists("build.slag"))
-  {
-    FILE* fp = fopen("build.slag","wb");
-
-    fprintf( fp, "[include \"build_core.slag\"]\n" );
-    fprintf( fp, "\n" );
-    fprintf( fp, "class CustomBuild : BuildCore\n" );
-    fprintf( fp, "  METHODS\n" );
-    fprintf( fp, "    method build( String cmd ):\n" );
-    fprintf( fp, "      prior.build(cmd)\n" );
-    fprintf( fp, "endClass\n" );
-    fclose(fp);
-  }
-
-  compile_buildfile();
-}
-
-void compile_buildfile()
-{
-  char cmd[PATH_MAX];
-  sprintf( cmd, "%s build.slag -include gogo.slag -quiet", slagc_path );
-  if (bin_path && !src_path)
-  {
-    src_path = new char[strlen(bin_path)*2 + 64];
-    sprintf( src_path,
-      "%s" PATH_CHAR "libraries;%s" PATH_CHAR "libraries" PATH_CHAR "standard",
-      bin_path, bin_path );
-  }
-  if (src_path)
-  {
-    sprintf( cmd + strlen(cmd), " -src_path \"%s\"", src_path );
-  }
-  //printf( "\n> %s\n", cmd );  // DEBUG
-  if (0 != system(cmd))
-  {
-    error( "BUILD FAILED\n" );
-  }
-  //printf( "\n" );
 }
 
 void slag_adjust_filename_for_os( char* filename, int len );

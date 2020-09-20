@@ -65,7 +65,7 @@
   }
 
 // Null check is defined out
-#define BVM_NULL_CHECK( expr, cmd )
+#define VM_NULL_CHECK( expr, cmd )
 
 #define SLAG_FIND_TYPE( var_name, type_name ) \
   SlagTypeInfo* var_name; \

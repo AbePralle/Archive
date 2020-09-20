@@ -405,33 +405,33 @@ void slag_throw_exception_of_type( SlagTypeInfo* type );
 #define SLAGOP_LOCAL_INCREMENT_REAL      162
 #define SLAGOP_LOCAL_DECREMENT_REAL      163
 
-#define SLAG_PUSH_REF( obj ) bvm.regs.stack.refs[-1] = (obj); --bvm.regs.stack.refs
-#define SLAG_PEEK_REF() (*(bvm.regs.stack.refs))
-#define SLAG_POP_REF() *(bvm.regs.stack.refs++)
-#define SLAG_DISCARD_REF() bvm.regs.stack.refs++
-#define SLAG_DUPLICATE_REF() bvm.regs.stack.refs[-1] = *bvm.regs.stack.refs; --bvm.regs.stack.refs
+#define SLAG_PUSH_REF( obj ) vm.regs.stack.refs[-1] = (obj); --vm.regs.stack.refs
+#define SLAG_PEEK_REF() (*(vm.regs.stack.refs))
+#define SLAG_POP_REF() *(vm.regs.stack.refs++)
+#define SLAG_DISCARD_REF() vm.regs.stack.refs++
+#define SLAG_DUPLICATE_REF() vm.regs.stack.refs[-1] = *vm.regs.stack.refs; --vm.regs.stack.refs
 
-#define SLAG_POP_INTEGER()   *(bvm.regs.stack.data++)
-#define SLAG_PUSH_INTEGER(i) *(--bvm.regs.stack.data) = i
-#define SLAG_PEEK_INTEGER() *(bvm.regs.stack.data)
+#define SLAG_POP_INTEGER()   *(vm.regs.stack.data++)
+#define SLAG_PUSH_INTEGER(i) *(--vm.regs.stack.data) = i
+#define SLAG_PEEK_INTEGER() *(vm.regs.stack.data)
 
-#define SLAG_POP_REAL()   *(SlagReal64*)(bvm.regs.stack.data++)
-#define SLAG_PUSH_REAL(r) *(SlagReal64*)(--bvm.regs.stack.data) = r
-#define SLAG_PEEK_REAL() *(SlagReal64*)(bvm.regs.stack.data)
+#define SLAG_POP_REAL()   *(SlagReal64*)(vm.regs.stack.data++)
+#define SLAG_PUSH_REAL(r) *(SlagReal64*)(--vm.regs.stack.data) = r
+#define SLAG_PEEK_REAL() *(SlagReal64*)(vm.regs.stack.data)
 
-#define SLAG_PUSH(type,value) *((type*)(bvm.regs.stack.data -= sizeof(type)/8)) = (value)
-#define SLAG_PEEK(type) *((type*)bvm.regs.stack.data)
-#define SLAG_POP(type) ((type*)(bvm.regs.stack.data += sizeof(type)/8))[-1]
+#define SLAG_PUSH(type,value) *((type*)(vm.regs.stack.data -= sizeof(type)/8)) = (value)
+#define SLAG_PEEK(type) *((type*)vm.regs.stack.data)
+#define SLAG_POP(type) ((type*)(vm.regs.stack.data += sizeof(type)/8))[-1]
 
 
-#define BVM_DEREFERENCE(context,offset,property_type) *((property_type*)(((char*)context)+offset))
+#define VM_DEREFERENCE(context,offset,property_type) *((property_type*)(((char*)context)+offset))
 
 #define SLAG_FIND_TYPE( var_name, type_name ) \
   SlagTypeInfo* var_name; \
   { \
     static int type_index = -1; \
-    if (type_index == -1) type_index = bvm.must_find_type(type_name)->index; \
-    var_name = bvm.types[type_index]; \
+    if (type_index == -1) type_index = vm.must_find_type(type_name)->index; \
+    var_name = vm.types[type_index]; \
   }
 
 #define SLAG_GET_REF(var_name,obj,name) \
@@ -463,45 +463,45 @@ void slag_throw_exception_of_type( SlagTypeInfo* type );
   {\
     static int method_index = -1; \
     if (method_index == -1) method_index = type->must_find_method(sig)->index; \
-    bvm.call( bvm.methods[method_index] ); \
+    vm.call( vm.methods[method_index] ); \
   }
 
-#define SLAGCODE_OPERAND_I32() *(bvm.regs.ip++)
-#define SLAGCODE_OPERAND_I64() bvm.literal_table[*(bvm.regs.ip++)]
-#define SLAGCODE_OPERAND_ADDR() bvm.address_table[*(bvm.regs.ip++)]
+#define SLAGCODE_OPERAND_I32() *(vm.regs.ip++)
+#define SLAGCODE_OPERAND_I64() vm.literal_table[*(vm.regs.ip++)]
+#define SLAGCODE_OPERAND_ADDR() vm.address_table[*(vm.regs.ip++)]
 
-#define BVM_ASSERT(obj,err_type,cmd) if (!(obj)) { bvm.throw_exception(err_type); cmd; }
+#define VM_ASSERT(obj,err_type,cmd) if (!(obj)) { vm.throw_exception(err_type); cmd; }
 
-#define BVM_NULL_CHECK(obj,cmd) if (!(obj)) { bvm.throw_exception(bvm.type_null_reference_error); cmd; }
+#define VM_NULL_CHECK(obj,cmd) if (!(obj)) { vm.throw_exception(vm.type_null_reference_error); cmd; }
 
-#define BVM_THROW_TYPE(err_type,cmd) { bvm.throw_exception(err_type); cmd; }
+#define VM_THROW_TYPE(err_type,cmd) { vm.throw_exception(err_type); cmd; }
 
 #define SLAGCODE_READ_PROPERTY(property_type) \
   { \
     SlagObject* context = SLAG_POP_REF( ); \
-    BVM_ASSERT( context, bvm.type_null_reference_error, continue ); \
-    SLAG_PUSH_INTEGER( BVM_DEREFERENCE(context,SLAGCODE_OPERAND_I32(),property_type) ); \
+    VM_ASSERT( context, vm.type_null_reference_error, continue ); \
+    SLAG_PUSH_INTEGER( VM_DEREFERENCE(context,SLAGCODE_OPERAND_I32(),property_type) ); \
   }
 
 #define SLAGCODE_WRITE_PROPERTY(property_type) \
   { \
     SlagInt64   new_value = SLAG_POP_INTEGER(); \
     SlagObject* context = SLAG_POP_REF( ); \
-    BVM_ASSERT( context, bvm.type_null_reference_error, continue ); \
-    BVM_DEREFERENCE(context,SLAGCODE_OPERAND_I32(),property_type) = (property_type) new_value; \
+    VM_ASSERT( context, vm.type_null_reference_error, continue ); \
+    VM_DEREFERENCE(context,SLAGCODE_OPERAND_I32(),property_type) = (property_type) new_value; \
   }
 
 #define SLAGCODE_WRITE_THIS_PROPERTY(property_type) \
-    BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),property_type) = (property_type) SLAG_POP_INTEGER()
+    VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),property_type) = (property_type) SLAG_POP_INTEGER()
 
-#define SLAG_TYPE_STRING bvm.type_string
-#define SLAG_TYPE_WEAK_REFERENCE bvm.type_weak_reference
-#define SLAG_TYPE_ARRAY_OF_CHAR bvm.type_array_of_char
+#define SLAG_TYPE_STRING vm.type_string
+#define SLAG_TYPE_WEAK_REFERENCE vm.type_weak_reference
+#define SLAG_TYPE_ARRAY_OF_CHAR vm.type_array_of_char
 
-#define SLAG_REF_STACK_PTR bvm.regs.stack.refs
-#define SLAG_REF_STACK_LIMIT bvm.ref_stack_limit
-#define SLAG_SINGLETONS bvm.singletons
-#define SLAG_SINGLETONS_COUNT bvm.singletons.count
+#define SLAG_REF_STACK_PTR vm.regs.stack.refs
+#define SLAG_REF_STACK_LIMIT vm.ref_stack_limit
+#define SLAG_SINGLETONS vm.singletons
+#define SLAG_SINGLETONS_COUNT vm.singletons.count
 
 
 struct SlagStackPointers
@@ -654,7 +654,7 @@ struct SlagVM
   void throw_stack_limit_error();
 };
 
-extern SlagVM bvm;
+extern SlagVM vm;
 
 
 //=============================================================================

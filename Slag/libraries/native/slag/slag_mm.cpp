@@ -30,7 +30,7 @@
 #include "slag.h"
 
 #if defined(SLAG_VM)
-#  define SLAGMM_CALL( ref, m ) SLAG_PUSH_REF(ref); bvm.call(m)
+#  define SLAGMM_CALL( ref, m ) SLAG_PUSH_REF(ref); vm.call(m)
 #else
 #  define SLAGMM_CALL( ref, m ) m(ref)
 #endif
@@ -640,8 +640,8 @@ void SlagMM::trace_accessible_objects()
 #if defined(SLAG_VM)
   // string table
   {
-    SlagObject** strings_data = bvm.strings.data - 1;
-    int count = bvm.strings.count + 1;
+    SlagObject** strings_data = vm.strings.data - 1;
+    int count = vm.strings.count + 1;
     while (--count)
     {
       ++(*(++strings_data))->reference_count;

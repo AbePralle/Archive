@@ -27,7 +27,7 @@
 #include "slag_vm.h"
 #include "slag_stdlib.h"
 
-SlagVM bvm;
+SlagVM vm;
 
 //=============================================================================
 //  SlagGenericObject
@@ -81,23 +81,23 @@ SlagObject* SlagGenericObject::get_ref( int offset )
 //=============================================================================
 bool SlagTypeInfo::is_real()
 {
-  return (this == bvm.type_real64 || this == bvm.type_real32);
+  return (this == vm.type_real64 || this == vm.type_real32);
 }
 
 bool SlagTypeInfo::is_integer()
 {
-  return (this == bvm.type_int64 || this == bvm.type_int32
-    || this == bvm.type_char || this == bvm.type_byte);
+  return (this == vm.type_int64 || this == vm.type_int32
+    || this == vm.type_char || this == vm.type_byte);
 }
 
 bool SlagTypeInfo::is_int32_64()
 {
-  return (this == bvm.type_int64 || this == bvm.type_int32);
+  return (this == vm.type_int64 || this == vm.type_int32);
 }
 
 bool SlagTypeInfo::is_logical()
 {
-  return (this == bvm.type_logical);
+  return (this == vm.type_logical);
 }
 
 
@@ -144,7 +144,7 @@ SlagPropertyInfo* SlagTypeInfo::must_find_property( const char* name, SlagTypeIn
 
 SlagObject* SlagTypeInfo::singleton()
 {
-  return (SlagObject*) bvm.singletons[singleton_index];
+  return (SlagObject*) vm.singletons[singleton_index];
 }
 
 SlagObject* SlagTypeInfo::create()
@@ -179,7 +179,7 @@ void SlagMethodInfo::create_signature()
 //=============================================================================
 SlagTypeInfo* SlagString::string_type()
 {
-  return bvm.type_string;
+  return vm.type_string;
 }
 
 //=============================================================================
@@ -253,10 +253,10 @@ SlagObject* SlagVM::create_type( const char* name )
 
 SlagTypeInfo* SlagVM::find_type( const char* name )
 {
-  int count = bvm.types.count;
+  int count = vm.types.count;
   for (int i=0; i<count; ++i)
   {
-    SlagTypeInfo* type = bvm.types[i];
+    SlagTypeInfo* type = vm.types[i];
     if ( strcmp(type->name,name) == 0 ) return type;
   }
   return NULL;
@@ -416,10 +416,10 @@ static bool find_ip_info( SlagInt64 ip, SlagMethodInfo** m_ptr, char** filename_
   *line_ptr = 0;
   *filename_ptr = NULL;
 
-  int offset = ((SlagOpcode*)(void*)ip) - bvm.code.data;
-  for (int i=0; i<bvm.methods.count; ++i)
+  int offset = ((SlagOpcode*)(void*)ip) - vm.code.data;
+  for (int i=0; i<vm.methods.count; ++i)
   {
-    SlagMethodInfo* m = bvm.methods[i];
+    SlagMethodInfo* m = vm.methods[i];
     if (offset >= m->bytecode_offset && offset < m->bytecode_limit)
     {
       *m_ptr = m;
@@ -431,9 +431,9 @@ static bool find_ip_info( SlagInt64 ip, SlagMethodInfo** m_ptr, char** filename_
 
   int best_filename_index = -1;
   int best_line = 0;
-  for (int i=(*m_ptr)->source_pos_offset; i<bvm.line_table.count; ++i)
+  for (int i=(*m_ptr)->source_pos_offset; i<vm.line_table.count; ++i)
   {
-    SlagSourcePos pos = bvm.line_table[i];
+    SlagSourcePos pos = vm.line_table[i];
     if (pos.code_offset >= offset) break;
     if (pos.source_pos > 0) best_line = pos.source_pos;
     else best_filename_index = -pos.source_pos;
@@ -441,7 +441,7 @@ static bool find_ip_info( SlagInt64 ip, SlagMethodInfo** m_ptr, char** filename_
 
   if (best_filename_index == -1) return false;
 
-  *filename_ptr = bvm.filenames[best_filename_index];
+  *filename_ptr = vm.filenames[best_filename_index];
   *line_ptr = best_line;
 
   return true;
@@ -475,14 +475,14 @@ void StackTrace__describe__Int64()
 
 static void get_call_history( ArrayList<SlagInt64> &history )
 {
-  if (bvm.exception_ip)
+  if (vm.exception_ip)
   {
-    history.add( (SlagInt64)(void*)bvm.exception_ip );
-    bvm.exception_ip = NULL;
+    history.add( (SlagInt64)(void*)vm.exception_ip );
+    vm.exception_ip = NULL;
   }
 
-  SlagCallFrame* cur_frame = bvm.regs.call_frame;
-  while (cur_frame != bvm.call_stack_limit)
+  SlagCallFrame* cur_frame = vm.regs.call_frame;
+  while (cur_frame != vm.call_stack_limit)
   {
     history.add( (SlagInt64)(void*)((cur_frame++)->return_address) );
   }
@@ -495,7 +495,7 @@ void StackTrace__native_history()
   ArrayList<SlagInt64> history;
   get_call_history(history);
 
-  SlagArray* array = bvm.type_array_of_int64->create( history.count );
+  SlagArray* array = vm.type_array_of_int64->create( history.count );
   memcpy( array->data, history.data, history.count * 8 );
   SLAG_PUSH_REF( array );
 }
@@ -843,14 +843,14 @@ void SlagVM::register_stdlib()
 
 void SlagVM::apply_hooks()
 {
-  for (int i=0; i<bvm.native_method_hooks.count; ++i)
+  for (int i=0; i<vm.native_method_hooks.count; ++i)
   {
-    const char* class_name = bvm.native_method_hooks[i].class_name;
-    const char* sig = bvm.native_method_hooks[i].signature;
-    SlagNativeFn fn = bvm.native_method_hooks[i].fn;
+    const char* class_name = vm.native_method_hooks[i].class_name;
+    const char* sig = vm.native_method_hooks[i].signature;
+    SlagNativeFn fn = vm.native_method_hooks[i].fn;
     SlagTypeInfo* type;
     SlagMethodInfo *m;
-    type = bvm.find_type( class_name );
+    type = vm.find_type( class_name );
     if ( !type ) continue;
 
     m = type->find_method( sig );
@@ -878,13 +878,13 @@ void SlagVM::apply_hooks()
 
 void SlagVM::set_command_line_args( char* args[], int count )
 {
-  SlagObject* list = ((SlagGenericObject*)(bvm.must_find_type("Global")->singleton()))->get_ref("command_line_args");
+  SlagObject* list = ((SlagGenericObject*)(vm.must_find_type("Global")->singleton()))->get_ref("command_line_args");
   SlagMethodInfo* m_add = list->type->must_find_method("add(String)");
   for (int i=0; i<count; ++i)
   {
     SLAG_PUSH_REF( list );
     SLAG_PUSH_REF( (SlagObject*) SlagString::create(args[i]) );
-    bvm.call( m_add );
+    vm.call( m_add );
     SLAG_DISCARD_REF();
   }
 }
@@ -892,9 +892,9 @@ void SlagVM::set_command_line_args( char* args[], int count )
 void SlagVM::prep_types_and_methods()
 {
   int num_singletons = 0;
-  for (int t=0; t<bvm.types.count; ++t)
+  for (int t=0; t<vm.types.count; ++t)
   {
-    SlagTypeInfo* type = bvm.types[t];
+    SlagTypeInfo* type = vm.types[t];
 	  
     if (type->qualifiers & SLAG_QUALIFIER_SINGLETON)
     {
@@ -904,31 +904,31 @@ void SlagVM::prep_types_and_methods()
     if (type->qualifiers & SLAG_QUALIFIER_PRIMITIVE)
     {
       type->stack_slots = 1;
-      if (type == bvm.type_int64)
+      if (type == vm.type_int64)
       {
         type->object_size    = 8;
       }
-      else if (type == bvm.type_int32)
+      else if (type == vm.type_int32)
       {
         type->object_size    = 4;
       }
-      else if (type == bvm.type_char)
+      else if (type == vm.type_char)
       {
         type->object_size    = 4;
       }
-      else if (type == bvm.type_byte)
+      else if (type == vm.type_byte)
       {
         type->object_size    = 4;
       }
-      else if (type == bvm.type_real64)
+      else if (type == vm.type_real64)
       {
         type->object_size    = 8;
       }
-      else if (type == bvm.type_real32)
+      else if (type == vm.type_real32)
       {
         type->object_size    = 4;
       }
-      else if (type == bvm.type_logical)
+      else if (type == vm.type_logical)
       {
         type->object_size    = 4;
       }
@@ -944,7 +944,7 @@ void SlagVM::prep_types_and_methods()
         type->object_size = sizeof(SlagObject);
         type->stack_slots = sizeof(void*);
 
-        if (type->instance_of(bvm.type_requires_cleanup) && type != bvm.type_null)
+        if (type->instance_of(vm.type_requires_cleanup) && type != vm.type_null)
         {
           type->qualifiers |= SLAG_QUALIFIER_REQUIRES_CLEANUP;
         }
@@ -1008,8 +1008,8 @@ void SlagVM::prep_types_and_methods()
   }
 
   // Create singleton data.
-  bvm.singletons.ensure_capacity( num_singletons );
-  bvm.singletons.count = num_singletons;
+  vm.singletons.ensure_capacity( num_singletons );
+  vm.singletons.count = num_singletons;
 
   // Prep methods
   // Fill in parameter & local var offsets.
@@ -1024,9 +1024,9 @@ void SlagVM::prep_types_and_methods()
   //   last local ref  - ref_frame_ptr[ -(num_ref_params+num_local_refs+1) ]
   //
   // Value data is similar.
-  for (int j=0; j<bvm.parameter_table.count; ++j)
+  for (int j=0; j<vm.parameter_table.count; ++j)
   {
-    SlagParameterList& params = *bvm.parameter_table[j];
+    SlagParameterList& params = *vm.parameter_table[j];
 
     int   ref_offset = 0;
     int   data_offset = 0;
@@ -1052,9 +1052,9 @@ void SlagVM::prep_types_and_methods()
 
   }
 
-  for (int j=0; j<bvm.methods.count; ++j)
+  for (int j=0; j<vm.methods.count; ++j)
   {
-    SlagMethodInfo* m = bvm.methods[j];
+    SlagMethodInfo* m = vm.methods[j];
     int ref_offset = -(m->parameters->num_ref_params);
     int data_offset = -(m->parameters->num_data_params);
     for (int i=0; i<m->local_vars.count; ++i)
@@ -1080,9 +1080,9 @@ void SlagVM::prep_types_and_methods()
   }
 
   // Find some common methods for each type.
-  for (int t=0; t<bvm.types.count; ++t)
+  for (int t=0; t<vm.types.count; ++t)
   {
-    SlagTypeInfo* type = bvm.types[t];
+    SlagTypeInfo* type = vm.types[t];
 
     type->method_init_object = type->find_method( "init_object()" );
     if (type->requires_cleanup())
@@ -1094,7 +1094,7 @@ void SlagVM::prep_types_and_methods()
   }
 
   // Specific other methods & properties
-  //bvm.method_String_set_hash_code  = bvm.type_string->must_find_method( "set_hash_code()" );
+  //vm.method_String_set_hash_code  = vm.type_string->must_find_method( "set_hash_code()" );
 }
 
 
@@ -1134,16 +1134,16 @@ void SlagVM::configure()
   regs.call_frame = call_stack_limit;
 
   // Set the hash code of each string literal.
-  //for (int i=0; i<bvm.strings.count; ++i)
+  //for (int i=0; i<vm.strings.count; ++i)
   //{
-    //SLAG_PUSH_REF( bvm.strings[i] );
-    //bvm.call( bvm.method_String_set_hash_code );
+    //SLAG_PUSH_REF( vm.strings[i] );
+    //vm.call( vm.method_String_set_hash_code );
   //}
 
   create_singletons();
 
   /*
-  bvm_pass_command_line_args();
+  vm_pass_command_line_args();
   */
 }
 
@@ -1196,10 +1196,10 @@ void SlagVM::create_singletons()
   // Call init_object() on each singleton.  Don't call
   // init_object() on the main object if it happens to
   // be a singleton.
-  for (int i=0; i<bvm.types.count; ++i)
+  for (int i=0; i<vm.types.count; ++i)
   {
-    SlagTypeInfo* type = bvm.types[i];
-    if (type->is_singleton() && type != bvm.main_class)
+    SlagTypeInfo* type = vm.types[i];
+    if (type->is_singleton() && type != vm.main_class)
     {
       if (type->method_init_object)
       {
@@ -1213,9 +1213,9 @@ void SlagVM::create_singletons()
   }
 
   // Call init_singleton() on each singleton if it exists.
-  for (int i=0; i<bvm.types.count; ++i)
+  for (int i=0; i<vm.types.count; ++i)
   {
-    SlagTypeInfo* type = bvm.types[i];
+    SlagTypeInfo* type = vm.types[i];
     if (type->is_singleton())
     {
       SlagMethodInfo* m_init = type->find_method("init_singleton()");
@@ -1234,12 +1234,12 @@ void SlagVM::call( SlagMethodInfo* method )
 
   if ( method )
   {
-    SlagOpcode* prior_ip = bvm.regs.ip;
-    bvm.regs.ip = &halt_instruction;
+    SlagOpcode* prior_ip = vm.regs.ip;
+    vm.regs.ip = &halt_instruction;
 
     invoke( method );
     execute();
-    bvm.regs.ip = prior_ip;
+    vm.regs.ip = prior_ip;
   }
   else
   {
@@ -1250,29 +1250,29 @@ void SlagVM::call( SlagMethodInfo* method )
 void SlagVM::invoke( SlagMethodInfo* method )
 {
   // Save prior call frame.
-  (--bvm.regs.call_frame)->return_address = bvm.regs.ip;
-  bvm.regs.call_frame->called_method = method;
-  bvm.regs.call_frame->prior_frame = bvm.regs.frame;
+  (--vm.regs.call_frame)->return_address = vm.regs.ip;
+  vm.regs.call_frame->called_method = method;
+  vm.regs.call_frame->prior_frame = vm.regs.frame;
 
   // Set up current call frame pointers to be just before parameter data.
-  bvm.regs.frame.refs  = bvm.regs.stack.refs  + method->parameters->num_ref_params;
-  bvm.regs.frame.data = bvm.regs.stack.data + method->parameters->num_data_params;
+  vm.regs.frame.refs  = vm.regs.stack.refs  + method->parameters->num_ref_params;
+  vm.regs.frame.data = vm.regs.stack.data + method->parameters->num_data_params;
 
   // Adjust stack pointers to make room for local data & clear that region.
   {
     int count = method->num_local_refs;
     if (count)
     {
-      bvm.regs.stack.refs -= count;
-      memset( bvm.regs.stack.refs, 0, count*sizeof(SlagObject*) );
+      vm.regs.stack.refs -= count;
+      memset( vm.regs.stack.refs, 0, count*sizeof(SlagObject*) );
       // need to clear refs so they don't screw up a GC
     }
 
-    bvm.regs.stack.data -= method->local_data_size;
+    vm.regs.stack.data -= method->local_data_size;
     // Don't need to clear data since every local var is zeroed by default
     // if no other initial assignment is given.
   }
-  bvm.regs.ip = method->bytecode;
+  vm.regs.ip = method->bytecode;
 }
 
 
@@ -1282,7 +1282,7 @@ void SlagVM::execute()
 
   for (;;)
   {
-    switch (*(bvm.regs.ip++))
+    switch (*(vm.regs.ip++))
     {
       case SLAGOP_HALT:
         return;
@@ -1299,12 +1299,12 @@ void SlagVM::execute()
 
       case SLAGOP_NATIVE_CALL:
         {
-          m = bvm.methods[SLAGCODE_OPERAND_I32()];
+          m = vm.methods[SLAGCODE_OPERAND_I32()];
 
           // debug stack guard saves a lot of headache
-          SlagOpcode* next_ip = bvm.regs.ip;
-          SlagObject** ref_stack = bvm.regs.stack.refs + m->parameters->num_ref_params;
-          SlagInt64* data_stack = bvm.regs.stack.data + m->parameters->num_data_params;
+          SlagOpcode* next_ip = vm.regs.ip;
+          SlagObject** ref_stack = vm.regs.stack.refs + m->parameters->num_ref_params;
+          SlagInt64* data_stack = vm.regs.stack.data + m->parameters->num_data_params;
           if (m->return_type)
           {
             if (m->return_type->is_reference()) --ref_stack;
@@ -1313,10 +1313,10 @@ void SlagVM::execute()
 
           m->native_handler();
 
-          if ((bvm.regs.stack.refs != ref_stack || bvm.regs.stack.data != data_stack)
-              && bvm.regs.ip == next_ip)
+          if ((vm.regs.stack.refs != ref_stack || vm.regs.stack.data != data_stack)
+              && vm.regs.ip == next_ip)
           {
-            if (bvm.regs.stack.refs != ref_stack) printf( "Corrupted reference stack" );
+            if (vm.regs.stack.refs != ref_stack) printf( "Corrupted reference stack" );
             else                                  printf( "Corrupted data stack" );
             printf( " in %s::%s\n",m->type_context->name,m->signature );
           }
@@ -1324,20 +1324,20 @@ void SlagVM::execute()
         continue;
 
       case SLAGOP_MISSING_RETURN_ERROR:
-        BVM_THROW_TYPE( bvm.type_missing_return_error, continue );
+        VM_THROW_TYPE( vm.type_missing_return_error, continue );
 
       case SLAGOP_RETURN_NIL:
-        bvm.regs.stack = bvm.regs.frame;
-        bvm.regs.frame = bvm.regs.call_frame->prior_frame;
-        bvm.regs.ip = (bvm.regs.call_frame++)->return_address;
+        vm.regs.stack = vm.regs.frame;
+        vm.regs.frame = vm.regs.call_frame->prior_frame;
+        vm.regs.ip = (vm.regs.call_frame++)->return_address;
         continue;
 
       case SLAGOP_RETURN_REF:
         {
           SlagObject* result  = SLAG_POP_REF();
-          bvm.regs.stack      = bvm.regs.frame;
-          bvm.regs.frame      = bvm.regs.call_frame->prior_frame;
-          bvm.regs.ip = (bvm.regs.call_frame++)->return_address;
+          vm.regs.stack      = vm.regs.frame;
+          vm.regs.frame      = vm.regs.call_frame->prior_frame;
+          vm.regs.ip = (vm.regs.call_frame++)->return_address;
           SLAG_PUSH_REF( result );
         }
         continue;
@@ -1345,85 +1345,85 @@ void SlagVM::execute()
       case SLAGOP_RETURN_8:
         {
           SlagInt64 result = SLAG_POP_INTEGER();
-          bvm.regs.stack   = bvm.regs.frame;
-          bvm.regs.frame   = bvm.regs.call_frame->prior_frame;
-          bvm.regs.ip = (bvm.regs.call_frame++)->return_address;
+          vm.regs.stack   = vm.regs.frame;
+          vm.regs.frame   = vm.regs.call_frame->prior_frame;
+          vm.regs.ip = (vm.regs.call_frame++)->return_address;
           SLAG_PUSH_INTEGER( result );
           continue;
         }
 
       case SLAGOP_RETURN_X:
         {
-          SlagInt64* from_spot = bvm.regs.stack.data;
+          SlagInt64* from_spot = vm.regs.stack.data;
           SlagInt32 size  = SLAGCODE_OPERAND_I32();
-          bvm.regs.stack  = bvm.regs.frame;
-          bvm.regs.frame  = bvm.regs.call_frame->prior_frame;
-          bvm.regs.ip = (bvm.regs.call_frame++)->return_address;
-          bvm.regs.stack.data -= size;
-          memmove( bvm.regs.stack.data, from_spot, size<<3 );
+          vm.regs.stack  = vm.regs.frame;
+          vm.regs.frame  = vm.regs.call_frame->prior_frame;
+          vm.regs.ip = (vm.regs.call_frame++)->return_address;
+          vm.regs.stack.data -= size;
+          memmove( vm.regs.stack.data, from_spot, size<<3 );
         }
         continue;
 
       case SLAGOP_DUPLICATE_REF:
         {
-          SlagObject* ref = *bvm.regs.stack.refs;
+          SlagObject* ref = *vm.regs.stack.refs;
           SLAG_PUSH_REF( ref );
         }
         continue;
 
       case SLAGOP_DUPLICATE_8:
         {
-          SlagInt64 n = *(bvm.regs.stack.data);
+          SlagInt64 n = *(vm.regs.stack.data);
           SLAG_PUSH_INTEGER( n );
           continue;
         }
 
       case SLAGOP_POP_REF:
-        ++bvm.regs.stack.refs;
+        ++vm.regs.stack.refs;
         continue;
 
       case SLAGOP_POP_8:
-        ++bvm.regs.stack.data;
+        ++vm.regs.stack.data;
         continue;
 
       case SLAGOP_POP_X:
         {
           SlagInt32 size = SLAGCODE_OPERAND_I32();
-          bvm.regs.stack.data += size;
+          vm.regs.stack.data += size;
           continue;
         }
 
       case SLAGOP_JUMP:
-        // Can't use OPERAND_ADDR() here since it would increment bvm.regs.ip
+        // Can't use OPERAND_ADDR() here since it would increment vm.regs.ip
         // after we assigned it.
-        bvm.regs.ip = (SlagOpcode*) bvm.address_table[*bvm.regs.ip];
+        vm.regs.ip = (SlagOpcode*) vm.address_table[*vm.regs.ip];
         continue;
 
       case SLAGOP_JUMP_IF_TRUE:
         {
           SlagOpcode *dest = (SlagOpcode*) SLAGCODE_OPERAND_ADDR();
-          if (SLAG_POP_INTEGER()>0) bvm.regs.ip = dest;
+          if (SLAG_POP_INTEGER()>0) vm.regs.ip = dest;
         }
         continue;
 
       case SLAGOP_JUMP_IF_FALSE:
         {
           SlagOpcode *dest = (SlagOpcode*) SLAGCODE_OPERAND_ADDR();
-          if (SLAG_POP_INTEGER()<=0) bvm.regs.ip = dest;
+          if (SLAG_POP_INTEGER()<=0) vm.regs.ip = dest;
         }
         continue;
 
       case SLAGOP_JUMP_IF_REF:
         {
           SlagOpcode *dest = (SlagOpcode*) SLAGCODE_OPERAND_ADDR();
-          if (SLAG_POP_REF()) bvm.regs.ip = dest;
+          if (SLAG_POP_REF()) vm.regs.ip = dest;
         }
         continue;
 
       case SLAGOP_JUMP_IF_NULL_REF:
         {
           SlagOpcode *dest = (SlagOpcode*) SLAGCODE_OPERAND_ADDR();
-          if ( !SLAG_POP_REF() ) bvm.regs.ip = dest;
+          if ( !SLAG_POP_REF() ) vm.regs.ip = dest;
         }
         continue;
 
@@ -1432,7 +1432,7 @@ void SlagVM::execute()
         continue;
 
       case SLAGOP_LITERAL_STRING:
-        SLAG_PUSH_REF( bvm.strings[SLAGCODE_OPERAND_I32()] );
+        SLAG_PUSH_REF( vm.strings[SLAGCODE_OPERAND_I32()] );
         continue;
 
       case SLAGOP_LITERAL_NULL:
@@ -1479,18 +1479,18 @@ void SlagVM::execute()
         continue;
 
       case SLAGOP_READ_THIS_REF:
-        SLAG_PUSH_REF( bvm.regs.frame.refs[-1] );
+        SLAG_PUSH_REF( vm.regs.frame.refs[-1] );
         continue;
 
       case SLAGOP_READ_SINGLETON_REF:
-        SLAG_PUSH_REF( bvm.singletons[SLAGCODE_OPERAND_I32()] );
+        SLAG_PUSH_REF( vm.singletons[SLAGCODE_OPERAND_I32()] );
         continue;
 
       case SLAGOP_READ_PROPERTY_REF:
         {
           SlagObject* context = SLAG_POP_REF( );
-          BVM_NULL_CHECK( context, continue );
-          SLAG_PUSH_REF( BVM_DEREFERENCE(context,SLAGCODE_OPERAND_I32(),SlagObject*) );
+          VM_NULL_CHECK( context, continue );
+          SLAG_PUSH_REF( VM_DEREFERENCE(context,SLAGCODE_OPERAND_I32(),SlagObject*) );
         }
         continue;
 
@@ -1509,8 +1509,8 @@ void SlagVM::execute()
       case SLAGOP_READ_PROPERTY_REAL32:
         {
           SlagObject* context = SLAG_POP_REF();
-          BVM_ASSERT( context, bvm.type_null_reference_error, continue );
-          SLAG_PUSH_REAL( BVM_DEREFERENCE(context,SLAGCODE_OPERAND_I32(),SlagReal32) );
+          VM_ASSERT( context, vm.type_null_reference_error, continue );
+          SLAG_PUSH_REAL( VM_DEREFERENCE(context,SLAGCODE_OPERAND_I32(),SlagReal32) );
         }
         continue;
 
@@ -1522,53 +1522,53 @@ void SlagVM::execute()
         {
           int offset, size;
           SlagObject* context = SLAG_POP_REF();
-          BVM_NULL_CHECK( context, continue );
+          VM_NULL_CHECK( context, continue );
           offset = SLAGCODE_OPERAND_I32();
           size = SLAGCODE_OPERAND_I32();
-          bvm.regs.stack.data -= size>>3;
-          memcpy( bvm.regs.stack.data, ((char*)context)+offset, size );
+          vm.regs.stack.data -= size>>3;
+          memcpy( vm.regs.stack.data, ((char*)context)+offset, size );
         }
         continue;
 
       case SLAGOP_READ_THIS_PROPERTY_REF:
-        SLAG_PUSH_REF( BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagObject*) );
+        SLAG_PUSH_REF( VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagObject*) );
         continue;
 
       case SLAGOP_READ_THIS_PROPERTY_4:
-        SLAG_PUSH_INTEGER( BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32) );
+        SLAG_PUSH_INTEGER( VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32) );
         continue;
 
       case SLAGOP_READ_THIS_PROPERTY_REAL32:
-        SLAG_PUSH_REAL( BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal32) );
+        SLAG_PUSH_REAL( VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal32) );
         continue;
 
       case SLAGOP_READ_THIS_PROPERTY_8:
-        SLAG_PUSH_INTEGER( BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt64) );
+        SLAG_PUSH_INTEGER( VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt64) );
         continue;
 
       case SLAGOP_READ_THIS_PROPERTY_X:
         {
           SlagInt32 offset = SLAGCODE_OPERAND_I32();
           SlagInt32 size = SLAGCODE_OPERAND_I32();
-          bvm.regs.stack.data -= size>>3;
-          memcpy( bvm.regs.stack.data, ((char*)bvm.regs.frame.refs[-1])+offset, size );
+          vm.regs.stack.data -= size>>3;
+          memcpy( vm.regs.stack.data, ((char*)vm.regs.frame.refs[-1])+offset, size );
         }
         continue;
 
       case SLAGOP_READ_LOCAL_REF:
-        SLAG_PUSH_REF( bvm.regs.frame.refs[SLAGCODE_OPERAND_I32()] );
+        SLAG_PUSH_REF( vm.regs.frame.refs[SLAGCODE_OPERAND_I32()] );
         continue;
 
       case SLAGOP_READ_LOCAL_8:
-        SLAG_PUSH_INTEGER( bvm.regs.frame.data[SLAGCODE_OPERAND_I32()] );
+        SLAG_PUSH_INTEGER( vm.regs.frame.data[SLAGCODE_OPERAND_I32()] );
         continue;
 
       case SLAGOP_READ_LOCAL_X:
         {
           SlagInt32 offset = (SlagInt32) SLAGCODE_OPERAND_I32();
           SlagInt32 slots  = (SlagInt32) SLAGCODE_OPERAND_I32();
-          bvm.regs.stack.data -= slots;
-          memcpy( bvm.regs.stack.data, bvm.regs.frame.data+offset, slots<<3 );
+          vm.regs.stack.data -= slots;
+          memcpy( vm.regs.stack.data, vm.regs.frame.data+offset, slots<<3 );
           continue;
         }
 
@@ -1576,8 +1576,8 @@ void SlagVM::execute()
         {
           SlagInt32 total_slots = SLAGCODE_OPERAND_I32();
           SlagInt32 offset     = SLAGCODE_OPERAND_I32();
-          SlagInt64 i64 = bvm.regs.stack.data[offset];
-          bvm.regs.stack.data += total_slots;
+          SlagInt64 i64 = vm.regs.stack.data[offset];
+          vm.regs.stack.data += total_slots;
           SLAG_PUSH_INTEGER( i64 );
         }
         continue;
@@ -1587,16 +1587,16 @@ void SlagVM::execute()
           SlagInt32 total_slots = SLAGCODE_OPERAND_I32();
           SlagInt32 offset      = SLAGCODE_OPERAND_I32();
           SlagInt32 slots       = SLAGCODE_OPERAND_I32();
-          SlagInt64* source_ptr = bvm.regs.stack.data + offset;
-          bvm.regs.stack.data += (total_slots - slots);
-          memmove( bvm.regs.stack.data, source_ptr, slots<<3 );
+          SlagInt64* source_ptr = vm.regs.stack.data + offset;
+          vm.regs.stack.data += (total_slots - slots);
+          memmove( vm.regs.stack.data, source_ptr, slots<<3 );
         }
         continue;
 
       case SLAGOP_WRITE_SINGLETON_REF:
         {
           SlagObject*  new_value = SLAG_POP_REF();
-          SlagObject** dest = bvm.singletons.data + SLAGCODE_OPERAND_I32();
+          SlagObject** dest = vm.singletons.data + SLAGCODE_OPERAND_I32();
           if (*dest) --((*dest)->reference_count);
           if (new_value) ++(new_value->reference_count);
           *dest = new_value;
@@ -1607,7 +1607,7 @@ void SlagVM::execute()
         {
           SlagObject* new_value = SLAG_POP_REF();
           SlagObject* context = SLAG_POP_REF();
-          BVM_NULL_CHECK( context, continue );
+          VM_NULL_CHECK( context, continue );
           SlagInt32   offset = SLAGCODE_OPERAND_I32();
           SlagObject** dest = (SlagObject**)(((char*)context)+offset);
           if (*dest) --((*dest)->reference_count);
@@ -1632,8 +1632,8 @@ void SlagVM::execute()
         {
           SlagReal64 new_value = SLAG_POP_REAL();
           SlagObject* context = SLAG_POP_REF();
-          BVM_ASSERT( context, bvm.type_null_reference_error, continue );
-          BVM_DEREFERENCE(context,SLAGCODE_OPERAND_I32(),SlagReal32) = (SlagReal32) new_value;
+          VM_ASSERT( context, vm.type_null_reference_error, continue );
+          VM_DEREFERENCE(context,SLAGCODE_OPERAND_I32(),SlagReal32) = (SlagReal32) new_value;
         }
         continue;
 
@@ -1646,9 +1646,9 @@ void SlagVM::execute()
           SlagInt32 offset = SLAGCODE_OPERAND_I32();
           SlagInt32 size   = SLAGCODE_OPERAND_I32();
           SlagObject* context = SLAG_POP_REF();
-          BVM_NULL_CHECK( context, continue );
-          memcpy( ((char*)context)+offset, bvm.regs.stack.data, size );
-          bvm.regs.stack.data += size>>3;
+          VM_NULL_CHECK( context, continue );
+          memcpy( ((char*)context)+offset, vm.regs.stack.data, size );
+          vm.regs.stack.data += size>>3;
         }
         continue;
 
@@ -1656,9 +1656,9 @@ void SlagVM::execute()
         {
           SlagObject* new_value = SLAG_POP_REF();
           SlagInt32 offset = SLAGCODE_OPERAND_I32();
-          BVM_DEREFERENCE(bvm.regs.frame.refs[-1],offset,SlagObject*) = new_value;
+          VM_DEREFERENCE(vm.regs.frame.refs[-1],offset,SlagObject*) = new_value;
 
-          SlagObject** dest = (SlagObject**)(((char*)bvm.regs.frame.refs[-1])+offset);
+          SlagObject** dest = (SlagObject**)(((char*)vm.regs.frame.refs[-1])+offset);
           if (*dest) --((*dest)->reference_count);
           if (new_value) ++(new_value->reference_count);
           *dest = new_value;
@@ -1670,7 +1670,7 @@ void SlagVM::execute()
         continue;
 
       case SLAGOP_WRITE_THIS_PROPERTY_REAL32:
-        BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal32) = (SlagReal32) SLAG_POP_REAL();
+        VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal32) = (SlagReal32) SLAG_POP_REAL();
         continue;
 
       case SLAGOP_WRITE_THIS_PROPERTY_8:
@@ -1681,25 +1681,25 @@ void SlagVM::execute()
         {
           SlagInt32 offset = SLAGCODE_OPERAND_I32();
           SlagInt32 size   = SLAGCODE_OPERAND_I32();
-          memcpy( ((char*)bvm.regs.frame.refs[-1])+offset, bvm.regs.stack.data, size );
-          bvm.regs.stack.data += size>>3;
+          memcpy( ((char*)vm.regs.frame.refs[-1])+offset, vm.regs.stack.data, size );
+          vm.regs.stack.data += size>>3;
         }
         continue;
 
       case SLAGOP_WRITE_LOCAL_REF:
-        bvm.regs.frame.refs[SLAGCODE_OPERAND_I32()] = SLAG_POP_REF();
+        vm.regs.frame.refs[SLAGCODE_OPERAND_I32()] = SLAG_POP_REF();
         continue;
 
       case SLAGOP_WRITE_LOCAL_8:
-        bvm.regs.frame.data[SLAGCODE_OPERAND_I32()] = SLAG_POP_INTEGER();
+        vm.regs.frame.data[SLAGCODE_OPERAND_I32()] = SLAG_POP_INTEGER();
         continue;
 
       case SLAGOP_WRITE_LOCAL_X:
         {
           SlagInt32 offset = SLAGCODE_OPERAND_I32();
           SlagInt32 slots  = SLAGCODE_OPERAND_I32();
-          memcpy( bvm.regs.frame.data+offset, bvm.regs.stack.data, slots<<3 );
-          bvm.regs.stack.data += slots;
+          memcpy( vm.regs.frame.data+offset, vm.regs.stack.data, slots<<3 );
+          vm.regs.stack.data += slots;
         }
         continue;
 
@@ -1707,19 +1707,19 @@ void SlagVM::execute()
         // Args have been evaluated & pushed on the stack but we don't
         // actually make the call since it's an empty method - we just
         // remove all the stuff on the stack again.
-        m = bvm.methods[SLAGCODE_OPERAND_I32()];
-        bvm.regs.stack.refs  += m->parameters->num_ref_params;
-        bvm.regs.stack.data += m->parameters->num_data_params;
+        m = vm.methods[SLAGCODE_OPERAND_I32()];
+        vm.regs.stack.refs  += m->parameters->num_ref_params;
+        vm.regs.stack.data += m->parameters->num_data_params;
         continue;
 
       case SLAGOP_STATIC_CALL:
-        m = bvm.methods[SLAGCODE_OPERAND_I32()];
-        BVM_NULL_CHECK( bvm.regs.stack.refs[SLAGCODE_OPERAND_I32()], continue );
+        m = vm.methods[SLAGCODE_OPERAND_I32()];
+        VM_NULL_CHECK( vm.regs.stack.refs[SLAGCODE_OPERAND_I32()], continue );
         goto execute_call;
 
       case SLAGOP_DYNAMIC_CALL:
         {
-          SlagObject* context = bvm.regs.stack.refs[ SLAGCODE_OPERAND_I32() ];
+          SlagObject* context = vm.regs.stack.refs[ SLAGCODE_OPERAND_I32() ];
           if (context) 
           {
             m = context->type->dispatch_table[ SLAGCODE_OPERAND_I32() ];
@@ -1727,14 +1727,14 @@ void SlagVM::execute()
           }
           else
           {
-            BVM_THROW_TYPE( bvm.type_null_reference_error, continue );
+            VM_THROW_TYPE( vm.type_null_reference_error, continue );
             continue;
           }
         }
 
       case SLAGOP_NEW_OBJECT:
         {
-          SlagTypeInfo* of_type = bvm.types[ SLAGCODE_OPERAND_I32() ];
+          SlagTypeInfo* of_type = vm.types[ SLAGCODE_OPERAND_I32() ];
           SlagObject* object = mm.create_object( of_type, of_type->object_size );
           SLAG_PUSH_REF( object ); // first ref is result value
           SLAG_PUSH_REF( object ); // second ref is for init() call
@@ -1745,7 +1745,7 @@ void SlagVM::execute()
 
       case SLAGOP_NEW_OBJECT_NO_INIT:
         {
-          SlagTypeInfo* of_type = bvm.types[ SLAGCODE_OPERAND_I32() ];
+          SlagTypeInfo* of_type = vm.types[ SLAGCODE_OPERAND_I32() ];
           SlagObject* object = mm.create_object( of_type, of_type->object_size );
           SLAG_PUSH_REF( object ); // first ref is result value
           // we skip init_object() call
@@ -1755,9 +1755,9 @@ void SlagVM::execute()
 
       case SLAGOP_NEW_ARRAY:
         {
-          SlagTypeInfo* of_type = bvm.types[ SLAGCODE_OPERAND_I32() ];
+          SlagTypeInfo* of_type = vm.types[ SLAGCODE_OPERAND_I32() ];
           SlagInt32 size = (SlagInt32) SLAG_POP_INTEGER();
-          if (size < 0) BVM_THROW_TYPE( bvm.type_invalid_operand_error, continue );
+          if (size < 0) VM_THROW_TYPE( vm.type_invalid_operand_error, continue );
           SLAG_PUSH_REF( mm.create_array(of_type,size) );
           continue;
         }
@@ -1766,10 +1766,10 @@ void SlagVM::execute()
         {
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           SLAG_PUSH_REF( ((SlagArray**)array_ref->data)[index] );
           continue;
@@ -1779,10 +1779,10 @@ void SlagVM::execute()
         {
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           SLAG_PUSH_INTEGER( ((SlagByte*)array_ref->data)[index] );
           continue;
@@ -1792,10 +1792,10 @@ void SlagVM::execute()
         {
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           SLAG_PUSH_INTEGER( ((SlagChar*)array_ref->data)[index] );
           continue;
@@ -1805,10 +1805,10 @@ void SlagVM::execute()
         {
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           SLAG_PUSH_INTEGER( ((SlagInt32*)array_ref->data)[index] );
           continue;
@@ -1818,10 +1818,10 @@ void SlagVM::execute()
         {
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32      index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           SLAG_PUSH_REAL( ((SlagReal32*)array_ref->data)[index] );
           continue;
@@ -1831,10 +1831,10 @@ void SlagVM::execute()
         {
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           SLAG_PUSH_INTEGER( ((SlagInt64*)array_ref->data)[index] );
           continue;
@@ -1844,13 +1844,13 @@ void SlagVM::execute()
         {
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32 index = (SlagInt32) SLAG_POP_INTEGER();
-          BVM_NULL_CHECK( array_ref, continue );
+          VM_NULL_CHECK( array_ref, continue );
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           int size = array_ref->type->element_size;
-          memcpy( (bvm.regs.stack.data -= size>>3), ((char*)array_ref->data)+index*size, size );
+          memcpy( (vm.regs.stack.data -= size>>3), ((char*)array_ref->data)+index*size, size );
           continue;
         }
 
@@ -1859,10 +1859,10 @@ void SlagVM::execute()
           SlagObject* new_value = SLAG_POP_REF();
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error,continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error,continue );
           }
           SlagObject** dest = ((SlagObject**)array_ref->data) + index;
           if (*dest) --((*dest)->reference_count);
@@ -1876,10 +1876,10 @@ void SlagVM::execute()
           SlagInt64   new_value = SLAG_POP_INTEGER();
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error,continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error,continue );
           }
           ((SlagByte*)array_ref->data)[index] = (SlagByte) new_value;
           continue;
@@ -1890,10 +1890,10 @@ void SlagVM::execute()
           SlagInt64   new_value = SLAG_POP_INTEGER();
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           ((SlagChar*)array_ref->data)[index] = (SlagChar) new_value;
           continue;
@@ -1904,10 +1904,10 @@ void SlagVM::execute()
           SlagInt64   new_value = SLAG_POP_INTEGER();
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           ((SlagInt32*)array_ref->data)[index] = (SlagInt32) new_value;
           continue;
@@ -1918,10 +1918,10 @@ void SlagVM::execute()
           SlagReal64 new_value = SLAG_POP_REAL();
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           ((SlagReal32*)array_ref->data)[index] = (SlagReal32) new_value;
           continue;
@@ -1932,10 +1932,10 @@ void SlagVM::execute()
           SlagInt64   new_value = SLAG_POP_INTEGER();
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
           SlagInt32   index = (SlagInt32) SLAG_POP_INTEGER();
-          if (!array_ref) BVM_THROW_TYPE(bvm.type_null_reference_error,continue);
+          if (!array_ref) VM_THROW_TYPE(vm.type_null_reference_error,continue);
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           ((SlagInt64*)array_ref->data)[index] = (SlagInt64) new_value;
           continue;
@@ -1944,14 +1944,14 @@ void SlagVM::execute()
       case SLAGOP_ARRAY_WRITE_X:
         {
           SlagArray* array_ref = (SlagArray*) SLAG_POP_REF();
-          BVM_NULL_CHECK( array_ref, continue );
+          VM_NULL_CHECK( array_ref, continue );
           int size = array_ref->type->element_size;
-          char* source_ptr = (char*) bvm.regs.stack.data;
-          bvm.regs.stack.data += size >> 3;
+          char* source_ptr = (char*) vm.regs.stack.data;
+          vm.regs.stack.data += size >> 3;
           SlagInt32 index = (SlagInt32) SLAG_POP_INTEGER();
           if ((unsigned int) index >= (unsigned int) array_ref->array_count)
           {
-            BVM_THROW_TYPE( bvm.type_out_of_bounds_error, continue );
+            VM_THROW_TYPE( vm.type_out_of_bounds_error, continue );
           }
           memcpy( ((char*)array_ref->data)+index*size, source_ptr, size );
           continue;
@@ -1966,18 +1966,18 @@ void SlagVM::execute()
 
       case SLAGOP_TYPECHECK:
         {
-          SlagTypeInfo* of_type = bvm.types[ SLAGCODE_OPERAND_I32() ];
+          SlagTypeInfo* of_type = vm.types[ SLAGCODE_OPERAND_I32() ];
           SlagObject* object = SLAG_PEEK_REF();
           if (object && !object->type->instance_of(of_type)) 
           {
-            BVM_THROW_TYPE( bvm.type_type_cast_error, continue );
+            VM_THROW_TYPE( vm.type_type_cast_error, continue );
           }
           continue;
         }
 
       case SLAGOP_AS_REF:
         {
-          SlagTypeInfo* of_type = bvm.types[ SLAGCODE_OPERAND_I32() ];
+          SlagTypeInfo* of_type = vm.types[ SLAGCODE_OPERAND_I32() ];
           SlagObject* object = SLAG_PEEK_REF();
           if (object && !object->type->instance_of(of_type)) SLAG_PEEK_REF() = NULL;
           continue;
@@ -1985,49 +1985,49 @@ void SlagVM::execute()
 
       case SLAGOP_CAST_REAL_TO_INTEGER:
         {
-          SlagReal64 value = *((SlagReal64*)bvm.regs.stack.data);
-          *bvm.regs.stack.data = (SlagInt64) value;
+          SlagReal64 value = *((SlagReal64*)vm.regs.stack.data);
+          *vm.regs.stack.data = (SlagInt64) value;
         }
         continue;
 
       case SLAGOP_CAST_INTEGER_TO_REAL:
         {
-          SlagInt64 value = *bvm.regs.stack.data;
-          *((SlagReal64*)bvm.regs.stack.data) = (SlagReal64) value;
+          SlagInt64 value = *vm.regs.stack.data;
+          *((SlagReal64*)vm.regs.stack.data) = (SlagReal64) value;
         }
         continue;
 
       case SLAGOP_CAST_REAL_TO_LOGICAL:
         {
-          SlagReal64 value = *((SlagReal64*)bvm.regs.stack.data);
-          if (value != 0) *bvm.regs.stack.data = 1;
-          else            *bvm.regs.stack.data = 0;
+          SlagReal64 value = *((SlagReal64*)vm.regs.stack.data);
+          if (value != 0) *vm.regs.stack.data = 1;
+          else            *vm.regs.stack.data = 0;
         }
         continue;
 
       case SLAGOP_CAST_INTEGER_TO_LOGICAL:
         {
-          SlagInt64 value = *bvm.regs.stack.data;
-          if (value != 0) *bvm.regs.stack.data = 1;
-          else            *bvm.regs.stack.data = 0;
+          SlagInt64 value = *vm.regs.stack.data;
+          if (value != 0) *vm.regs.stack.data = 1;
+          else            *vm.regs.stack.data = 0;
         }
         continue;
 
       case SLAGOP_CAST_INTEGER_TO_I32:
-        *bvm.regs.stack.data = (SlagInt32) *bvm.regs.stack.data;
+        *vm.regs.stack.data = (SlagInt32) *vm.regs.stack.data;
         continue;
 
       case SLAGOP_CAST_INTEGER_TO_CHAR:
-        *bvm.regs.stack.data &= 0xffff;
+        *vm.regs.stack.data &= 0xffff;
         continue;
 
       case SLAGOP_CAST_INTEGER_TO_BYTE:
-        *bvm.regs.stack.data &= 0xff;
+        *vm.regs.stack.data &= 0xff;
         continue;
 
       case SLAGOP_CMP_INSTANCE_OF:
         {
-          SlagTypeInfo* of_type = bvm.types[ SLAGCODE_OPERAND_I32() ];
+          SlagTypeInfo* of_type = vm.types[ SLAGCODE_OPERAND_I32() ];
           SlagObject* object = SLAG_POP_REF();
           if (object) SLAG_PUSH_INTEGER( object->type->instance_of(of_type));
           else SLAG_PUSH_INTEGER( 0 );
@@ -2069,10 +2069,10 @@ void SlagVM::execute()
           SlagInt32 result = 1;
           SlagInt32 slots = SLAGCODE_OPERAND_I32();
           
-          SlagInt64* ptr1 = (SlagInt64*) bvm.regs.stack.data;
-          bvm.regs.stack.data += slots;
-          SlagInt64* ptr2 = (SlagInt64*) bvm.regs.stack.data;
-          bvm.regs.stack.data += slots;
+          SlagInt64* ptr1 = (SlagInt64*) vm.regs.stack.data;
+          vm.regs.stack.data += slots;
+          SlagInt64* ptr2 = (SlagInt64*) vm.regs.stack.data;
+          vm.regs.stack.data += slots;
 
           ++slots;
           --ptr1;
@@ -2095,10 +2095,10 @@ void SlagVM::execute()
           SlagInt32 result = 0;
           SlagInt32 slots = SLAGCODE_OPERAND_I32();
           
-          SlagInt64* ptr1 = (SlagInt64*) bvm.regs.stack.data;
-          bvm.regs.stack.data += slots;
-          SlagInt64* ptr2 = (SlagInt64*) bvm.regs.stack.data;
-          bvm.regs.stack.data += slots;
+          SlagInt64* ptr1 = (SlagInt64*) vm.regs.stack.data;
+          vm.regs.stack.data += slots;
+          SlagInt64* ptr2 = (SlagInt64*) vm.regs.stack.data;
+          vm.regs.stack.data += slots;
 
           ++slots;
           --ptr1;
@@ -2213,21 +2213,21 @@ void SlagVM::execute()
         continue;
 
       case SLAGOP_NOT_INTEGER:
-        *bvm.regs.stack.data = ~(*bvm.regs.stack.data);
+        *vm.regs.stack.data = ~(*vm.regs.stack.data);
         continue;
 
       case SLAGOP_NOT_LOGICAL:
         // Logical values can be -1, 0, or 1, so a little extra attention is required.
-        if (*bvm.regs.stack.data > 0) *bvm.regs.stack.data = 0;
-        else                          *bvm.regs.stack.data = 1;
+        if (*vm.regs.stack.data > 0) *vm.regs.stack.data = 0;
+        else                          *vm.regs.stack.data = 1;
         continue;
 
       case SLAGOP_NEGATE_INTEGER:
-        *bvm.regs.stack.data = -(*bvm.regs.stack.data);
+        *vm.regs.stack.data = -(*vm.regs.stack.data);
         continue;
 
       case SLAGOP_NEGATE_REAL:
-        *((SlagReal64*)bvm.regs.stack.data) = -(*((SlagReal64*)bvm.regs.stack.data));
+        *((SlagReal64*)vm.regs.stack.data) = -(*((SlagReal64*)vm.regs.stack.data));
         continue;
 
       case SLAGOP_AND_LOGICAL:
@@ -2282,7 +2282,7 @@ void SlagVM::execute()
         {
           SlagInt64 b = SLAG_POP_INTEGER();
           SlagInt64 a = SLAG_PEEK_INTEGER();
-          BVM_ASSERT( b, bvm.type_divide_by_zero_error, continue );
+          VM_ASSERT( b, vm.type_divide_by_zero_error, continue );
           SLAG_PEEK_INTEGER() = (a / b);
         }
         continue;
@@ -2291,7 +2291,7 @@ void SlagVM::execute()
         {
           SlagInt64 b = SLAG_POP_INTEGER();
           SlagInt64 a = SLAG_PEEK_INTEGER();
-          BVM_ASSERT( b, bvm.type_divide_by_zero_error, continue );
+          VM_ASSERT( b, vm.type_divide_by_zero_error, continue );
           if (b == 1)
           {
             SLAG_PEEK_INTEGER() = 0;
@@ -2455,89 +2455,89 @@ void SlagVM::execute()
         continue;
 
       case SLAGOP_THIS_ADD_ASSIGN_I32:
-        BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32) += (SlagInt32) SLAG_POP_INTEGER();
+        VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32) += (SlagInt32) SLAG_POP_INTEGER();
         continue;
 
       case SLAGOP_THIS_SUB_ASSIGN_I32:
-        BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32) -= (SlagInt32) SLAG_POP_INTEGER();
+        VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32) -= (SlagInt32) SLAG_POP_INTEGER();
         continue;
 
       case SLAGOP_THIS_MUL_ASSIGN_I32:
-        BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32) *= (SlagInt32) SLAG_POP_INTEGER();
+        VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32) *= (SlagInt32) SLAG_POP_INTEGER();
         continue;
 
       case SLAGOP_THIS_INCREMENT_I32:
-        ++BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32);
+        ++VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32);
         continue;
 
       case SLAGOP_THIS_DECREMENT_I32:
-        --BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32);
+        --VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagInt32);
         continue;
 
       case SLAGOP_THIS_ADD_ASSIGN_R64:
-        BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal64) += SLAG_POP_REAL();
+        VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal64) += SLAG_POP_REAL();
         continue;
 
       case SLAGOP_THIS_SUB_ASSIGN_R64:
-        BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal64) -= SLAG_POP_REAL();
+        VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal64) -= SLAG_POP_REAL();
         continue;
 
       case SLAGOP_THIS_MUL_ASSIGN_R64:
-        BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal64) *= SLAG_POP_REAL();
+        VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal64) *= SLAG_POP_REAL();
         continue;
 
       case SLAGOP_THIS_INCREMENT_R64:
-        ++BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal64);
+        ++VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal64);
         continue;
 
       case SLAGOP_THIS_DECREMENT_R64:
-        --BVM_DEREFERENCE(bvm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal64);
+        --VM_DEREFERENCE(vm.regs.frame.refs[-1],SLAGCODE_OPERAND_I32(),SlagReal64);
         continue;
 
       case SLAGOP_LOCAL_ADD_ASSIGN_INTEGER:
-        bvm.regs.frame.data[SLAGCODE_OPERAND_I32()] += SLAG_POP_INTEGER();
+        vm.regs.frame.data[SLAGCODE_OPERAND_I32()] += SLAG_POP_INTEGER();
         continue;
 
       case SLAGOP_LOCAL_SUB_ASSIGN_INTEGER:
-        bvm.regs.frame.data[SLAGCODE_OPERAND_I32()] -= SLAG_POP_INTEGER();
+        vm.regs.frame.data[SLAGCODE_OPERAND_I32()] -= SLAG_POP_INTEGER();
         continue;
 
       case SLAGOP_LOCAL_MUL_ASSIGN_INTEGER:
-        bvm.regs.frame.data[SLAGCODE_OPERAND_I32()] *= SLAG_POP_INTEGER();
+        vm.regs.frame.data[SLAGCODE_OPERAND_I32()] *= SLAG_POP_INTEGER();
         continue;
 
       case SLAGOP_LOCAL_INCREMENT_INTEGER:
-        ++bvm.regs.frame.data[SLAGCODE_OPERAND_I32()];
+        ++vm.regs.frame.data[SLAGCODE_OPERAND_I32()];
         continue;
 
       case SLAGOP_LOCAL_DECREMENT_INTEGER:
-        --bvm.regs.frame.data[SLAGCODE_OPERAND_I32()];
+        --vm.regs.frame.data[SLAGCODE_OPERAND_I32()];
         continue;
 
       case SLAGOP_LOCAL_ADD_ASSIGN_REAL:
-        ((SlagReal64*)bvm.regs.frame.data)[SLAGCODE_OPERAND_I32()] += SLAG_POP_REAL();
+        ((SlagReal64*)vm.regs.frame.data)[SLAGCODE_OPERAND_I32()] += SLAG_POP_REAL();
         continue;
 
       case SLAGOP_LOCAL_SUB_ASSIGN_REAL:
-        ((SlagReal64*)bvm.regs.frame.data)[SLAGCODE_OPERAND_I32()] -= SLAG_POP_REAL();
+        ((SlagReal64*)vm.regs.frame.data)[SLAGCODE_OPERAND_I32()] -= SLAG_POP_REAL();
         continue;
 
       case SLAGOP_LOCAL_MUL_ASSIGN_REAL:
-        ((SlagReal64*)bvm.regs.frame.data)[SLAGCODE_OPERAND_I32()] *= SLAG_POP_REAL();
+        ((SlagReal64*)vm.regs.frame.data)[SLAGCODE_OPERAND_I32()] *= SLAG_POP_REAL();
         continue;
 
       case SLAGOP_LOCAL_INCREMENT_REAL:
-        ++((SlagReal64*)bvm.regs.frame.data)[SLAGCODE_OPERAND_I32()];
+        ++((SlagReal64*)vm.regs.frame.data)[SLAGCODE_OPERAND_I32()];
         continue;
 
       case SLAGOP_LOCAL_DECREMENT_REAL:
-        --((SlagReal64*)bvm.regs.frame.data)[SLAGCODE_OPERAND_I32()];
+        --((SlagReal64*)vm.regs.frame.data)[SLAGCODE_OPERAND_I32()];
         continue;
 
       default:
         {
           char buffer[80];
-          sprintf( buffer, "Unhandled opcode: %d", *(--bvm.regs.ip) );
+          sprintf( buffer, "Unhandled opcode: %d", *(--vm.regs.ip) );
           slag_throw_fatal_error( buffer );
         }
     }
@@ -2546,20 +2546,20 @@ void SlagVM::execute()
 
     execute_call:
       // Calls method referenced by 'm'.
-      if (bvm.regs.call_frame < bvm.min_call_stack)
+      if (vm.regs.call_frame < vm.min_call_stack)
       {
         throw_stack_limit_error();
       }
       // Save prior call frame.
-      (--bvm.regs.call_frame)->called_method    = m;
-      bvm.regs.call_frame->prior_frame          = bvm.regs.frame;
-      bvm.regs.call_frame->return_address       = bvm.regs.ip;
+      (--vm.regs.call_frame)->called_method    = m;
+      vm.regs.call_frame->prior_frame          = vm.regs.frame;
+      vm.regs.call_frame->return_address       = vm.regs.ip;
 
       // Set up current call frame pointers to be just before parameter data.
-      bvm.regs.frame.refs  = bvm.regs.stack.refs  + m->parameters->num_ref_params;
-      bvm.regs.frame.data = bvm.regs.stack.data + m->parameters->num_data_params;
+      vm.regs.frame.refs  = vm.regs.stack.refs  + m->parameters->num_ref_params;
+      vm.regs.frame.data = vm.regs.stack.data + m->parameters->num_data_params;
 
-      if (bvm.regs.stack.data < bvm.min_data_stack || bvm.regs.stack.refs < bvm.min_ref_stack)
+      if (vm.regs.stack.data < vm.min_data_stack || vm.regs.stack.refs < vm.min_ref_stack)
       {
         throw_stack_limit_error();
       }
@@ -2569,16 +2569,16 @@ void SlagVM::execute()
         int count = m->num_local_refs;
         if (count)
         {
-          bvm.regs.stack.refs -= count;
+          vm.regs.stack.refs -= count;
 
           // Need to clear this in case a GC happens before all the locals
           // are initialized.
-          memset( bvm.regs.stack.refs, 0, count*sizeof(SlagObject*) );
+          memset( vm.regs.stack.refs, 0, count*sizeof(SlagObject*) );
         }
 
-        bvm.regs.stack.data -= m->local_data_size;
+        vm.regs.stack.data -= m->local_data_size;
       }
-      bvm.regs.ip = m->bytecode;
+      vm.regs.ip = m->bytecode;
       continue;
   }
 }
@@ -2586,7 +2586,7 @@ void SlagVM::execute()
 static SlagCatchInfo* find_catch( SlagObject* err, int ip_offset )
 {
   // Returns a compatible catch in the current method or NULL if not found.
-  SlagMethodInfo* m = bvm.regs.call_frame->called_method;
+  SlagMethodInfo* m = vm.regs.call_frame->called_method;
   for (int i=0; i<m->catches.count; ++i)
   {
     SlagCatchInfo* cur_catch = m->catches[i];
@@ -2603,14 +2603,14 @@ static SlagCatchInfo* unwind_stack( SlagObject* err )
 {
   // Unwind call frames until a suitable 'catch' is found.
   SlagCatchInfo* catch_info = NULL;
-  while (bvm.regs.call_frame < bvm.call_stack_limit)
+  while (vm.regs.call_frame < vm.call_stack_limit)
   {
-    int ip_offset = ((SlagOpcode*)(void*)bvm.regs.ip) - bvm.code.data;
+    int ip_offset = ((SlagOpcode*)(void*)vm.regs.ip) - vm.code.data;
     catch_info = find_catch(err,ip_offset);
     if (catch_info) break;
-    bvm.regs.stack = bvm.regs.frame;
-    bvm.regs.frame = bvm.regs.call_frame->prior_frame;
-    bvm.regs.ip = (bvm.regs.call_frame++)->return_address;
+    vm.regs.stack = vm.regs.frame;
+    vm.regs.frame = vm.regs.call_frame->prior_frame;
+    vm.regs.ip = (vm.regs.call_frame++)->return_address;
   }
   return catch_info;
 }
@@ -2623,7 +2623,7 @@ static void activate_catch( SlagCatchInfo* catch_info, SlagObject* err )
     // and abort the program.
     SlagMethodInfo* m_to_string = err->type->must_find_method("to_String()");
     SLAG_PUSH_REF( err );
-    bvm.call( m_to_string );
+    vm.call( m_to_string );
     SlagString* mesg = (SlagString*) SLAG_POP_REF();
     slag_error_message = mesg->to_new_ascii();
 #if SLAG_USE_LONGJMP
@@ -2633,7 +2633,7 @@ static void activate_catch( SlagCatchInfo* catch_info, SlagObject* err )
 #endif
   }
 
-  bvm.regs.ip = bvm.code.data + catch_info->handler;
+  vm.regs.ip = vm.code.data + catch_info->handler;
   SLAG_PUSH_REF( err );
 }
 
@@ -2685,14 +2685,14 @@ void SlagVM::throw_stack_limit_error()
   ArrayList<SlagInt64> history;
   get_call_history(history);
 
-  SlagTypeInfo* type = bvm.type_stack_limit_error;
+  SlagTypeInfo* type = vm.type_stack_limit_error;
   SlagObject* err = type->create();
 
   SlagCatchInfo* catch_info = unwind_stack(err);
 
   // initialize the object now that we've got some breathing room
   SLAG_PUSH_REF( err );
-  SlagArray* array = bvm.type_array_of_int64->create( history.count );
+  SlagArray* array = vm.type_array_of_int64->create( history.count );
   memcpy( array->data, history.data, history.count * 8 );
   SLAG_PUSH_REF( array );
   call( type->must_find_method("init(Array<<Int64>>)") );
@@ -2803,7 +2803,7 @@ void SlagVM::throw_stack_limit_error()
 
 void SlagVM_unhandled_native_method()
 {
-  SlagMethodInfo* m = bvm.regs.call_frame->called_method;
+  SlagMethodInfo* m = vm.regs.call_frame->called_method;
   slag_throw_fatal_error( "Unhandled native call to ", m->type_context->name, 
       "::", m->signature, "." );
 }
@@ -3031,31 +3031,31 @@ void SlagLoader::load_filenames()
 {
   must_consume_header( "FILENAMES" );
   int n = reader.readX();
-  bvm.filenames.ensure_capacity(n);
-  for (int i=0; i<n; ++i) bvm.filenames.add( reader.read_new_ascii() );
+  vm.filenames.ensure_capacity(n);
+  for (int i=0; i<n; ++i) vm.filenames.add( reader.read_new_ascii() );
 }
 
 void SlagLoader::load_identifiers()
 {
   must_consume_header( "IDENTIFIERS" );
   int n = reader.readX();
-  bvm.identifiers.ensure_capacity(n);
-  for (int i=0; i<n; ++i) bvm.identifiers.add( reader.read_new_ascii() );
+  vm.identifiers.ensure_capacity(n);
+  for (int i=0; i<n; ++i) vm.identifiers.add( reader.read_new_ascii() );
 }
 
 void SlagLoader::load_type_info()
 {
   must_consume_header( "TYPEINFO" );
   int n = reader.readX();
-  bvm.types.ensure_capacity(n);
+  vm.types.ensure_capacity(n);
   for (int i=0; i<n; ++i)
   {
-    bvm.types.add( new SlagTypeInfo() );
+    vm.types.add( new SlagTypeInfo() );
   }
 
   for (int i=0; i<n; ++i)
   {
-    SlagTypeInfo* type = bvm.types[i];
+    SlagTypeInfo* type = vm.types[i];
     type->name = load_id();
     type->index = i;
     type->qualifiers = reader.readX();
@@ -3069,35 +3069,35 @@ void SlagLoader::load_type_info()
     type->element_type = load_type();
 
   }
-  bvm.main_class = load_type();
+  vm.main_class = load_type();
 
-  bvm.type_object  = bvm.must_find_type( "Object" );
-  bvm.type_int64   = bvm.must_find_type( "Int64" );
-  bvm.type_int32   = bvm.must_find_type( "Int32" );
-  bvm.type_char    = bvm.must_find_type( "Char" );
-  bvm.type_byte    = bvm.must_find_type( "Byte" );
-  bvm.type_real64  = bvm.must_find_type( "Real64" );
-  bvm.type_real32  = bvm.must_find_type( "Real32" );
-  bvm.type_logical = bvm.must_find_type( "Logical" );
-  bvm.type_null    = bvm.must_find_type( "null" );
-  bvm.type_string  = bvm.must_find_type( "String" );
-  bvm.type_system  = bvm.must_find_type( "System" );
-  bvm.type_native_data           = bvm.must_find_type( "NativeData" );
-  bvm.type_weak_reference        = bvm.must_find_type( "WeakReference" );
-  bvm.type_array_of_char         = bvm.must_find_type( "Array<<Char>>" );
-  bvm.type_array_of_int64        = bvm.must_find_type( "Array<<Int64>>" );
-  bvm.type_requires_cleanup      = bvm.must_find_type( "RequiresCleanup" );
-  bvm.type_missing_return_error  = bvm.must_find_type( "MissingReturnError" );
-  bvm.type_type_cast_error       = bvm.must_find_type( "TypeCastError" );
-  bvm.type_out_of_bounds_error   = bvm.must_find_type( "OutOfBoundsError" );
-  bvm.type_divide_by_zero_error  = bvm.must_find_type( "DivideByZeroError" );
-  bvm.type_null_reference_error  = bvm.must_find_type( "NullReferenceError" );
-  bvm.type_stack_limit_error     = bvm.must_find_type( "CallStackLimitReached" );
-  bvm.type_file_error            = bvm.must_find_type( "FileError" );
-  bvm.type_file_not_found_error  = bvm.must_find_type( "FileNotFoundError" );
-  bvm.type_no_next_value_error   = bvm.must_find_type( "NoNextValueError" );
-  bvm.type_socket_error          = bvm.must_find_type( "SocketError" );
-  bvm.type_invalid_operand_error = bvm.must_find_type( "InvalidOperandError" );
+  vm.type_object  = vm.must_find_type( "Object" );
+  vm.type_int64   = vm.must_find_type( "Int64" );
+  vm.type_int32   = vm.must_find_type( "Int32" );
+  vm.type_char    = vm.must_find_type( "Char" );
+  vm.type_byte    = vm.must_find_type( "Byte" );
+  vm.type_real64  = vm.must_find_type( "Real64" );
+  vm.type_real32  = vm.must_find_type( "Real32" );
+  vm.type_logical = vm.must_find_type( "Logical" );
+  vm.type_null    = vm.must_find_type( "null" );
+  vm.type_string  = vm.must_find_type( "String" );
+  vm.type_system  = vm.must_find_type( "System" );
+  vm.type_native_data           = vm.must_find_type( "NativeData" );
+  vm.type_weak_reference        = vm.must_find_type( "WeakReference" );
+  vm.type_array_of_char         = vm.must_find_type( "Array<<Char>>" );
+  vm.type_array_of_int64        = vm.must_find_type( "Array<<Int64>>" );
+  vm.type_requires_cleanup      = vm.must_find_type( "RequiresCleanup" );
+  vm.type_missing_return_error  = vm.must_find_type( "MissingReturnError" );
+  vm.type_type_cast_error       = vm.must_find_type( "TypeCastError" );
+  vm.type_out_of_bounds_error   = vm.must_find_type( "OutOfBoundsError" );
+  vm.type_divide_by_zero_error  = vm.must_find_type( "DivideByZeroError" );
+  vm.type_null_reference_error  = vm.must_find_type( "NullReferenceError" );
+  vm.type_stack_limit_error     = vm.must_find_type( "CallStackLimitReached" );
+  vm.type_file_error            = vm.must_find_type( "FileError" );
+  vm.type_file_not_found_error  = vm.must_find_type( "FileNotFoundError" );
+  vm.type_no_next_value_error   = vm.must_find_type( "NoNextValueError" );
+  vm.type_socket_error          = vm.must_find_type( "SocketError" );
+  vm.type_invalid_operand_error = vm.must_find_type( "InvalidOperandError" );
 
 }
 
@@ -3105,13 +3105,13 @@ void SlagLoader::load_parameter_info()
 {
   must_consume_header( "PARAMETERINFO" );
   int n = reader.readX();
-  bvm.parameter_table.ensure_capacity(n);
+  vm.parameter_table.ensure_capacity(n);
 
   for (int i=0; i<n; ++i)
   {
     int num_params = reader.readX();
     SlagParameterList* list = new SlagParameterList(num_params);
-    bvm.parameter_table.add( list );
+    vm.parameter_table.add( list );
 
     for (int i=0; i<num_params; ++i)
     {
@@ -3124,21 +3124,21 @@ void SlagLoader::load_method_info()
 {
   must_consume_header( "METHODINFO" );
   int n = reader.readX();
-  bvm.methods.ensure_capacity(n);
+  vm.methods.ensure_capacity(n);
 
   for (int i=0; i<n; ++i)
   {
     SlagMethodInfo* m = new SlagMethodInfo();
-    bvm.methods.add(m);
+    vm.methods.add(m);
 
     m->name = load_id();
     m->index = i;
     m->qualifiers = reader.readX();
     m->type_context = load_type();
-    m->parameters = bvm.parameter_table[ reader.readX() ];
+    m->parameters = vm.parameter_table[ reader.readX() ];
 
     int index = reader.readX();
-    m->return_type = (index==-1) ? NULL : bvm.types[index];
+    m->return_type = (index==-1) ? NULL : vm.types[index];
     m->catches.ensure_capacity( reader.readX() );
 
     int num_locals = reader.readX();
@@ -3159,9 +3159,9 @@ void SlagLoader::load_type_defs()
 {
   must_consume_header( "TYPEDEFS" );
 
-  for (int t=0; t<bvm.types.count; ++t)
+  for (int t=0; t<vm.types.count; ++t)
   {
-    SlagTypeInfo* type = bvm.types[t];
+    SlagTypeInfo* type = vm.types[t];
 
     int n = reader.readX();
     type->properties.ensure_capacity( n );
@@ -3185,12 +3185,12 @@ void SlagLoader::load_type_defs()
     for (int i=0; i<n; ++i) type->dispatch_table.add( load_method() );
   }
 
-  bvm.prep_types_and_methods();
+  vm.prep_types_and_methods();
 
   // Set array element sizes
-  for (int i=0; i<bvm.types.count; ++i)
+  for (int i=0; i<vm.types.count; ++i)
   {
-    SlagTypeInfo* type = bvm.types[i];
+    SlagTypeInfo* type = vm.types[i];
     SlagTypeInfo* element_type = (SlagTypeInfo*) type->element_type;
     if (element_type)
     {
@@ -3200,31 +3200,31 @@ void SlagLoader::load_type_defs()
         type->element_size = sizeof(void*);
         type->qualifiers |= SLAG_QUALIFIER_REFERENCE_ARRAY;
       }
-      else if (element_type == bvm.type_int64)
+      else if (element_type == vm.type_int64)
       {
         type->element_size = 8;
       }
-      else if (element_type == bvm.type_int32)
+      else if (element_type == vm.type_int32)
       {
         type->element_size = 4;
       }
-      else if (element_type == bvm.type_char)
+      else if (element_type == vm.type_char)
       {
         type->element_size = 2;
       }
-      else if (element_type == bvm.type_byte)
+      else if (element_type == vm.type_byte)
       {
         type->element_size = 1;
       }
-      else if (element_type == bvm.type_real64)
+      else if (element_type == vm.type_real64)
       {
         type->element_size = 8;
       }
-      else if (element_type == bvm.type_real32)
+      else if (element_type == vm.type_real32)
       {
         type->element_size = 4;
       }
-      else if (element_type == bvm.type_logical)
+      else if (element_type == vm.type_logical)
       {
         //type->element_size = 1;
         type->element_size = 4;
@@ -3243,13 +3243,13 @@ void SlagLoader::load_string_table()
   must_consume_header( "STRINGTABLE" );
 
   int n = reader.readX();
-  bvm.strings.ensure_capacity(n);
+  vm.strings.ensure_capacity(n);
 
   for (int i=0; i<n; ++i)
   {
     int count = reader.readX();
     SlagString* string = (SlagString*) 
-      (mm.create_object( bvm.type_string, (sizeof(SlagString)-2) + count*2 ));
+      (mm.create_object( vm.type_string, (sizeof(SlagString)-2) + count*2 ));
     ++string->reference_count;
     string->count = count;
 
@@ -3260,7 +3260,7 @@ void SlagLoader::load_string_table()
 
     string->set_hash_code();
 
-    bvm.strings.add( string );
+    vm.strings.add( string );
   }
 }
 
@@ -3268,25 +3268,25 @@ void SlagLoader::load_method_defs()
 {
   must_consume_header( "METHODDEFS" );
 
-  bvm.code.ensure_capacity( reader.total_size / 8 ); // seems to be a decent metric
-  bvm.line_table.ensure_capacity( reader.total_size / 16 );
+  vm.code.ensure_capacity( reader.total_size / 8 ); // seems to be a decent metric
+  vm.line_table.ensure_capacity( reader.total_size / 16 );
 
-  for (int i=0; i<bvm.methods.count; ++i)
+  for (int i=0; i<vm.methods.count; ++i)
   {
-    load_method_body( bvm.methods[i] );
+    load_method_body( vm.methods[i] );
   }
 
   // Now that all code has been loaded (and code buffer has finished sizing),
   // determine actual code addresses from offsets.
-  for (int i=0; i<bvm.methods.count; ++i)
+  for (int i=0; i<vm.methods.count; ++i)
   {
-    SlagMethodInfo* m = bvm.methods[i];
-    m->bytecode = bvm.code.data + m->bytecode_offset;
+    SlagMethodInfo* m = vm.methods[i];
+    m->bytecode = vm.code.data + m->bytecode_offset;
   }
 
-  for (int i=0; i<bvm.address_offsets.count; ++i)
+  for (int i=0; i<vm.address_offsets.count; ++i)
   {
-    bvm.address_table.add( bvm.code.data + bvm.address_offsets[i] );
+    vm.address_table.add( vm.code.data + vm.address_offsets[i] );
   }
 }
 
@@ -3294,10 +3294,10 @@ void SlagLoader::load_method_body( SlagMethodInfo* m )
 {
   this_method = m;
 
-  int code_count = bvm.code.count;
+  int code_count = vm.code.count;
   this_method->bytecode_offset = code_count;
 
-  this_method->source_pos_offset = bvm.line_table.count;
+  this_method->source_pos_offset = vm.line_table.count;
   next_structure_id = -1;
   next_auto_id = -2;
 
@@ -3319,7 +3319,7 @@ void SlagLoader::load_method_body( SlagMethodInfo* m )
 
     // Methods can be flagged as native at load time - undo any method body
     // that's loaded so far.
-    bvm.code.count = code_count;
+    vm.code.count = code_count;
 
     write_op_i32( SLAGOP_NATIVE_CALL, this_method->index );
 
@@ -3354,7 +3354,7 @@ void SlagLoader::load_method_body( SlagMethodInfo* m )
       write_op( SLAGOP_RETURN_NIL );
     }
   }
-  this_method->bytecode_limit = bvm.code.count;
+  this_method->bytecode_limit = vm.code.count;
 }
 
 SlagTypeInfo* SlagLoader::load_type()
@@ -3362,12 +3362,12 @@ SlagTypeInfo* SlagLoader::load_type()
   int index = reader.readX();
   if (index == -1) return NULL;
 
-  if (index < 0 || index >= bvm.types.count)
+  if (index < 0 || index >= vm.types.count)
   {
     slag_throw_fatal_error( "Type index out of bounds in loader." );
   }
 
-  return bvm.types[index];
+  return vm.types[index];
 }
 
 SlagMethodInfo* SlagLoader::load_method()
@@ -3375,23 +3375,23 @@ SlagMethodInfo* SlagLoader::load_method()
   int index = reader.readX();
   if (index == -1) return NULL;
 
-  if (index < 0 || index >= bvm.methods.count)
+  if (index < 0 || index >= vm.methods.count)
   {
     slag_throw_fatal_error( "Method index out of bounds in loader." );
   }
 
-  return bvm.methods[index];
+  return vm.methods[index];
 }
 
 char* SlagLoader::load_id()
 {
   int index = reader.readX();
-  if (index < 0 || index >= bvm.identifiers.count)
+  if (index < 0 || index >= vm.identifiers.count)
   {
     slag_throw_fatal_error( "ID index out of bounds in loader." );
   }
 
-  return bvm.identifiers[index];
+  return vm.identifiers[index];
 }
 
 SlagLocalVarInfo* SlagLoader::load_local()
@@ -3426,27 +3426,27 @@ void SlagLoader::must_consume_header( const char* header_id )
 void SlagLoader::write_op( int op )
 {
   if (op_history.count >= 4) op_history.remove(0);
-  op_history.add( SlagOpInfo(op,bvm.code.count) );
+  op_history.add( SlagOpInfo(op,vm.code.count) );
 
-  bvm.code.add(op);
+  vm.code.add(op);
 }
 
 void SlagLoader::write_i32( SlagInt32 value )
 {
-  bvm.code.add( value );
+  vm.code.add( value );
 }
 
 void SlagLoader::write_op_i32( int op, SlagInt32 value )
 {
   write_op(op);
-  bvm.code.add( value );
+  vm.code.add( value );
 }
 
 void SlagLoader::write_op_i64( int op, SlagInt64 value )
 {
   write_op(op);
-  bvm.code.add( bvm.literal_table.count );
-  bvm.literal_table.add( value );
+  vm.code.add( vm.literal_table.count );
+  vm.literal_table.add( value );
 }
 
 int SlagLoader::history( int num_back )
@@ -3459,7 +3459,7 @@ void SlagLoader::undo_op( int count )
 {
   while (--count) op_history.remove_last();
 
-  bvm.code.count = op_history.last().code_offset;
+  vm.code.count = op_history.last().code_offset;
   op_history.remove_last();
 }
 
@@ -3492,19 +3492,19 @@ SlagTypeInfo* SlagLoader::load_statement()
     {
       case SLAGCMD_SET_FILENAME_AND_LINE:
         // filename index <= 0
-        bvm.line_table.add( SlagSourcePos( bvm.code.count, -reader.readX() ) );
+        vm.line_table.add( SlagSourcePos( vm.code.count, -reader.readX() ) );
 
         cur_line = reader.readX();
-        bvm.line_table.add( SlagSourcePos( bvm.code.count, cur_line ) );
+        vm.line_table.add( SlagSourcePos( vm.code.count, cur_line ) );
         continue;
 
       case SLAGCMD_SET_LINE:
         cur_line = reader.readX();
-        bvm.line_table.add( SlagSourcePos( bvm.code.count, cur_line ) );
+        vm.line_table.add( SlagSourcePos( vm.code.count, cur_line ) );
         continue;
 
       case SLAGCMD_INC_LINE:
-        bvm.line_table.add( SlagSourcePos( bvm.code.count, ++cur_line ) );
+        vm.line_table.add( SlagSourcePos( vm.code.count, ++cur_line ) );
         continue;
 
       case SLAGCMD_STRUCTURE_ID:
@@ -3543,10 +3543,10 @@ SlagTypeInfo* SlagLoader::load_statement()
       case SLAGCMD_TRYCATCH:
         {
           int id = get_next_structure_id();
-          int try_block_begin = bvm.code.count;
+          int try_block_begin = vm.code.count;
 
           load_statement_list(); 
-          int try_block_end = bvm.code.count;
+          int try_block_end = vm.code.count;
           
           int num_catches = reader.readX();
           if (num_catches) 
@@ -3562,7 +3562,7 @@ SlagTypeInfo* SlagLoader::load_statement()
                   new SlagCatchInfo(
                     this_method->local_vars[catch_var]->type,
                     try_block_begin, try_block_end,
-                    bvm.code.count
+                    vm.code.count
                   )
                 );
 
@@ -3751,7 +3751,7 @@ SlagTypeInfo* SlagLoader::load_statement()
         {
           int index = reader.readX();
           write_op_i32( SLAGOP_LITERAL_STRING, index );
-          return bvm.type_string;
+          return vm.type_string;
         }
 
       case SLAGCMD_LITERAL_INT64:
@@ -3766,7 +3766,7 @@ SlagTypeInfo* SlagLoader::load_statement()
               write_op_i64( SLAGOP_LITERAL_8, value );
               break;
           }
-          return bvm.type_int64;
+          return vm.type_int64;
         }
 
       case SLAGCMD_LITERAL_INT32:
@@ -3781,20 +3781,20 @@ SlagTypeInfo* SlagLoader::load_statement()
               write_op_i32( SLAGOP_LITERAL_4, value );
               break;
           }
-          return bvm.type_int32;
+          return vm.type_int32;
         }
 
       case SLAGCMD_LITERAL_CHAR:
         {
           write_op_i32( SLAGOP_LITERAL_4, (SlagInt32) reader.readX() );
         }
-        return bvm.type_char;
+        return vm.type_char;
 
       case SLAGCMD_LITERAL_BYTE:
         {
           write_op_i32( SLAGOP_LITERAL_4, (SlagInt32) reader.readX() );
         }
-        return bvm.type_byte;
+        return vm.type_byte;
 
       case SLAGCMD_LITERAL_REAL64:
         {
@@ -3808,29 +3808,29 @@ SlagTypeInfo* SlagLoader::load_statement()
             write_op_i64( SLAGOP_LITERAL_8, value );
           }
         }
-        return bvm.type_real64;
+        return vm.type_real64;
 
       case SLAGCMD_LITERAL_REAL32:
         {
           write_op_i32( SLAGOP_LITERAL_REAL32, (SlagInt32) reader.readX() );
         }
-        return bvm.type_real32;
+        return vm.type_real32;
 
       case SLAGCMD_LITERAL_LOGICAL_TRUE:
         write_op( SLAGOP_LITERAL_INTEGER_1 );
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_LITERAL_LOGICAL_FALSE:
         write_op( SLAGOP_LITERAL_INTEGER_0 );
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_LITERAL_LOGICAL_VOID:
         write_op( SLAGOP_LITERAL_INTEGER_NEG1 );
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_LITERAL_NULL:
         write_op( SLAGOP_LITERAL_NULL );
-        return bvm.type_null;
+        return vm.type_null;
 
       case SLAGCMD_THIS_REFERENCE:
         write_op( SLAGOP_READ_THIS_REF );
@@ -3888,12 +3888,12 @@ SlagTypeInfo* SlagLoader::load_statement()
                 if (last_op == SLAGOP_READ_THIS_REF)
                 {
                   undo_op();
-                  if (var_type == bvm.type_real32) write_op_i32( SLAGOP_READ_THIS_PROPERTY_REAL32, offset );
+                  if (var_type == vm.type_real32) write_op_i32( SLAGOP_READ_THIS_PROPERTY_REAL32, offset );
                   else                             write_op_i32( SLAGOP_READ_THIS_PROPERTY_4, offset );
                 }
                 else
                 {
-                  if (var_type == bvm.type_real32) write_op_i32( SLAGOP_READ_PROPERTY_REAL32, offset );
+                  if (var_type == vm.type_real32) write_op_i32( SLAGOP_READ_PROPERTY_REAL32, offset );
                   else                             write_op_i32( SLAGOP_READ_PROPERTY_4, offset );
                 }
                 break;
@@ -3945,21 +3945,21 @@ SlagTypeInfo* SlagLoader::load_statement()
             case 1:  
               if (last_op == SLAGOP_READ_THIS_PROPERTY_X)
               {
-                offset += bvm.code[bvm.code.count-2];
+                offset += vm.code[vm.code.count-2];
                 undo_op();
                 write_op_i32( SLAGOP_READ_THIS_PROPERTY_8, offset );
                 return var_type;
               }
               else if (last_op == SLAGOP_READ_PROPERTY_X)
               {
-                offset += bvm.code[bvm.code.count-2];
+                offset += vm.code[vm.code.count-2];
                 undo_op();
                 write_op_i32( SLAGOP_READ_PROPERTY_8, offset );
                 return var_type;
               }
               else if (last_op == SLAGOP_READ_LOCAL_X)
               {
-                offset += bvm.code[bvm.code.count-2];
+                offset += vm.code[vm.code.count-2];
                 undo_op();
                 write_op_i32( SLAGOP_READ_LOCAL_8, offset );
                 return var_type;
@@ -3974,8 +3974,8 @@ SlagTypeInfo* SlagLoader::load_statement()
               if (last_op == SLAGOP_READ_THIS_PROPERTY_X || last_op == SLAGOP_READ_PROPERTY_X
                   || last_op == SLAGOP_READ_LOCAL_X)
               {
-                bvm.code[bvm.code.count-2] += offset;
-                bvm.code[bvm.code.count-1] = slots;
+                vm.code[vm.code.count-2] += offset;
+                vm.code[vm.code.count-1] = slots;
                 return var_type;
               }
               else
@@ -4054,7 +4054,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           {
             int write_op;
             if (var_type->is_reference())         write_op = SLAGOP_WRITE_THIS_PROPERTY_REF;
-            else if (var_type == bvm.type_real32) write_op = SLAGOP_WRITE_THIS_PROPERTY_REAL32;
+            else if (var_type == vm.type_real32) write_op = SLAGOP_WRITE_THIS_PROPERTY_REAL32;
             else if (size == 4)                   write_op = SLAGOP_WRITE_THIS_PROPERTY_4;
             else if (size == 8)                   write_op = SLAGOP_WRITE_THIS_PROPERTY_8;
             else                                  write_op = SLAGOP_WRITE_THIS_PROPERTY_X;
@@ -4070,7 +4070,7 @@ SlagTypeInfo* SlagLoader::load_statement()
             {
               write_op_i32( SLAGOP_WRITE_PROPERTY_REF, offset );
             }
-            else if (var_type == bvm.type_real32)
+            else if (var_type == vm.type_real32)
             {
               write_op_i32( SLAGOP_WRITE_PROPERTY_REAL32, offset ); break;
             }
@@ -4250,7 +4250,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           {
             write_op( SLAGOP_ARRAY_READ_REF );
           }
-          else if (context_type->element_type == bvm.type_real32)
+          else if (context_type->element_type == vm.type_real32)
           {
             write_op( SLAGOP_ARRAY_READ_REAL32 );
           }
@@ -4287,7 +4287,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           {
             write_op( SLAGOP_ARRAY_WRITE_REF );
           }
-          else if (context_type->element_type == bvm.type_real32)
+          else if (context_type->element_type == vm.type_real32)
           {
             write_op( SLAGOP_ARRAY_WRITE_REAL32 );
           }
@@ -4309,7 +4309,7 @@ SlagTypeInfo* SlagLoader::load_statement()
         {
           SlagTypeInfo* expr_type = load_ref_expression();
           SlagTypeInfo* to_type = load_type();
-          if (expr_type != bvm.type_null)
+          if (expr_type != vm.type_null)
           {
             write_op_i32( SLAGOP_TYPECHECK, to_type->index );
           }
@@ -4329,51 +4329,51 @@ SlagTypeInfo* SlagLoader::load_statement()
           SlagTypeInfo* type = load_expression();
           if (type->is_real()) write_op( SLAGOP_CAST_REAL_TO_INTEGER );
         }
-        return bvm.type_int64;
+        return vm.type_int64;
 
       case SLAGCMD_CAST_TO_INT32:
         {
           SlagTypeInfo* type = load_expression();
           if (type->is_real()) write_op( SLAGOP_CAST_REAL_TO_INTEGER );
-          else if (type == bvm.type_int64) write_op( SLAGOP_CAST_INTEGER_TO_I32 );
+          else if (type == vm.type_int64) write_op( SLAGOP_CAST_INTEGER_TO_I32 );
         }
-        return bvm.type_int32;
+        return vm.type_int32;
 
       case SLAGCMD_CAST_TO_CHAR:
         {
           load_expression();
           write_op( SLAGOP_CAST_INTEGER_TO_CHAR );
         }
-        return bvm.type_char;
+        return vm.type_char;
 
       case SLAGCMD_CAST_TO_BYTE:
         {
           load_expression();
           write_op( SLAGOP_CAST_INTEGER_TO_BYTE );
         }
-        return bvm.type_byte;
+        return vm.type_byte;
 
       case SLAGCMD_CAST_TO_REAL64:
         {
           SlagTypeInfo* type = load_expression();
           if (type->is_int32_64()) write_op( SLAGOP_CAST_INTEGER_TO_REAL );
         }
-        return bvm.type_real64;
+        return vm.type_real64;
 
       case SLAGCMD_CAST_TO_REAL32:
         {
           SlagTypeInfo* type = load_expression();
           if (type->is_int32_64()) write_op( SLAGOP_CAST_INTEGER_TO_REAL );
         }
-        return bvm.type_real32;
+        return vm.type_real32;
 
       case SLAGCMD_CAST_TO_LOGICAL:
         {
           SlagTypeInfo* type = load_expression();
-          if (type == bvm.type_int32)        write_op( SLAGOP_CAST_INTEGER_TO_LOGICAL );
-          else if (type == bvm.type_real64)  write_op( SLAGOP_CAST_REAL_TO_LOGICAL );
+          if (type == vm.type_int32)        write_op( SLAGOP_CAST_INTEGER_TO_LOGICAL );
+          else if (type == vm.type_real64)  write_op( SLAGOP_CAST_REAL_TO_LOGICAL );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_AS:
         {
@@ -4400,7 +4400,7 @@ SlagTypeInfo* SlagLoader::load_statement()
         {
           load_ref_expression();
           write_op_i32( SLAGOP_CMP_INSTANCE_OF, load_type()->index );
-          return bvm.type_logical;
+          return vm.type_logical;
         }
         break;
 
@@ -4410,7 +4410,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           load_ref_expression();
           write_op( SLAGOP_CMP_EQ_REF );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_CMP_IS_NOT:
         {
@@ -4418,21 +4418,21 @@ SlagTypeInfo* SlagLoader::load_statement()
           load_ref_expression();
           write_op( SLAGOP_CMP_NE_REF );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_CMP_IS_NULL:
         {
           load_ref_expression();
           write_op( SLAGOP_CMP_EQ_REF_NULL );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_CMP_IS_NOT_NULL:
         {
           load_ref_expression();
           write_op( SLAGOP_CMP_NE_REF_NULL );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_CMP_EQ:
         {
@@ -4443,7 +4443,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           else if (type->is_integer()) write_op( SLAGOP_CMP_EQ_INTEGER );
           else write_op_i32( SLAGOP_CMP_EQ_X, (SlagInt32) (type->stack_slots) );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_CMP_NE:
         {
@@ -4454,7 +4454,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           else if (type->is_integer()) write_op( SLAGOP_CMP_NE_INTEGER );
           else write_op_i32( SLAGOP_CMP_NE_X, (SlagInt32) (type->stack_slots) );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_CMP_LE:
         {
@@ -4464,7 +4464,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           if (type->is_real()) write_op( SLAGOP_CMP_LE_REAL );
           else write_op( SLAGOP_CMP_LE_INTEGER );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_CMP_LT:
         {
@@ -4474,7 +4474,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           if (type->is_real()) write_op( SLAGOP_CMP_LT_REAL );
           else write_op( SLAGOP_CMP_LT_INTEGER );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_CMP_GT:
         {
@@ -4484,7 +4484,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           if (type->is_real()) write_op( SLAGOP_CMP_GT_REAL );
           else write_op( SLAGOP_CMP_GT_INTEGER );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_CMP_GE:
         {
@@ -4494,13 +4494,13 @@ SlagTypeInfo* SlagLoader::load_statement()
           if (type->is_real()) write_op( SLAGOP_CMP_GE_REAL );
           else write_op( SLAGOP_CMP_GE_INTEGER );
         }
-        return bvm.type_logical;
+        return vm.type_logical;
 
       case SLAGCMD_NOT:
         {
           SlagTypeInfo* type = load_expression();
 
-          if (type == bvm.type_logical) write_op( SLAGOP_NOT_LOGICAL );
+          if (type == vm.type_logical) write_op( SLAGOP_NOT_LOGICAL );
           else                              write_op( SLAGOP_NOT_INTEGER );
           return type;
         }
@@ -4600,7 +4600,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           load_expression();
 
           if (type->is_logical())          write_op( SLAGOP_XOR_LOGICAL );
-          else if (type == bvm.type_int64) write_op( SLAGOP_XOR_INT64 );
+          else if (type == vm.type_int64) write_op( SLAGOP_XOR_INT64 );
           else                             write_op( SLAGOP_XOR_INT32 );
 
           return type;
@@ -4620,7 +4620,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           define_label( "end", id, 0 );
           close_label_id( id );
 
-          return bvm.type_logical;
+          return vm.type_logical;
         }
 
       case SLAGCMD_LAZY_OR:
@@ -4637,7 +4637,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           define_label( "end", id, 0 );
           close_label_id( id );
 
-          return bvm.type_logical;
+          return vm.type_logical;
         }
 
       case SLAGCMD_LEFT_SHIFTED:
@@ -4645,7 +4645,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           SlagTypeInfo* type = load_expression();
           load_int32_expression();
 
-          if (type == bvm.type_int64) write_op( SLAGOP_SHL_INT64 );
+          if (type == vm.type_int64) write_op( SLAGOP_SHL_INT64 );
           else                        write_op( SLAGOP_SHL_INT32 );
 
           return type;
@@ -4657,7 +4657,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           SlagTypeInfo* type = load_expression();
           load_int32_expression();
 
-          if (type == bvm.type_int64) write_op( SLAGOP_SHR_INT64 );
+          if (type == vm.type_int64) write_op( SLAGOP_SHR_INT64 );
           else                        write_op( SLAGOP_SHR_INT32 );
 
           return type;
@@ -4669,7 +4669,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           SlagTypeInfo* type = load_expression();
           load_int32_expression();
 
-          if (type == bvm.type_int64) write_op( SLAGOP_SHRX_INT64 );
+          if (type == vm.type_int64) write_op( SLAGOP_SHRX_INT64 );
           else                        write_op( SLAGOP_SHRX_INT32 );
 
           return type;
@@ -4719,7 +4719,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           write_op( SLAGOP_DUPLICATE_REF );
 
           if (type->object_size == 8)       write_op_i32( SLAGOP_READ_THIS_PROPERTY_8, (SlagInt32) p->offset );
-          else if (type == bvm.type_real32) write_op_i32( SLAGOP_READ_THIS_PROPERTY_REAL32, (SlagInt32) p->offset );
+          else if (type == vm.type_real32) write_op_i32( SLAGOP_READ_THIS_PROPERTY_REAL32, (SlagInt32) p->offset );
           else                              write_op_i32( SLAGOP_READ_THIS_PROPERTY_4, (SlagInt32) p->offset );
 
           load_expression();
@@ -4728,7 +4728,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           else                 write_op( SLAGOP_DIV_INTEGER );
 
           if (type->object_size == 8)       write_op_i32( SLAGOP_WRITE_THIS_PROPERTY_8, (SlagInt32) p->offset );
-          else if (type == bvm.type_real32) write_op_i32( SLAGOP_WRITE_THIS_PROPERTY_REAL32, (SlagInt32) p->offset );
+          else if (type == vm.type_real32) write_op_i32( SLAGOP_WRITE_THIS_PROPERTY_REAL32, (SlagInt32) p->offset );
           else                              write_op_i32( SLAGOP_WRITE_THIS_PROPERTY_4, (SlagInt32) p->offset );
         }
         break;
@@ -4741,7 +4741,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           write_op( SLAGOP_DUPLICATE_REF );
 
           if (type->object_size == 8)       write_op_i32( SLAGOP_READ_THIS_PROPERTY_8, (SlagInt32) p->offset );
-          else if (type == bvm.type_real32) write_op_i32( SLAGOP_READ_THIS_PROPERTY_REAL32, (SlagInt32) p->offset );
+          else if (type == vm.type_real32) write_op_i32( SLAGOP_READ_THIS_PROPERTY_REAL32, (SlagInt32) p->offset );
           else                              write_op_i32( SLAGOP_READ_THIS_PROPERTY_4, (SlagInt32) p->offset );
 
           load_expression();
@@ -4750,7 +4750,7 @@ SlagTypeInfo* SlagLoader::load_statement()
           else                 write_op( SLAGOP_MOD_INTEGER );
 
           if (type->object_size == 8)       write_op_i32( SLAGOP_WRITE_THIS_PROPERTY_8, (SlagInt32) p->offset );
-          else if (type == bvm.type_real32) write_op_i32( SLAGOP_WRITE_THIS_PROPERTY_REAL32, (SlagInt32) p->offset );
+          else if (type == vm.type_real32) write_op_i32( SLAGOP_WRITE_THIS_PROPERTY_REAL32, (SlagInt32) p->offset );
           else                              write_op_i32( SLAGOP_WRITE_THIS_PROPERTY_4, (SlagInt32) p->offset );
         }
         break;
@@ -4914,7 +4914,7 @@ void SlagLoader::load_logical_expression()
 void SlagLoader::load_int32_expression()
 {
   SlagTypeInfo* result = load_statement();
-  slag_assert( result && result == bvm.type_int32, "Int32 expression expected." );
+  slag_assert( result && result == vm.type_int32, "Int32 expression expected." );
 }
 
 SlagTypeInfo* SlagLoader::load_compound_expression()
@@ -4949,8 +4949,8 @@ void SlagLoader::define_label( const char* name, int id, int n )
   }
   else
   {
-    label.address_index = bvm.address_offsets.count;
-    bvm.address_offsets.add( bvm.code.count );
+    label.address_index = vm.address_offsets.count;
+    vm.address_offsets.add( vm.code.count );
   }
 
   resolved_labels.add(label);
@@ -4969,7 +4969,7 @@ bool SlagLoader::define_transient_label( const char* name, int id, int n, int* i
     {
       label.address_index = unresolved_labels[i].address_index;
       if (index_ptr) *index_ptr = label.address_index;
-      bvm.address_offsets[label.address_index] = bvm.code.count;
+      vm.address_offsets[label.address_index] = vm.code.count;
       unresolved_labels.remove(i);
       return true;
     }
@@ -5003,8 +5003,8 @@ void SlagLoader::write_label_address( const char* name, int id, int n )
   }
 
   // Undefined - write_op a placeholder & backpatch later.
-  label.address_index = bvm.address_offsets.count;
-  bvm.address_offsets.add(0);
+  label.address_index = vm.address_offsets.count;
+  vm.address_offsets.add(0);
   unresolved_labels.add( label );
 
   write_op(label.address_index);
@@ -5062,41 +5062,41 @@ void SlagLoader::write_jump_if_false( const char* name, int id, int n )
 
 void slag_set_raw_exe_filepath( char* filepath )
 {
-  bvm.raw_exe_filepath = filepath;
+  vm.raw_exe_filepath = filepath;
 }
 
 void slag_set_command_line_args( char** argv, int argc )
 {
-  bvm.set_command_line_args( argv, argc );
+  vm.set_command_line_args( argv, argc );
 }
 
 void slag_throw_file_error()
 {
-  bvm.throw_exception( bvm.type_file_error );
+  vm.throw_exception( vm.type_file_error );
 }
 
 void slag_throw_file_error( char* filename )
 {
-  bvm.throw_exception( bvm.type_file_error, filename );
+  vm.throw_exception( vm.type_file_error, filename );
 }
 
 void slag_throw_file_not_found_error( char* filename )
 {
-  bvm.throw_exception( bvm.type_file_not_found_error, filename );
+  vm.throw_exception( vm.type_file_not_found_error, filename );
 }
 
 void slag_throw_no_next_value_error()
 {
-  bvm.throw_exception( bvm.type_no_next_value_error );
+  vm.throw_exception( vm.type_no_next_value_error );
 }
 
 void slag_throw_socket_error()
 {
-  bvm.throw_exception( bvm.type_socket_error );
+  vm.throw_exception( vm.type_socket_error );
 }
 
 void slag_throw_invalid_operand_error()
 {
-  bvm.throw_exception( bvm.type_invalid_operand_error );
+  vm.throw_exception( vm.type_invalid_operand_error );
 }
 
